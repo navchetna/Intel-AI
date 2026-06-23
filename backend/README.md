@@ -2,10 +2,11 @@
 
 Modular FastAPI backend boilerplate.
 
-Each feature lives as a self-contained package under `src/app/modules/<name>/`
-(its own `router.py`, `schemas.py`, `service.py`, `models.py`) and is mounted by
-the aggregator in `src/app/api/router.py`. This keeps parallel development
-conflict-free: adding a module touches only its own folder plus one import line.
+Each feature is a self-contained subproject package directly under
+`src/app/<name>/` (its own `router.py`, `schemas.py`, `service.py`, `models.py`)
+and is mounted by the aggregator in `src/app/api/router.py`. This keeps parallel
+development conflict-free: adding a subproject touches only its own folder plus
+one registration line.
 
 ## Quick start
 

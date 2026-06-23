@@ -25,8 +25,8 @@ make up                 # build/start; make logs to follow; make down to stop
 
 ## Building a feature
 
-1. Scaffold using the matching skill (`add-module` for backend or `add-feature` for frontend).
-2. Implement logic inside the module folder.
+1. Scaffold using the matching skill (`add-domain` for backend or `add-feature` for frontend).
+2. Implement logic inside the subproject (backend) or module (frontend) folder.
 3. Register it (backend `api/router.py` / frontend `lib/api/endpoints.ts`).
 4. Add/extend tests (`backend/tests/`), then `make test` and `make lint`.
 5. Update `docs/` via the `write-docs` skill.

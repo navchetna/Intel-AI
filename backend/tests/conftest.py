@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 os.environ.setdefault("ENVIRONMENT", "test")
 
-from app.api.router import import_module_models  # noqa: E402
+from app.api.router import import_domain_models  # noqa: E402
 from app.core.database import Base, get_db  # noqa: E402
 from app.main import create_app  # noqa: E402
 
@@ -23,7 +23,7 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 @pytest_asyncio.fixture
 async def db_session():
     engine = create_async_engine(TEST_DATABASE_URL, future=True)
-    import_module_models()
+    import_domain_models()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

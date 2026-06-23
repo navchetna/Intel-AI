@@ -1,6 +1,6 @@
 ---
-name: items-module
-description: Reference for the Intel-AI backend "items" module — the canonical CRUD mini-project (router + schemas + service + models). Use when building or modifying a database-backed module and you want a concrete, working pattern to copy.
+name: items-domain
+description: Reference for the Intel-AI backend "items" subproject — the canonical CRUD package (router + schemas + service + models). Use when building or modifying a database-backed subproject and you want a concrete, working pattern to copy.
 ---
 
 ## Description
@@ -23,7 +23,7 @@ the copy-from template when creating new persistent subprojects.
      raising `HTTPException(404)` when missing.
 
 2. To create a similar subproject, copy the folder, rename the symbols, and
-   follow the `add-module` skill for registration and migration steps.
+   follow the `add-domain` skill for registration and migration steps.
 
 3. Keep the layering rule: routers validate + delegate; services hold logic and
    own the DB session; schemas never import models’ runtime behavior.

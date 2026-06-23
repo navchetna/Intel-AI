@@ -11,10 +11,12 @@ Intel-AI/
 │   ├── src/app/
 │   │   ├── main.py         app factory
 │   │   ├── core/           config + database
-│   │   ├── api/router.py   aggregates every module router
-│   │   └── modules/        ← one folder per mini-project (health, items, ...)
+│   │   ├── api/router.py   aggregates every subproject router
+│   │   ├── health/         ← one folder per subproject (no-DB example)
+│   │   ├── items/          ← CRUD example subproject
+│   │   └── llm_bench/ …     ← feature subprojects (silicon, serving_engines, intel_bluelens)
 │   ├── tests/
-│   └── .claude/skills/     backend scaffolding skills (add-module, items-module)
+│   └── .claude/skills/     backend scaffolding skills (add-domain, items-domain)
 ├── frontend/           Next.js App Router (TypeScript, Tailwind)
 │   ├── app/(modules)/      ← thin route per feature (dashboard, ...)
 │   ├── modules/            ← feature business/core logic (types, api, service, components)
@@ -68,7 +70,7 @@ Run `make help` to see all targets.
 
 ## Adding features
 
-- **New backend module:** follow [backend/.claude/skills/add-module/SKILL.md](backend/.claude/skills/add-module/SKILL.md)
+- **New backend subproject:** follow [backend/.claude/skills/add-domain/SKILL.md](backend/.claude/skills/add-domain/SKILL.md)
 - **New frontend feature:** follow [frontend/.claude/skills/add-feature/SKILL.md](frontend/.claude/skills/add-feature/SKILL.md)
 - **Writing docs:** follow [.claude/skills/write-docs/SKILL.md](.claude/skills/write-docs/SKILL.md)
 

@@ -1,5 +1,5 @@
 ---
-name: add-module
+name: add-domain
 description: Scaffold a new backend subproject in the Intel-AI FastAPI app. Use when adding a new API area with its own routes, schemas, service and (optional) database models as a self-contained package under backend/src/app/<name>/.
 ---
 
@@ -34,7 +34,7 @@ the `health` subproject for stateless ones.
        ...
    ```
 
-3. If the module persists data, add `models.py` with a SQLAlchemy model that
+3. If the subproject persists data, add `models.py` with a SQLAlchemy model that
    inherits the shared `Base`:
    ```python
    from sqlalchemy.orm import Mapped, mapped_column

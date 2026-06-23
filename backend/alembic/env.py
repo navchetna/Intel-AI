@@ -13,7 +13,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.api.router import import_module_models
+from app.api.router import import_domain_models
 from app.core.config import settings
 from app.core.database import Base
 
@@ -23,8 +23,8 @@ config.set_main_option("sqlalchemy.url", settings.database_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Make sure all module models are registered before autogenerate runs.
-import_module_models()
+# Make sure all domain models are registered before autogenerate runs.
+import_domain_models()
 target_metadata = Base.metadata
 
 

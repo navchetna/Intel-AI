@@ -12,8 +12,8 @@ developers work in parallel without stepping on each other.
 
 ## Principles
 
-1. **Module isolation.** A feature is a self-contained package
-   (`backend/src/app/modules/<name>/`) or route group
+1. **Subproject isolation.** A feature is a self-contained package
+   (`backend/src/app/<name>/`) or route group
    (`frontend/app/(modules)/<name>/`). Adding one touches only that folder plus a
    single registration line.
 2. **Single registration point.** Backend routers are aggregated in
@@ -27,7 +27,7 @@ developers work in parallel without stepping on each other.
 
 1. A frontend Server Component / handler calls `endpoints.<group>.<op>()`.
 2. `lib/api/client.ts` prefixes `apiBaseUrl + apiPrefix` and issues the fetch.
-3. FastAPI routes the request to the module router mounted under `/api`.
+3. FastAPI routes the request to the subproject router mounted under `/api`.
 4. The module's `service.py` runs business logic against the DB session.
 
 ## Why this scales to a team

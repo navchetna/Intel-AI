@@ -7,10 +7,16 @@ Next.js (App Router) + TypeScript + Tailwind CSS.
 ```
 frontend/
 ├── app/
-│   ├── layout.tsx          root layout
-│   ├── page.tsx            landing page
+│   ├── layout.tsx          root layout (mounts the Navbar)
+│   ├── page.tsx            Intel-themed landing (renders the nav registry)
 │   └── (modules)/          thin feature routes
-│       └── dashboard/      → imports from modules/dashboard
+│       ├── dashboard/      → imports from modules/dashboard
+│       ├── llm-bench/      → imports from modules/llm-bench
+│       ├── serving-engines/
+│       ├── silicon/
+│       └── intel-bluelens/
+├── components/             shared UI (Navbar, Logo, FeatureLanding)
+├── lib/navigation.ts       central nav registry (navRoutes — single source of truth)
 ├── modules/                feature business/core logic (mini-projects)
 │   └── dashboard/
 │       ├── types.ts        domain types (core)
@@ -24,6 +30,10 @@ frontend/
 ├── config/settings.ts      runtime config (app name, API base URL)
 └── .claude/skills/         add-feature, dashboard-feature
 ```
+
+> The four feature routes (`llm-bench`, `serving-engines`, `silicon`,
+> `intel-bluelens`) and how to extend them into real backend pipelines are
+> documented in [routes.md](routes.md).
 
 ## A feature module
 

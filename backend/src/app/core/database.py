@@ -48,8 +48,8 @@ async def init_db() -> None:
     In production prefer Alembic migrations (``make migrate``).
     """
     # Import models so they register on Base.metadata before create_all.
-    from app.api.router import import_module_models  # local import avoids cycles
+    from app.api.router import import_domain_models  # local import avoids cycles
 
-    import_module_models()
+    import_domain_models()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

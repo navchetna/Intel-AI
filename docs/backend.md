@@ -14,32 +14,35 @@ backend/
 │   ├── core/
 │   │   ├── config.py       Settings (pydantic-settings)
 │   │   └── database.py     async engine + session dependency
-│   ├── api/router.py       aggregates module routers under /api
-│   └── modules/
-│       ├── health/         no-DB example module
-│       └── items/          CRUD example module
+│   ├── api/router.py       aggregates subproject routers under /api
+│   ├── health/             no-DB example subproject
+│   ├── items/              CRUD example subproject
+│   ├── llm_bench/          feature subproject
+│   ├── serving_engines/    feature subproject
+│   ├── silicon/            feature subproject
+│   └── intel_bluelens/     feature subproject
 └── tests/                  pytest suite
 ```
 
-## A module
+## A subproject
 
-Each module is a package with up to four files:
+Each feature is a self-contained package directly under `src/app/<name>/`,
+colocating its routes and business logic. It has up to four files:
 
 | File         | Responsibility                                  |
 | ------------ | ----------------------------------------------- |
-| `router.py`  | `APIRouter` + path operations                   |
-| `schemas.py` | Pydantic request/response models                |
+| `router.py`  | `APIRouter` + path operations (transport)       |
+| `schemas.py` | Pydantic request/response models (contract)     |
 | `service.py` | Business logic / DB access                       |
 | `models.py`  | SQLAlchemy ORM models (only if it needs the DB) |
 
-Register it by adding one line to `api/router.py`:
+Register it by adding one line to the `DOMAINS` list in `api/router.py`:
 
 ```python
-from app.modules.<name>.router import router as <name>_router
-api_router.include_router(<name>_router)
+("app.<name>", "/<name>", "<name>"),
 ```
 
-> Prefer the `add-module` skill to scaffold a new module consistently.
+> Prefer the `add-domain` skill to scaffold a new subproject consistently.
 
 ## Configuration
 
