@@ -1,0 +1,43 @@
+# Lint-before-commit + DCO sign-off for the 4-developer workflow.
+# Install once:
+#   pip install pre-commit
+#   pre-commit install --hook-type pre-commit --hook-type commit-msg
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.18
+    hooks:
+      - id: ruff
+        name: ruff (lint backend)
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        name: ruff (format backend)
+        files: ^backend/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      # Lint the frontend before committing TS/TSX changes.
+      - id: frontend-lint
+        name: eslint + typecheck (frontend)
+        entry: bash -c 'cd frontend && npm run lint && npm run typecheck'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      # Require a DCO Signed-off-by trailer (use `git commit -s`).
+      - id: dco-sign-off
+        name: DCO sign-off check
+        entry: scripts/check-signoff.sh
+        language: script
+        stages: [commit-msg]

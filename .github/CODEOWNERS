@@ -1,0 +1,20 @@
+# Code ownership for review routing.
+# Replace the placeholder handles with the 4 developers' GitHub usernames.
+# Last matching pattern wins.
+
+# Default owners for everything
+*                       @dev1 @dev2 @dev3 @dev4
+
+# Backend
+/backend/               @dev1 @dev2
+
+# Frontend
+/frontend/              @dev3 @dev4
+
+# Shared infra (require broad review)
+/.github/               @dev1 @dev2 @dev3 @dev4
+/docker-compose.yml     @dev1 @dev2 @dev3 @dev4
+/Makefile               @dev1 @dev2 @dev3 @dev4
+
+# Docs
+/docs/                  @dev1 @dev2 @dev3 @dev4

@@ -1,0 +1,84 @@
+# Intel-AI — developer task runner
+# Usage: make <target>   (run `make help` to list targets)
+
+BACKEND  := backend
+FRONTEND := frontend
+
+.DEFAULT_GOAL := help
+
+.PHONY: help
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+
+## ---- Setup ----
+.PHONY: install
+install: install-backend install-frontend ## Install all dependencies
+
+.PHONY: install-backend
+install-backend: ## Install backend deps (uv)
+	cd $(BACKEND) && uv sync --extra dev
+
+.PHONY: install-frontend
+install-frontend: ## Install frontend deps (npm)
+	cd $(FRONTEND) && npm install
+
+## ---- Dev ----
+.PHONY: dev-backend
+dev-backend: ## Run backend dev server
+	cd $(BACKEND) && uv run uvicorn app.main:app --reload --app-dir src --port 8000
+
+.PHONY: dev-frontend
+dev-frontend: ## Run frontend dev server
+	cd $(FRONTEND) && npm run dev
+
+## ---- Quality ----
+.PHONY: lint
+lint: lint-backend lint-frontend ## Lint everything
+
+.PHONY: lint-backend
+lint-backend: ## Ruff lint backend
+	cd $(BACKEND) && uv run ruff check .
+
+.PHONY: lint-frontend
+lint-frontend: ## Lint + typecheck frontend
+	cd $(FRONTEND) && npm run lint && npm run typecheck
+
+.PHONY: format
+format: ## Auto-format backend (ruff)
+	cd $(BACKEND) && uv run ruff format . && uv run ruff check --fix .
+
+.PHONY: test
+test: ## Run backend test suite
+	cd $(BACKEND) && uv run pytest
+
+## ---- Database ----
+.PHONY: migrate
+migrate: ## Apply Alembic migrations
+	cd $(BACKEND) && uv run alembic upgrade head
+
+.PHONY: migration
+migration: ## Create a migration (make migration m="message")
+	cd $(BACKEND) && uv run alembic revision --autogenerate -m "$(m)"
+
+## ---- Docker ----
+.PHONY: build
+build: ## Build all docker images
+	docker compose build
+
+.PHONY: up
+up: ## Start the full stack (detached)
+	docker compose up -d
+
+.PHONY: down
+down: ## Stop the stack
+	docker compose down
+
+.PHONY: logs
+logs: ## Tail stack logs
+	docker compose logs -f
+
+.PHONY: clean
+clean: ## Remove build artifacts and volumes
+	docker compose down -v --remove-orphans
+	rm -rf $(BACKEND)/.venv $(BACKEND)/.pytest_cache $(FRONTEND)/node_modules $(FRONTEND)/.next

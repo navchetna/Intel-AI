@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+/* Intel brand theme — exposes utilities like bg-intel-blue, text-intel-dark. */
+@theme {
+  --color-intel-blue: #0071c5;
+  --color-intel-dark: #003c71;
+  --color-intel-energy: #00c7fd;
+  --color-intel-haze: #e9f4fb;
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, sans-serif;
+}

@@ -1,0 +1,15 @@
+# Normalize line endings to LF on checkin.
+* text=auto eol=lf
+
+# Treat these as binary (never modify).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Language stats / linguist hints
+*.py linguist-language=Python
+*.tsx linguist-language=TypeScript
