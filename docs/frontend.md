@@ -10,7 +10,6 @@ frontend/
 │   ├── layout.tsx          root layout (mounts the Navbar)
 │   ├── page.tsx            Intel-themed landing (renders the nav registry)
 │   └── (modules)/          thin feature routes
-│       ├── dashboard/      → imports from modules/dashboard
 │       ├── llm-bench/      → imports from modules/llm-bench
 │       ├── serving-engines/
 │       ├── silicon/
@@ -18,17 +17,17 @@ frontend/
 ├── components/             shared UI (Navbar, Logo, FeatureLanding)
 ├── lib/navigation.ts       central nav registry (navRoutes — single source of truth)
 ├── modules/                feature business/core logic (mini-projects)
-│   └── dashboard/
+│   └── <feature>/
 │       ├── types.ts        domain types (core)
 │       ├── api.ts          data access over lib/api/client (core)
-│       ├── service.ts      business logic (loadDashboard)
+│       ├── service.ts      business logic
 │       ├── components/     presentational UI
 │       └── index.ts        public surface (routes import from here)
 ├── lib/api/
 │   ├── client.ts           fetch wrapper (uses config base URL)
 │   └── endpoints.ts        shared/system endpoints only (e.g. health)
 ├── config/settings.ts      runtime config (app name, API base URL)
-└── .claude/skills/         add-feature, dashboard-feature
+└── .claude/skills/         add-feature
 ```
 
 > The four feature routes (`llm-bench`, `serving-engines`, `silicon`,
@@ -52,8 +51,8 @@ Routes and components call the module's `service`, never `api.ts` or `fetch`
 directly:
 
 ```ts
-import { loadDashboard, ItemList } from "@/modules/dashboard";
-const { items, error } = await loadDashboard();
+import { load<Feature> } from "@/modules/<feature>";
+const { data, error } = await load<Feature>();
 ```
 
 Only cross-cutting endpoints (e.g. health) live in `lib/api/endpoints.ts`.

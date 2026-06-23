@@ -17,7 +17,7 @@ business/core logic from routing, mirroring the backend:
 - `frontend/app/(modules)/<name>/page.tsx` — a THIN route that wires the
   module's `service` + `components` to a URL.
 
-Use the `dashboard` feature as the canonical template. Only truly cross-cutting
+Follow the structure below as the canonical template. Only truly cross-cutting
 endpoints (e.g. health) belong in the shared `lib/api/endpoints.ts`.
 
 ## Instructions

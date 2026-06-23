@@ -13,16 +13,15 @@ Intel-AI/
 │   │   ├── core/           config + database
 │   │   ├── api/router.py   aggregates every subproject router
 │   │   ├── health/         ← one folder per subproject (no-DB example)
-│   │   ├── items/          ← CRUD example subproject
 │   │   └── llm_bench/ …     ← feature subprojects (silicon, serving_engines, intel_bluelens)
 │   ├── tests/
-│   └── .claude/skills/     backend scaffolding skills (add-domain, items-domain)
+│   └── .claude/skills/     backend scaffolding skills (add-domain)
 ├── frontend/           Next.js App Router (TypeScript, Tailwind)
-│   ├── app/(modules)/      ← thin route per feature (dashboard, ...)
+│   ├── app/(modules)/      ← thin route per feature (llm-bench, silicon, ...)
 │   ├── modules/            ← feature business/core logic (types, api, service, components)
 │   ├── lib/api/            shared transport + system endpoint registry
 │   ├── config/settings.ts  runtime config
-│   └── .claude/skills/     frontend scaffolding skills (add-feature, dashboard-feature)
+│   └── .claude/skills/     frontend scaffolding skills (add-feature)
 ├── docs/               all project documentation
 ├── .claude/skills/      cross-cutting skills (write-docs)
 ├── .github/            manual CI (+ DCO), CODEOWNERS, PR/contrib templates

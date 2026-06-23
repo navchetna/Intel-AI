@@ -12,8 +12,9 @@ Subprojects are wired into the app through a single `DOMAINS` list in
 `backend/src/app/api/router.py`, so adding one only touches the new folder plus
 one line — keeping parallel development conflict-free.
 
-Use the `items` subproject as the canonical template for DB-backed packages and
-the `health` subproject for stateless ones.
+Use the `health` subproject as the reference for a stateless package. When a
+subproject needs the database, add a `models.py` plus a migration (see steps 3
+and 8).
 
 ## Instructions
 
@@ -47,7 +48,7 @@ the `health` subproject for stateless ones.
    ```
 
 4. Add `service.py` for business logic / DB access. Accept an
-   `AsyncSession` and keep route handlers thin. Mirror `items/service.py`.
+   `AsyncSession` and keep route handlers thin (routers validate + delegate).
 
 5. Add `router.py` exposing an `APIRouter` named `router`. Paths are relative
    (the prefix is applied at registration). Inject the DB with

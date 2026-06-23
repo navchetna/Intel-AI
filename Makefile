@@ -57,9 +57,21 @@ test: ## Run backend test suite
 migrate: ## Apply Alembic migrations
 	cd $(BACKEND) && uv run alembic upgrade head
 
+.PHONY: migrate-down
+migrate-down: ## Roll back the last Alembic migration
+	cd $(BACKEND) && uv run alembic downgrade -1
+
 .PHONY: migration
 migration: ## Create a migration (make migration m="message")
 	cd $(BACKEND) && uv run alembic revision --autogenerate -m "$(m)"
+
+.PHONY: db-current
+db-current: ## Show the current DB revision
+	cd $(BACKEND) && uv run alembic current
+
+.PHONY: db-history
+db-history: ## List the Alembic revision history
+	cd $(BACKEND) && uv run alembic history --verbose
 
 ## ---- Docker ----
 .PHONY: build
