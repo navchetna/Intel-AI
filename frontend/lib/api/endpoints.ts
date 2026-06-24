@@ -13,8 +13,16 @@ export interface HealthResponse {
   service: string;
 }
 
+export interface VisitCount {
+  count: number;
+}
+
 export const endpoints = {
   health: {
     get: () => apiClient.get<HealthResponse>("/health"),
+  },
+  visits: {
+    get: () => apiClient.get<VisitCount>("/visits"),
+    record: () => apiClient.post<VisitCount>("/visits", {}),
   },
 };

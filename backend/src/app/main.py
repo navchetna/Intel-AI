@@ -45,6 +45,12 @@ def create_app() -> FastAPI:
     async def root() -> dict[str, str]:
         return {"app": settings.app_name, "status": "ok", "docs": "/docs"}
 
+    @app.get("/health", tags=["health"])
+    async def health() -> dict[str, str]:
+        # Root-level liveness probe for containers/orchestrators.
+        # The full health payload is also available at f"{settings.api_prefix}/health".
+        return {"status": "ok"}
+
     return app
 
 

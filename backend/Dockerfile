@@ -11,7 +11,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 
 # Install dependencies first for better layer caching
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 RUN uv pip install --system --no-cache .
 
 # Copy source

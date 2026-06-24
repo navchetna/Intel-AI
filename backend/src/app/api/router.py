@@ -19,6 +19,7 @@ DOMAINS: list[tuple[str, str, str]] = [
     ("app.llm_bench", "/llm-bench", "llm-bench"),
     ("app.serving_engines", "/serving-engines", "serving-engines"),
     ("app.silicon", "/silicon", "silicon"),
+    ("app.visits", "/visits", "visits"),
 ]
 
 api_router = APIRouter()

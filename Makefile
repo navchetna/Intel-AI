@@ -24,13 +24,16 @@ install-frontend: ## Install frontend deps (npm)
 	cd $(FRONTEND) && npm install
 
 ## ---- Dev ----
+BACKEND_PORT  ?= 8000
+FRONTEND_PORT ?= 3000
+
 .PHONY: dev-backend
-dev-backend: ## Run backend dev server
-	cd $(BACKEND) && uv run uvicorn app.main:app --reload --app-dir src --port 8000
+dev-backend: ## Run backend dev server (override port: make dev-backend BACKEND_PORT=8001)
+	cd $(BACKEND) && uv run uvicorn app.main:app --reload --app-dir src --port $(BACKEND_PORT)
 
 .PHONY: dev-frontend
-dev-frontend: ## Run frontend dev server
-	cd $(FRONTEND) && npm run dev
+dev-frontend: ## Run frontend dev server (override port: make dev-frontend FRONTEND_PORT=3001)
+	cd $(FRONTEND) && npm run dev -- -p $(FRONTEND_PORT)
 
 ## ---- Quality ----
 .PHONY: lint

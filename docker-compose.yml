@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-intelai}
       POSTGRES_DB: ${POSTGRES_DB:-intelai}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5435}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,7 +20,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-intelai}:${POSTGRES_PASSWORD:-intelai}@db:5432/${POSTGRES_DB:-intelai}
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8004}:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -28,9 +28,9 @@ services:
   frontend:
     build: ./frontend
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-8000}
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3005}:3000"
     depends_on:
       - backend
 
