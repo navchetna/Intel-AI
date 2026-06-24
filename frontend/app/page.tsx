@@ -23,12 +23,12 @@ export default function Home() {
             >
               Explore LLM Bench
             </Link>
-            <Link
-              href="/intel-bluelens"
+            <a
+              href="/intel-bluelens/"
               className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-intel-blue ring-1 ring-intel-blue/30 transition-colors hover:bg-intel-haze"
             >
               Open BlueLens
-            </Link>
+            </a>
           </div>
         </div>
       </section>
@@ -37,19 +37,28 @@ export default function Home() {
         <h2 className="text-2xl font-semibold text-intel-dark">Workspaces</h2>
         <p className="mt-1 text-sm text-gray-500">Each route is a self-contained feature module.</p>
         <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {navRoutes.map((route) => (
-            <Link
-              key={route.slug}
-              href={`/${route.slug}`}
-              className="group rounded-xl border border-gray-100 bg-white p-6 shadow-sm transition-all hover:-translate-y-1 hover:border-intel-blue/40 hover:shadow-md"
-            >
-              <div className="h-1.5 w-10 rounded-full bg-intel-energy transition-all group-hover:w-16" />
-              <h3 className="mt-4 text-lg font-semibold text-intel-dark">{route.label}</h3>
-              <p className="mt-2 text-sm text-gray-500">
-                <code className="rounded bg-gray-100 px-1">/{route.slug}</code>
-              </p>
-            </Link>
-          ))}
+          {navRoutes.map((route) => {
+            const cardClassName =
+              "group rounded-xl border border-gray-100 bg-white p-6 shadow-sm transition-all hover:-translate-y-1 hover:border-intel-blue/40 hover:shadow-md";
+            const cardBody = (
+              <>
+                <div className="h-1.5 w-10 rounded-full bg-intel-energy transition-all group-hover:w-16" />
+                <h3 className="mt-4 text-lg font-semibold text-intel-dark">{route.label}</h3>
+                <p className="mt-2 text-sm text-gray-500">
+                  <code className="rounded bg-gray-100 px-1">/{route.slug}</code>
+                </p>
+              </>
+            );
+            return route.external ? (
+              <a key={route.slug} href={`/${route.slug}/`} className={cardClassName}>
+                {cardBody}
+              </a>
+            ) : (
+              <Link key={route.slug} href={`/${route.slug}`} className={cardClassName}>
+                {cardBody}
+              </Link>
+            );
+          })}
         </div>
       </section>
     </main>

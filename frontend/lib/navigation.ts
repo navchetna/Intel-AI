@@ -17,6 +17,12 @@ export interface NavRoute {
   module: string;
   /** Backend API prefix this feature talks to (mounted in api/router.py). */
   apiPrefix: string;
+  /**
+   * When true, the route is served by a separate container (proxied via
+   * next.config rewrites), so the navbar uses a full-page anchor instead of
+   * client-side routing.
+   */
+  external?: boolean;
 }
 
 export const navRoutes: NavRoute[] = [
@@ -33,5 +39,6 @@ export const navRoutes: NavRoute[] = [
     label: "Intel BlueLens",
     module: "intel-bluelens",
     apiPrefix: "/intel-bluelens",
+    external: true,
   },
 ];

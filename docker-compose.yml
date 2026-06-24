@@ -25,6 +25,14 @@ services:
       db:
         condition: service_healthy
 
+  intel-bluelens:
+    # Built directly from the public GitHub repo (uses that repo's Dockerfile).
+    build:
+      context: https://github.com/navchetna/Intel-BlueLens.git
+    ports:
+      - "${BLUELENS_PORT:-3013}:3003"
+    restart: unless-stopped
+
   frontend:
     build: ./frontend
     environment:
@@ -33,6 +41,7 @@ services:
       - "${FRONTEND_PORT:-3005}:3000"
     depends_on:
       - backend
+      - intel-bluelens
 
 volumes:
   pgdata:

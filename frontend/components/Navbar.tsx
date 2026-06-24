@@ -20,19 +20,28 @@ export function Navbar() {
         <ul className="ml-auto flex flex-wrap items-center gap-1">
           {navRoutes.map((route) => {
             const active = pathname === `/${route.slug}`;
+            const className = `rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              active
+                ? "bg-intel-haze text-intel-blue"
+                : "text-gray-600 hover:bg-intel-haze/60 hover:text-intel-blue"
+            }`;
             return (
               <li key={route.slug}>
-                <Link
-                  href={`/${route.slug}`}
-                  aria-current={active ? "page" : undefined}
-                  className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    active
-                      ? "bg-intel-haze text-intel-blue"
-                      : "text-gray-600 hover:bg-intel-haze/60 hover:text-intel-blue"
-                  }`}
-                >
-                  {route.label}
-                </Link>
+                {route.external ? (
+                  // Served by a separate container (proxied). Use a full-page
+                  // load so the external SPA boots correctly.
+                  <a href={`/${route.slug}/`} className={className}>
+                    {route.label}
+                  </a>
+                ) : (
+                  <Link
+                    href={`/${route.slug}`}
+                    aria-current={active ? "page" : undefined}
+                    className={className}
+                  >
+                    {route.label}
+                  </Link>
+                )}
               </li>
             );
           })}
