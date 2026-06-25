@@ -7,6 +7,7 @@ settings here rather than reading ``os.environ`` directly elsewhere.
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,9 +32,25 @@ class Settings(BaseSettings):
     # --- CORS (comma-separated origins, or "*") ---
     cors_origins: str = "*"
 
-    # --- Database (PostgreSQL, async driver) ---
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/intel_ai"
+    # --- Database (PostgreSQL, async asyncpg driver) ---
+    db_user: str = "intelai"
+    db_password: str = "intelai"
+    db_name: str = "intelai"
+    db_host: str = "localhost"
+    db_port: int = 5432
     db_echo: bool = False
+
+    # Optional full URL override; if unset, the URL is built from the parts above.
+    database_url_override: str | None = Field(default=None, alias="DATABASE_URL")
+
+    @property
+    def database_url(self) -> str:
+        if self.database_url_override:
+            return self.database_url_override
+        return (
+            f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
+            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
 
     @property
     def cors_origin_list(self) -> list[str]:
