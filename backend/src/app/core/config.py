@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
 
     # --- Database (PostgreSQL, async driver) ---
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/intel_ai"
+    database_url: str = "postgresql+asyncpg://intelai:intelai@localhost:5435/intelai"
     db_echo: bool = False
 
     @property

@@ -14,6 +14,7 @@ from fastapi import APIRouter
 # Register each subproject here as (import_path, url_prefix, tag).
 # Keep this list alphabetised; one line per subproject.
 DOMAINS: list[tuple[str, str, str]] = [
+    ("app.agentic_stack", "/agentic-stack", "agentic-stack"),
     ("app.health", "/health", "health"),
     ("app.intel_bluelens", "/intel-bluelens", "intel-bluelens"),
     ("app.llm_bench", "/llm-bench", "llm-bench"),
