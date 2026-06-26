@@ -3,12 +3,20 @@ export interface LayerDetail {
   body: string;
 }
 
+export interface SubLayer {
+  id: string;
+  title: string;
+  icons: { src: string; alt: string }[];
+}
+
 export interface ClickableItem {
   id: string;
   title: string;
   subtitle?: string;
   description: string;
   details: LayerDetail[];
+  icons?: { src: string; alt: string }[];
+  subLayers?: SubLayer[];
 }
 
 export const mainLayers: ClickableItem[] = [
@@ -39,18 +47,37 @@ export const mainLayers: ClickableItem[] = [
     subtitle: "Agent Orchestrators, planning, MCP tool interaction",
     description:
       "The orchestration layer coordinates single and multi-agent workflows — deciding which tools to call, in what order, with what fallback strategies — using planning algorithms that run efficiently on Intel hardware.",
+    subLayers: [
+      {
+        id: "orchestration-tools",
+        title: "Orchestration",
+        icons: [
+          { src: "/n8n.jpg", alt: "N8N" },
+          { src: "/zapier.jpg", alt: "Zapier" },
+          { src: "/flowise.jpg", alt: "Flowise" },
+          { src: "/activepieces.jpg", alt: "ActivePieces" },
+        ],
+      },
+      {
+        id: "mcp",
+        title: "MCP Toolkit & Catalog",
+        icons: [
+          { src: "/mcp.jpg", alt: "MCP" },
+        ],
+      },
+    ],
     details: [
       {
         heading: "Multi-Agent Coordination",
         body: "Supervisor/worker patterns, peer-to-peer agent messaging, and shared blackboard memory for complex task decomposition.",
       },
       {
-        heading: "Planning Algorithms",
-        body: "ReAct, Tree-of-Thought, and MCTS planners with configurable depth and beam width.",
+        heading: "Orchestration Frameworks",
+        body: "N8N, Zapier, Flowise, and ActivePieces provide visual and code-first workflow builders for connecting agents, tools, and data sources.",
       },
       {
-        heading: "MCP Tool Interaction",
-        body: "Native Model Context Protocol support for plugging in external tools, APIs, and data sources via a standardised interface.",
+        heading: "MCP Toolkit & Catalog",
+        body: "Native Model Context Protocol support for plugging in external tools, APIs, and data sources via a standardised interface, backed by a curated tool catalog.",
       },
       {
         heading: "Retry & Fault Tolerance",
@@ -62,6 +89,10 @@ export const mainLayers: ClickableItem[] = [
     id: "memory-feedback",
     title: "Memory & Feedback",
     subtitle: "Pipeline memory, user-feedback, finetuning",
+    icons: [
+      { src: "/mem0.jpg", alt: "Mem0" },
+      { src: "/langfuse.jpg", alt: "Langfuse" },
+    ],
     description:
       "Gives agents persistent context and a continuous improvement loop: short-term working memory within a session, long-term episodic stores across sessions, and feedback pipelines that feed into fine-tuning.",
     details: [
@@ -87,6 +118,12 @@ export const mainLayers: ClickableItem[] = [
     id: "models-serving",
     title: "Models & Serving",
     subtitle: "AI Lifecycle management and AI Pipeline construction",
+    icons: [
+      { src: "/vllm.jpg", alt: "vLLM" },
+      { src: "/llmd.jpg", alt: "llm-d" },
+      { src: "/dynamo.jpg", alt: "Dynamo" },
+      { src: "/sgl.jpg", alt: "SGLang" },
+    ],
     description:
       "Manages the full lifecycle of models used by agents: registration, versioning, optimisation for Intel silicon, and serving through a unified inference API that spans local and cloud deployments.",
     details: [
@@ -113,23 +150,72 @@ export const mainLayers: ClickableItem[] = [
     title: "Data & Knowledge",
     subtitle: "Persistent storage, and enterprise knowledge access",
     description:
-      "Connects agents to structured and unstructured enterprise knowledge — relational databases, document stores, vector indices, and streaming event buses — all with access controls inherited from the governance layer.",
+      "Connects agents to structured and unstructured enterprise knowledge — relational databases, document stores, vector indices, streaming pipelines, and data connectors — all with access controls inherited from the governance layer.",
+    subLayers: [
+      {
+        id: "database",
+        title: "Database",
+        icons: [
+          { src: "/mysql.jpg", alt: "MySQL" },
+          { src: "/postgre.jpg", alt: "PostgreSQL" },
+          { src: "/mongo.jpg", alt: "MongoDB" },
+          { src: "/neo4j.jpg", alt: "Neo4J" },
+        ],
+      },
+      {
+        id: "vector-db",
+        title: "Vector DB",
+        icons: [
+          { src: "/redis.jpg", alt: "Redis" },
+          { src: "/qdrant.jpg", alt: "QDrant" },
+          { src: "/milvus.jpg", alt: "Milvus" },
+        ],
+      },
+      {
+        id: "data-movers",
+        title: "Data Movers / Analytics",
+        icons: [
+          { src: "/kafka.jpg", alt: "Kafka" },
+          { src: "/spark.jpg", alt: "Spark" },
+          { src: "/elastic.jpg", alt: "Elastic" },
+        ],
+      },
+      {
+        id: "data-connectors",
+        title: "Data Connectors",
+        icons: [
+          { src: "/fluents.jpg", alt: "Fluentd" },
+          { src: "/dabezium.jpg", alt: "Debezium" },
+        ],
+      },
+      {
+        id: "data-orchestrators",
+        title: "Data Orchestrators",
+        icons: [
+          { src: "/airflow.jpg", alt: "Airflow" },
+        ],
+      },
+    ],
     details: [
       {
-        heading: "Vector Search",
-        body: "AVX-512 and AMX accelerated FAISS / pgvector retrieval for sub-millisecond dense similarity search.",
+        heading: "Databases",
+        body: "MySQL, PostgreSQL, MongoDB, and Neo4J provide relational, document, and graph storage for structured enterprise data with schema introspection and safe SQL generation.",
       },
       {
-        heading: "Document Ingestion",
-        body: "Configurable ETL pipelines for PDFs, Office docs, HTML, and code repositories with pluggable chunking strategies.",
+        heading: "Vector Databases",
+        body: "Redis, QDrant, and Milvus power AVX-512 / AMX-accelerated dense similarity search for sub-millisecond RAG and semantic retrieval workloads.",
       },
       {
-        heading: "Structured Data Access",
-        body: "SQL query generation and safe execution against enterprise databases with schema introspection.",
+        heading: "Data Movers & Analytics",
+        body: "Kafka streams real-time events, Spark handles large-scale batch analytics, and Elasticsearch provides full-text search across enterprise datasets.",
       },
       {
-        heading: "Knowledge Graph",
-        body: "Entity and relation extraction feeding a graph store for multi-hop reasoning queries.",
+        heading: "Data Connectors",
+        body: "Fluentd aggregates logs from every service tier, while Debezium captures database change events to keep downstream stores in sync.",
+      },
+      {
+        heading: "Data Orchestration",
+        body: "Apache Airflow schedules and monitors end-to-end data pipelines with dependency resolution, conditional branching, retries, and lineage tracking.",
       },
     ],
   },
@@ -137,6 +223,11 @@ export const mainLayers: ClickableItem[] = [
     id: "infrastructure-orchestration",
     title: "Infrastructure & Orchestration",
     subtitle: "Compute, Storage, Network",
+    icons: [
+      { src: "/k8s.jpg", alt: "Kubernetes" },
+      { src: "/kvm.jpg", alt: "KVM" },
+      { src: "/slurm.jpg", alt: "Slurm" },
+    ],
     description:
       "The base layer provisions and manages the compute, storage, and network resources on which all higher layers run — from bare-metal Intel Xeon and Gaudi nodes to Kubernetes clusters and high-speed interconnects.",
     details: [
@@ -188,7 +279,6 @@ export const sidePanels: ClickableItem[] = [
   {
     id: "security-governance",
     title: "Security, Identities, Governance",
-    subtitle: "Trust, compliance, policy enforcement, Data protection",
     description:
       "A cross-cutting vertical that enforces trust, identity, and policy across every layer of the stack — from infrastructure access controls through to API-level governance and model output validation.",
     details: [

@@ -1,8 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { mainLayers, sidePanels, type ClickableItem } from "./layers";
+import Image from "next/image";
+import { mainLayers, sidePanels, type ClickableItem, type SubLayer } from "./layers";
+
+// Intel blue family — bright cyan (user-facing API layer) → deep royal blue (infrastructure base)
+const LAYER_COLORS: string[] = [
+  "#00DFFF",  // APIs & Solutions         — Bright Cyan
+  "#00AAEE",  // Agent Orchestration      — Sky Blue
+  "#3399FF",  // Memory & Feedback        — Azure
+  "#5577EE",  // Models & Serving         — Periwinkle Blue
+  "#55AADD",  // Data & Knowledge         — Steel Cyan
+  "#3A77CC",  // Infrastructure           — Intel Royal Blue
+];
+
+function hexToRgb(hex: string) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `${r},${g},${b}`;
+}
 
 /* ── sub-components (defined outside to avoid re-creation on every render) ── */
 
@@ -10,40 +27,139 @@ interface LayerCardProps {
   layer: ClickableItem;
   active: boolean;
   onToggle: (item: ClickableItem) => void;
+  color: string;
 }
 
-function LayerCard({ layer, active, onToggle }: LayerCardProps) {
+function LayerCard({ layer, active, onToggle, color }: LayerCardProps) {
+  const [hovered, setHovered] = useState(false);
+  const rgb = hexToRgb(color);
+  const hasSubLayers = layer.subLayers && layer.subLayers.length > 0;
+
+  const bgStyle = {
+    background: active
+      ? `linear-gradient(to right, rgba(${rgb},0.13), rgba(${rgb},0.05), transparent)`
+      : hovered
+        ? `linear-gradient(to right, rgba(${rgb},0.08), rgba(${rgb},0.03), transparent)`
+        : `rgba(${rgb},0.03)`,
+    transition: "background 0.2s ease",
+  };
+
+  /* Shared decorative elements */
+  const accentBar = (
+    <div
+      className="absolute left-0 top-0 h-full w-[3px] transition-all duration-300"
+      style={{
+        background: active || hovered ? color : `rgba(${rgb},0.25)`,
+        boxShadow: active ? `0 0 14px 4px rgba(${rgb},0.5)` : hovered ? `0 0 6px rgba(${rgb},0.3)` : undefined,
+      }}
+    />
+  );
+  const shimmer = (
+    <div
+      className={`absolute inset-0 transition-opacity duration-300 pointer-events-none ${active ? "opacity-100" : "opacity-0"}`}
+      style={{ background: `radial-gradient(ellipse 60% 50% at 20% 50%, rgba(${rgb},0.06), transparent)` }}
+    />
+  );
+  const chevron = (
+    <div
+      className={`relative flex-shrink-0 transition-all duration-200 ${active ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2 group-hover:opacity-50 group-hover:translate-x-0"}`}
+      style={{ color }}
+    >
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 18l6-6-6-6" />
+      </svg>
+    </div>
+  );
+
+  if (hasSubLayers) {
+    return (
+      <button
+        onClick={() => onToggle(layer)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className="group relative w-full text-left flex flex-col border-b border-white/[0.08] last:border-0 focus:outline-none overflow-hidden"
+        style={bgStyle}
+      >
+        {accentBar}
+        {shimmer}
+
+        {/* Title row */}
+        <div className="relative flex items-center gap-4 px-10 pt-5 pb-3 w-full">
+          <div className="pl-2 flex-1 min-w-0">
+            <p
+              className="font-bold text-xl leading-tight tracking-wide transition-colors duration-200"
+              style={{ color: active ? color : hovered ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.88)" }}
+            >
+              {layer.title}
+            </p>
+            <p className="text-blue-300/55 text-sm mt-1 leading-snug font-medium">
+              {layer.subtitle}
+            </p>
+          </div>
+          {chevron}
+        </div>
+
+        {/* Sub-layers strip */}
+        <div className="relative flex flex-wrap items-start gap-x-8 gap-y-4 px-12 pb-8 border-t border-white/[0.06]">
+          {(layer.subLayers as SubLayer[]).map((sub) => (
+            <div key={sub.id} className="flex flex-col gap-3 pt-5">
+              <span
+                className="text-[11px] font-semibold uppercase tracking-widest"
+                style={{ color: `rgba(${rgb},0.7)` }}
+              >
+                {sub.title}
+              </span>
+              <div className="flex items-center gap-3">
+                {sub.icons.map((icon) => (
+                  <div
+                    key={icon.alt}
+                    className="flex flex-col items-center gap-1.5"
+                    title={icon.alt}
+                  >
+                    <div
+                      className="w-14 h-14 rounded-xl overflow-hidden flex items-center justify-center"
+                      style={{
+                        border: `1px solid rgba(${rgb},0.22)`,
+                        background: `rgba(${rgb},0.07)`,
+                      }}
+                    >
+                      <Image
+                        src={icon.src}
+                        alt={icon.alt}
+                        width={56}
+                        height={56}
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <span className="text-[10px] text-blue-300/50 font-medium leading-none">
+                      {icon.alt}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </button>
+    );
+  }
+
   return (
     <button
       onClick={() => onToggle(layer)}
-      className={`
-        group relative flex-1 w-full text-left flex items-center gap-4 px-10 py-7
-        border-b border-white/[0.04] last:border-0
-        transition-all duration-200 focus:outline-none overflow-hidden
-        ${active
-          ? "bg-gradient-to-r from-cyan-950/70 via-blue-950/40 to-transparent"
-          : "hover:bg-gradient-to-r hover:from-blue-950/60 hover:via-blue-950/20 hover:to-transparent"
-        }
-      `}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="group relative flex-1 w-full text-left flex items-center gap-4 px-10 py-7 border-b border-white/[0.08] last:border-0 focus:outline-none overflow-hidden"
+      style={bgStyle}
     >
-      {/* Left accent bar */}
-      <div
-        className={`
-          absolute left-0 top-0 h-full w-[3px] transition-all duration-300
-          ${active
-            ? "bg-[#00c7fd] shadow-[0_0_14px_4px_rgba(0,199,253,0.5)]"
-            : "bg-white/10 group-hover:bg-[#00c7fd]/40 group-hover:shadow-[0_0_6px_rgba(0,199,253,0.25)]"
-          }
-        `}
-      />
-
-      {/* Subtle background shimmer on hover */}
-      <div className={`absolute inset-0 transition-opacity duration-300 pointer-events-none ${active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-        style={{ background: "radial-gradient(ellipse 60% 50% at 20% 50%, rgba(0,199,253,0.04), transparent)" }}
-      />
+      {accentBar}
+      {shimmer}
 
       <div className="relative pl-2 flex-1 min-w-0">
-        <p className={`font-bold text-xl leading-tight tracking-wide transition-colors duration-200 ${active ? "text-[#00c7fd]" : "text-white/90 group-hover:text-white"}`}>
+        <p
+          className="font-bold text-xl leading-tight tracking-wide transition-colors duration-200"
+          style={{ color: active ? color : hovered ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.88)" }}
+        >
           {layer.title}
         </p>
         <p className="text-blue-300/55 text-sm mt-2 leading-snug font-medium">
@@ -51,12 +167,43 @@ function LayerCard({ layer, active, onToggle }: LayerCardProps) {
         </p>
       </div>
 
-      {/* Right chevron */}
-      <div className={`relative flex-shrink-0 text-[#00c7fd] transition-all duration-200 ${active ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2 group-hover:opacity-50 group-hover:translate-x-0"}`}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9 18l6-6-6-6" />
-        </svg>
-      </div>
+      {/* Workload icons (e.g. K8S, KVM) */}
+      {layer.icons && layer.icons.length > 0 && (
+        <div className="relative flex items-center gap-4 flex-shrink-0">
+          {layer.icons.map((icon) => (
+            <div
+              key={icon.alt}
+              className="flex flex-col items-center gap-1.5 flex-shrink-0"
+              title={icon.alt}
+            >
+              <div
+                className="w-16 h-16 rounded-xl overflow-hidden flex items-center justify-center transition-all duration-200"
+                style={{
+                  border: `1px solid rgba(${rgb},${active ? 0.45 : 0.22})`,
+                  background: `rgba(${rgb},${active ? 0.1 : 0.06})`,
+                  boxShadow: active ? `0 0 12px rgba(${rgb},0.25)` : undefined,
+                }}
+              >
+                <Image
+                  src={icon.src}
+                  alt={icon.alt}
+                  width={64}
+                  height={64}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <span
+                className="text-[10px] font-semibold tracking-wide uppercase transition-colors duration-200"
+                style={{ color: active ? color : "rgba(147,197,253,0.6)" }}
+              >
+                {icon.alt}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {chevron}
     </button>
   );
 }
@@ -133,35 +280,8 @@ export function AgenticStackView() {
 
   return (
     <main>
-      {/* ── Page header ── */}
-      <section className="bg-gradient-to-b from-intel-haze to-white">
-        <div className="mx-auto max-w-7xl px-6 py-14">
-          <p className="text-sm font-semibold uppercase tracking-wide text-intel-blue">
-            agentic-stack
-          </p>
-          <h1 className="mt-3 text-4xl font-bold text-intel-dark sm:text-5xl">
-            Agentic Stack
-          </h1>
-          <p className="mt-4 max-w-2xl text-lg text-gray-600">
-            A composable runtime for building, deploying, and orchestrating AI agents
-            on Intel hardware. Click any layer to explore its details.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <Link
-              href="/"
-              className="rounded-md bg-intel-blue px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-intel-dark"
-            >
-              Back home
-            </Link>
-            <code className="rounded-md bg-white px-3 py-2 text-sm text-gray-500 ring-1 ring-gray-200">
-              API prefix: /agentic-stack
-            </code>
-          </div>
-        </div>
-      </section>
-
       {/* ── Diagram + details ── */}
-      <section className="mx-auto max-w-screen-2xl px-6 py-10">
+      <section className="mx-auto max-w-screen-2xl px-6 py-6">
         <div className="flex flex-col gap-8 xl:flex-row xl:items-stretch">
 
           {/* Architecture diagram — 4/6 width on xl */}
@@ -198,34 +318,35 @@ export function AgenticStackView() {
               </div>
 
               {/* Diagram grid */}
-              <div className="relative flex" style={{ minHeight: 780 }}>
+              <div className="relative flex" style={{ minHeight: 980 }}>
 
                 {/* ── LEFT panels: Observability + Security ── */}
-                <div className="flex border-r border-white/[0.05] flex-shrink-0">
+                <div className="flex flex-col border-r border-white/[0.05] flex-shrink-0">
                   <SidePanel
                     item={obsPanel}
                     active={selected?.id === obsPanel.id}
                     onToggle={toggle}
                     rotate
-                    className="w-28 border-r border-white/[0.04]"
+                    className="flex-1 w-28 border-b border-white/[0.04]"
                   />
                   <SidePanel
                     item={securityPanel}
                     active={selected?.id === securityPanel.id}
                     onToggle={toggle}
                     rotate
-                    className="w-28"
+                    className="flex-1 w-28"
                   />
                 </div>
 
                 {/* ── CENTER: 6 horizontal layers ── */}
                 <div className="flex flex-col flex-1 min-w-0">
-                  {mainLayers.map((layer) => (
+                  {mainLayers.map((layer, index) => (
                     <LayerCard
                       key={layer.id}
                       layer={layer}
                       active={selected?.id === layer.id}
                       onToggle={toggle}
+                      color={LAYER_COLORS[index]}
                     />
                   ))}
                 </div>

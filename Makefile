@@ -25,7 +25,7 @@ install-frontend: ## Install frontend deps (npm)
 
 ## ---- Dev ----
 BACKEND_PORT  ?= 8011
-FRONTEND_PORT ?= 3010
+FRONTEND_PORT ?= 3021
 
 .PHONY: dev-backend
 dev-backend: ## Run backend dev server (override port: make dev-backend BACKEND_PORT=8001)
