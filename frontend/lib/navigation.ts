@@ -26,6 +26,18 @@ export interface NavRoute {
 }
 
 export const navRoutes: NavRoute[] = [
+  {
+    slug: "agentic-stack",
+    label: "Agentic Stack",
+    module: "agentic-stack",
+    apiPrefix: "/agentic-stack",
+  },
+  {
+    slug: "models",
+    label: "Models",
+    module: "models",
+    apiPrefix: "/models",
+  },
   { slug: "llm-bench", label: "LLM Bench", module: "llm-bench", apiPrefix: "/llm-bench" },
   {
     slug: "serving-engines",
