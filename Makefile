@@ -24,8 +24,13 @@ install-frontend: ## Install frontend deps (npm)
 	cd $(FRONTEND) && npm install
 
 ## ---- Dev ----
-BACKEND_PORT  ?= 8011
-FRONTEND_PORT ?= 3021
+BACKEND_PORT  ?= 8000
+FRONTEND_PORT ?= 3000
+DB_PORT       ?= 5432
+
+.PHONY: dev-db
+dev-db: ## Run the Postgres dev database (override port: make dev-db DB_PORT=5433)
+	DB_PORT=$(DB_PORT) docker compose up db
 
 .PHONY: dev-backend
 dev-backend: ## Run backend dev server (override port: make dev-backend BACKEND_PORT=8001)
