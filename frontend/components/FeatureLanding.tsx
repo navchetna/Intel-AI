@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { withBase } from "@/lib/deployment";
 
 export interface FeatureHighlight {
   title: string;
@@ -33,12 +33,12 @@ export function FeatureLanding({ content }: { content: FeatureContent }) {
           </h1>
           <p className="mt-4 max-w-2xl text-lg text-gray-600">{content.description}</p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link
-              href="/"
+            <a
+              href={withBase("/")}
               className="rounded-md bg-intel-blue px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-intel-dark"
             >
               Back home
-            </Link>
+            </a>
             <code className="rounded-md bg-white px-3 py-2 text-sm text-gray-500 ring-1 ring-gray-200">
               API prefix: {content.apiPrefix}
             </code>
