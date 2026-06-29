@@ -29,10 +29,10 @@ export function Navbar() {
               <li key={route.slug}>
                 {/* The deployment proxy strips the `/intel-ai` prefix, which is
                     incompatible with Next.js client-side routing, so every route
-                    is a full-page link carrying the prefix via withBase().
-                    External (proxied SPA) routes get a trailing slash. */}
+                    is a full-page link carrying the prefix via withBase(). The
+                    trailing slash is omitted to avoid a prefix-dropping 308. */}
                 <a
-                  href={withBase(`/${route.slug}${route.external ? "/" : ""}`)}
+                  href={withBase(`/${route.slug}`)}
                   aria-current={active ? "page" : undefined}
                   className={className}
                 >

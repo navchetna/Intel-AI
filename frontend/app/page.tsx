@@ -24,7 +24,7 @@ export default function Home() {
               Explore LLM Bench
             </a>
             <a
-              href={withBase("/intel-bluelens/")}
+              href={withBase("/intel-bluelens")}
               className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-intel-blue ring-1 ring-intel-blue/30 transition-colors hover:bg-intel-haze"
             >
               Open BlueLens
@@ -49,11 +49,7 @@ export default function Home() {
                 </p>
               </>
             );
-            return route.external ? (
-              <a key={route.slug} href={withBase(`/${route.slug}/`)} className={cardClassName}>
-                {cardBody}
-              </a>
-            ) : (
+            return (
               <a key={route.slug} href={withBase(`/${route.slug}`)} className={cardClassName}>
                 {cardBody}
               </a>
