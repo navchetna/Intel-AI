@@ -27,10 +27,10 @@ export interface NavRoute {
 
 export const navRoutes: NavRoute[] = [
   {
-    slug: "agentic-stack",
-    label: "Agentic Stack",
-    module: "agentic-stack",
-    apiPrefix: "/agentic-stack",
+    slug: "agentic-ai",
+    label: "Agentic AI",
+    module: "agentic-ai",
+    apiPrefix: "/agentic-ai",
   },
   {
     slug: "models",
@@ -40,10 +40,10 @@ export const navRoutes: NavRoute[] = [
   },
   { slug: "llm-bench", label: "LLM Bench", module: "llm-bench", apiPrefix: "/llm-bench" },
   {
-    slug: "serving-engines",
-    label: "Serving Engines",
-    module: "serving-engines",
-    apiPrefix: "/serving-engines",
+    slug: "inference",
+    label: "Inference",
+    module: "inference",
+    apiPrefix: "/inference",
   },
   { slug: "silicon", label: "Silicon", module: "silicon", apiPrefix: "/silicon" },
   {

@@ -32,6 +32,15 @@ class Settings(BaseSettings):
     # --- CORS (comma-separated origins, or "*") ---
     cors_origins: str = "*"
 
+    # --- Auth (inference-benchmarks admin panel) ---
+    # Secret used to sign auth tokens. MUST be overridden in production.
+    auth_secret: str = "change-me-in-production"
+    # Bootstrap admin seeded on first startup if no users exist.
+    default_admin_username: str = "admin"
+    default_admin_password: str = "admin"
+    # Token lifetime in seconds (default 8h).
+    auth_token_ttl: int = 28800
+
     # --- Database (PostgreSQL, async asyncpg driver) ---
     db_user: str = "intelai"
     db_password: str = "intelai"

@@ -16,6 +16,7 @@ from fastapi import APIRouter
 DOMAINS: list[tuple[str, str, str]] = [
     ("app.agentic_stack", "/agentic-stack", "agentic-stack"),
     ("app.health", "/health", "health"),
+    ("app.inference_benchmarks", "/inference-benchmarks", "inference-benchmarks"),
     ("app.intel_bluelens", "/intel-bluelens", "intel-bluelens"),
     ("app.llm_bench", "/llm-bench", "llm-bench"),
     ("app.serving_engines", "/serving-engines", "serving-engines"),
