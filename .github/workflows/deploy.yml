@@ -23,19 +23,15 @@ on:
 
 env:
   DEPLOY_PATH: /home/ritik-intel/Intel-AI
-  DOCKER_COMPOSE_FILE: docker-compose.yml
+  REPO_URL: https://github.com/navchetna/Intel-AI.git
 
 jobs:
   deploy:
     name: Deploy to ${{ inputs.environment }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y sshpass expect
+      - name: Install expect
+        run: sudo apt-get update && sudo apt-get install -y expect
 
       - name: Setup SSH config (with custom jump port)
         if: ${{ inputs.use_custom_jump_port }}
@@ -115,54 +111,20 @@ jobs:
           export TARGET_PASS='${{ secrets.TARGET_PASSWORD }}'
           /tmp/test_conn.exp
 
-      - name: Create deployment package
-        if: ${{ !inputs.test_only }}
-        run: |
-          tar -czvf deploy.tar.gz \
-            --exclude='.git' \
-            --exclude='node_modules' \
-            --exclude='.next' \
-            --exclude='__pycache__' \
-            --exclude='.venv' \
-            --exclude='*.pyc' \
-            .
-          ls -lh deploy.tar.gz
-
-      - name: Copy and deploy
+      - name: Deploy via git clone
         if: ${{ !inputs.test_only }}
         run: |
           cat > /tmp/deploy.exp << 'EOF'
           #!/usr/bin/expect -f
-          set timeout 600
+          set timeout 900
           set jump_pass $env(JUMP_PASS)
           set target_pass $env(TARGET_PASS)
           set deploy_path $env(DEPLOY_PATH)
+          set repo_url $env(REPO_URL)
+          set branch $env(BRANCH)
           
-          # Copy file
-          puts "📦 Copying deployment package..."
-          spawn scp deploy.tar.gz target:/tmp/deploy.tar.gz
-          expect {
-            -re "password:" {
-              send "$jump_pass\r"
-              exp_continue
-            }
-            -re "Password:" {
-              send "$target_pass\r"
-              exp_continue
-            }
-            "100%" {
-              puts "✅ File copied"
-            }
-            timeout {
-              puts "❌ SCP timeout"
-              exit 1
-            }
-            eof
-          }
-          
-          # Deploy
-          puts "🚀 Deploying..."
           spawn ssh target
+          
           expect {
             -re "password:" {
               send "$jump_pass\r"
@@ -173,7 +135,7 @@ jobs:
               exp_continue
             }
             -re {\$ $} {
-              # Got shell prompt
+              puts "✅ Connected to target"
             }
             timeout {
               puts "❌ SSH timeout"
@@ -181,25 +143,49 @@ jobs:
             }
           }
           
-          send "mkdir -p $deploy_path && tar -xzf /tmp/deploy.tar.gz -C $deploy_path && cd $deploy_path && docker compose up -d --build && docker compose ps\r"
+          # Check if repo exists, clone or pull
+          send "if \[ -d $deploy_path/.git \]; then echo 'REPO_EXISTS'; else echo 'CLONE_NEEDED'; fi\r"
+          expect {
+            "REPO_EXISTS" {
+              puts "📦 Pulling latest changes..."
+              send "cd $deploy_path && git fetch origin && git reset --hard origin/$branch\r"
+            }
+            "CLONE_NEEDED" {
+              puts "📦 Cloning repository..."
+              send "git clone -b $branch $repo_url $deploy_path\r"
+            }
+            -re {\$ $} {}
+          }
+          expect -re {\$ $}
+          
+          # Build and deploy
+          puts "🚀 Building and deploying..."
+          send "cd $deploy_path && docker compose down && docker compose build && docker compose up -d\r"
           expect {
             -re {\$ $} {
-              puts "✅ Deployment complete"
+              puts "✅ Docker compose completed"
             }
             timeout {
-              puts "❌ Deploy command timeout"
+              puts "❌ Docker compose timeout (may still be running)"
               exit 1
             }
           }
           
-          send "rm /tmp/deploy.tar.gz && exit\r"
+          # Show status
+          send "docker compose ps\r"
+          expect -re {\$ $}
+          
+          send "exit\r"
           expect eof
+          puts "✅ Deployment complete!"
           EOF
           chmod +x /tmp/deploy.exp
           
           export JUMP_PASS='${{ secrets.JUMP_PASSWORD }}'
           export TARGET_PASS='${{ secrets.TARGET_PASSWORD }}'
           export DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
+          export REPO_URL='${{ env.REPO_URL }}'
+          export BRANCH='${{ github.ref_name }}'
           /tmp/deploy.exp
 
       - name: Summary
@@ -211,6 +197,6 @@ jobs:
           else
             echo "✅ **Deployed successfully**" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "- **Target:** ${{ secrets.TARGET_HOST }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Path:** ${{ env.DEPLOY_PATH }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
