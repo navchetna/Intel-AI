@@ -15,28 +15,33 @@ on:
         required: true
         type: boolean
         default: false
+      test_only:
+        description: 'Test connectivity only (no deploy)'
+        required: false
+        type: boolean
+        default: false
 
 env:
-  DEPLOY_PATH: /opt/intel-ai
+  DEPLOY_PATH: /home/ritik-intel/Intel-AI
   DOCKER_COMPOSE_FILE: docker-compose.yml
 
 jobs:
   deploy:
     name: Deploy to ${{ inputs.environment }}
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install sshpass
-        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass expect
 
-      - name: Configure SSH (with custom jump port)
+      - name: Setup SSH config (with custom jump port)
         if: ${{ inputs.use_custom_jump_port }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          
           cat > ~/.ssh/config << EOF
           Host jump
             HostName ${{ secrets.JUMP_HOST }}
@@ -52,15 +57,13 @@ jobs:
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
           EOF
-          
           chmod 600 ~/.ssh/config
 
-      - name: Configure SSH (default jump port)
+      - name: Setup SSH config (default port 22)
         if: ${{ !inputs.use_custom_jump_port }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          
           cat > ~/.ssh/config << EOF
           Host jump
             HostName ${{ secrets.JUMP_HOST }}
@@ -75,10 +78,45 @@ jobs:
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
           EOF
-          
           chmod 600 ~/.ssh/config
 
+      - name: Test connectivity
+        run: |
+          cat > /tmp/test_conn.exp << 'EOF'
+          #!/usr/bin/expect -f
+          set timeout 60
+          set jump_pass $env(JUMP_PASS)
+          set target_pass $env(TARGET_PASS)
+          
+          spawn ssh target "echo 'Connection successful!' && hostname && whoami"
+          
+          expect {
+            -re "password:" {
+              send "$jump_pass\r"
+              exp_continue
+            }
+            -re "Password:" {
+              send "$target_pass\r"
+              exp_continue
+            }
+            "Connection successful!" {
+              puts "\n✅ SSH connection test passed!"
+            }
+            timeout {
+              puts "\n❌ Connection timeout"
+              exit 1
+            }
+            eof
+          }
+          EOF
+          chmod +x /tmp/test_conn.exp
+          
+          export JUMP_PASS='${{ secrets.JUMP_PASSWORD }}'
+          export TARGET_PASS='${{ secrets.TARGET_PASSWORD }}'
+          /tmp/test_conn.exp
+
       - name: Create deployment package
+        if: ${{ !inputs.test_only }}
         run: |
           tar -czvf deploy.tar.gz \
             --exclude='.git' \
@@ -88,125 +126,91 @@ jobs:
             --exclude='.venv' \
             --exclude='*.pyc' \
             .
+          ls -lh deploy.tar.gz
 
-      - name: Copy files to target server
-        env:
-          JUMP_PASS: ${{ secrets.JUMP_PASSWORD }}
-          TARGET_PASS: ${{ secrets.TARGET_PASSWORD }}
+      - name: Copy and deploy
+        if: ${{ !inputs.test_only }}
         run: |
-          # Use expect script for multi-hop password auth
-          cat > /tmp/scp_deploy.exp << 'EXPECT_SCRIPT'
+          cat > /tmp/deploy.exp << 'EOF'
           #!/usr/bin/expect -f
-          set timeout 300
-          set jump_pass [lindex $argv 0]
-          set target_pass [lindex $argv 1]
-          set local_file [lindex $argv 2]
-          set remote_path [lindex $argv 3]
+          set timeout 600
+          set jump_pass $env(JUMP_PASS)
+          set target_pass $env(TARGET_PASS)
+          set deploy_path $env(DEPLOY_PATH)
           
-          spawn scp -o StrictHostKeyChecking=no $local_file target:$remote_path
-          
+          # Copy file
+          puts "📦 Copying deployment package..."
+          spawn scp deploy.tar.gz target:/tmp/deploy.tar.gz
           expect {
-            "*jump*password:" {
+            -re "password:" {
               send "$jump_pass\r"
               exp_continue
             }
-            "*target*password:" {
+            -re "Password:" {
               send "$target_pass\r"
               exp_continue
             }
-            "*password:" {
-              send "$jump_pass\r"
-              exp_continue
+            "100%" {
+              puts "✅ File copied"
+            }
+            timeout {
+              puts "❌ SCP timeout"
+              exit 1
             }
             eof
           }
-          EXPECT_SCRIPT
           
-          chmod +x /tmp/scp_deploy.exp
-          sudo apt-get install -y expect
-          /tmp/scp_deploy.exp "$JUMP_PASS" "$TARGET_PASS" "deploy.tar.gz" "/tmp/deploy.tar.gz"
-
-      - name: Deploy on target server
-        env:
-          JUMP_PASS: ${{ secrets.JUMP_PASSWORD }}
-          TARGET_PASS: ${{ secrets.TARGET_PASSWORD }}
-          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
-        run: |
-          cat > /tmp/ssh_deploy.exp << 'EXPECT_SCRIPT'
-          #!/usr/bin/expect -f
-          set timeout 600
-          set jump_pass [lindex $argv 0]
-          set target_pass [lindex $argv 1]
-          set deploy_path [lindex $argv 2]
-          
+          # Deploy
+          puts "🚀 Deploying..."
           spawn ssh target
-          
           expect {
-            "*jump*password:" {
+            -re "password:" {
               send "$jump_pass\r"
               exp_continue
             }
-            "*target*password:" {
+            -re "Password:" {
               send "$target_pass\r"
               exp_continue
             }
-            "*password:" {
-              send "$jump_pass\r"
-              exp_continue
-            }
-            "*$ " {
-              # Connected, run deployment commands
-            }
-          }
-          
-          send "set -e\r"
-          expect "$ "
-          
-          send "sudo mkdir -p $deploy_path\r"
-          expect {
-            "*password*" {
-              send "$target_pass\r"
-              exp_continue
-            }
-            "$ "
-          }
-          
-          send "sudo tar -xzf /tmp/deploy.tar.gz -C $deploy_path\r"
-          expect "$ "
-          
-          send "cd $deploy_path && sudo docker compose pull && sudo docker compose up -d --build\r"
-          expect {
-            "*password*" {
-              send "$target_pass\r"
-              exp_continue
-            }
-            "$ " {
-              # Wait for completion
+            -re {\$ $} {
+              # Got shell prompt
             }
             timeout {
-              puts "Deployment timeout"
+              puts "❌ SSH timeout"
               exit 1
             }
           }
           
-          send "sudo docker compose ps\r"
-          expect "$ "
+          send "mkdir -p $deploy_path && tar -xzf /tmp/deploy.tar.gz -C $deploy_path && cd $deploy_path && docker compose up -d --build && docker compose ps\r"
+          expect {
+            -re {\$ $} {
+              puts "✅ Deployment complete"
+            }
+            timeout {
+              puts "❌ Deploy command timeout"
+              exit 1
+            }
+          }
           
-          send "rm /tmp/deploy.tar.gz\r"
-          expect "$ "
-          
-          send "exit\r"
+          send "rm /tmp/deploy.tar.gz && exit\r"
           expect eof
-          EXPECT_SCRIPT
+          EOF
+          chmod +x /tmp/deploy.exp
           
-          chmod +x /tmp/ssh_deploy.exp
-          /tmp/ssh_deploy.exp "$JUMP_PASS" "$TARGET_PASS" "$DEPLOY_PATH"
+          export JUMP_PASS='${{ secrets.JUMP_PASSWORD }}'
+          export TARGET_PASS='${{ secrets.TARGET_PASSWORD }}'
+          export DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
+          /tmp/deploy.exp
 
-      - name: Deployment summary
+      - name: Summary
         run: |
-          echo "## Deployment Complete :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.test_only }}" = "true" ]; then
+            echo "🔍 **Test only** - no deployment performed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **Deployed successfully**" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "- **Target:** ${{ secrets.TARGET_HOST }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Path:** ${{ env.DEPLOY_PATH }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
