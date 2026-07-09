@@ -25,7 +25,7 @@ install-frontend: ## Install frontend deps (npm)
 
 ## ---- Dev ----
 BACKEND_PORT  ?= 8040
-FRONTEND_PORT ?= 3000
+FRONTEND_PORT ?= 3007
 DB_PORT       ?= 5436
 
 .PHONY: dev-db
@@ -38,7 +38,7 @@ dev-backend: ## Run backend dev server (override port: make dev-backend BACKEND_
 
 .PHONY: dev-frontend
 dev-frontend: ## Run frontend dev server (override port: make dev-frontend FRONTEND_PORT=3001)
-	cd $(FRONTEND) && npm run dev -- -p $(FRONTEND_PORT)
+	cd $(FRONTEND) && ASSET_PREFIX="" NEXT_PUBLIC_BASE_PATH="" NEXT_PUBLIC_API_BASE_URL=http://localhost:$(BACKEND_PORT) npm run dev -- -p $(FRONTEND_PORT)
 
 ## ---- Quality ----
 .PHONY: lint
