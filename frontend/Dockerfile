@@ -3,6 +3,15 @@
 # ---- Builder ----
 FROM node:20-alpine AS builder
 WORKDIR /app
+
+# Build-time args for asset/path prefix (set to "" for local docker, "/intel-ai" for prod with nginx)
+ARG ASSET_PREFIX="/intel-ai"
+ARG NEXT_PUBLIC_BASE_PATH="/intel-ai"
+ARG NEXT_PUBLIC_API_BASE_URL="http://localhost:8040"
+ENV ASSET_PREFIX=${ASSET_PREFIX}
+ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+
 COPY package.json package-lock.json* ./
 RUN npm install
 COPY . .
