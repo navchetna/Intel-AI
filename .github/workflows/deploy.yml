@@ -30,170 +30,83 @@ jobs:
     name: Deploy to ${{ inputs.environment }}
     runs-on: ubuntu-latest
     steps:
-      - name: Install expect
-        run: sudo apt-get update && sudo apt-get install -y expect
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
 
-      - name: Setup SSH config (with custom jump port)
-        if: ${{ inputs.use_custom_jump_port }}
+      - name: Deploy (with custom jump port)
+        if: ${{ inputs.use_custom_jump_port && !inputs.test_only }}
+        env:
+          JUMP_HOST: ${{ secrets.JUMP_HOST }}
+          JUMP_PORT: ${{ secrets.JUMP_PORT }}
+          JUMP_USER: ${{ secrets.JUMP_USER }}
+          JUMP_PASS: ${{ secrets.JUMP_PASSWORD }}
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_USER: ${{ secrets.TARGET_USER }}
+          TARGET_PASS: ${{ secrets.TARGET_PASSWORD }}
         run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          cat > ~/.ssh/config << EOF
-          Host jump
-            HostName ${{ secrets.JUMP_HOST }}
-            Port ${{ secrets.JUMP_PORT }}
-            User ${{ secrets.JUMP_USER }}
-            StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
+          # SSH through jump server using sshpass for both hops
+          sshpass -p "$JUMP_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -p "$JUMP_PORT" "$JUMP_USER@$JUMP_HOST" \
+            "sshpass -p '$TARGET_PASS' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              $TARGET_USER@$TARGET_HOST \
+              'cd ${{ env.DEPLOY_PATH }} 2>/dev/null && git pull origin ${{ github.ref_name }} || git clone -b ${{ github.ref_name }} ${{ env.REPO_URL }} ${{ env.DEPLOY_PATH }} && cd ${{ env.DEPLOY_PATH }} && docker compose down || true && docker compose build && docker compose up -d && docker compose ps'"
 
-          Host target
-            HostName ${{ secrets.TARGET_HOST }}
-            User ${{ secrets.TARGET_USER }}
-            ProxyJump jump
-            StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
-          EOF
-          chmod 600 ~/.ssh/config
-
-      - name: Setup SSH config (default port 22)
-        if: ${{ !inputs.use_custom_jump_port }}
+      - name: Deploy (default jump port)
+        if: ${{ !inputs.use_custom_jump_port && !inputs.test_only }}
+        env:
+          JUMP_HOST: ${{ secrets.JUMP_HOST }}
+          JUMP_USER: ${{ secrets.JUMP_USER }}
+          JUMP_PASS: ${{ secrets.JUMP_PASSWORD }}
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_USER: ${{ secrets.TARGET_USER }}
+          TARGET_PASS: ${{ secrets.TARGET_PASSWORD }}
         run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          cat > ~/.ssh/config << EOF
-          Host jump
-            HostName ${{ secrets.JUMP_HOST }}
-            User ${{ secrets.JUMP_USER }}
-            StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
+          # SSH through jump server using sshpass for both hops
+          sshpass -p "$JUMP_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            "$JUMP_USER@$JUMP_HOST" \
+            "sshpass -p '$TARGET_PASS' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              $TARGET_USER@$TARGET_HOST \
+              'cd ${{ env.DEPLOY_PATH }} 2>/dev/null && git pull origin ${{ github.ref_name }} || git clone -b ${{ github.ref_name }} ${{ env.REPO_URL }} ${{ env.DEPLOY_PATH }} && cd ${{ env.DEPLOY_PATH }} && docker compose down || true && docker compose build && docker compose up -d && docker compose ps'"
 
-          Host target
-            HostName ${{ secrets.TARGET_HOST }}
-            User ${{ secrets.TARGET_USER }}
-            ProxyJump jump
-            StrictHostKeyChecking no
-            UserKnownHostsFile /dev/null
-          EOF
-          chmod 600 ~/.ssh/config
-
-      - name: Test connectivity
+      - name: Test connectivity (with custom jump port)
+        if: ${{ inputs.use_custom_jump_port && inputs.test_only }}
+        env:
+          JUMP_HOST: ${{ secrets.JUMP_HOST }}
+          JUMP_PORT: ${{ secrets.JUMP_PORT }}
+          JUMP_USER: ${{ secrets.JUMP_USER }}
+          JUMP_PASS: ${{ secrets.JUMP_PASSWORD }}
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_USER: ${{ secrets.TARGET_USER }}
+          TARGET_PASS: ${{ secrets.TARGET_PASSWORD }}
         run: |
-          cat > /tmp/test_conn.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 60
-          set jump_pass $env(JUMP_PASS)
-          set target_pass $env(TARGET_PASS)
-          
-          spawn ssh target "echo 'Connection successful!' && hostname && whoami"
-          
-          expect {
-            -re "password:" {
-              send "$jump_pass\r"
-              exp_continue
-            }
-            -re "Password:" {
-              send "$target_pass\r"
-              exp_continue
-            }
-            "Connection successful!" {
-              puts "\n✅ SSH connection test passed!"
-            }
-            timeout {
-              puts "\n❌ Connection timeout"
-              exit 1
-            }
-            eof
-          }
-          EOF
-          chmod +x /tmp/test_conn.exp
-          
-          export JUMP_PASS='${{ secrets.JUMP_PASSWORD }}'
-          export TARGET_PASS='${{ secrets.TARGET_PASSWORD }}'
-          /tmp/test_conn.exp
+          echo "Testing connectivity through jump server..."
+          sshpass -p "$JUMP_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -p "$JUMP_PORT" "$JUMP_USER@$JUMP_HOST" \
+            "echo '✅ Jump server OK' && sshpass -p '$TARGET_PASS' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              $TARGET_USER@$TARGET_HOST 'echo ✅ Target server OK && hostname && whoami'"
 
-      - name: Deploy via git clone
-        if: ${{ !inputs.test_only }}
+      - name: Test connectivity (default jump port)
+        if: ${{ !inputs.use_custom_jump_port && inputs.test_only }}
+        env:
+          JUMP_HOST: ${{ secrets.JUMP_HOST }}
+          JUMP_USER: ${{ secrets.JUMP_USER }}
+          JUMP_PASS: ${{ secrets.JUMP_PASSWORD }}
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_USER: ${{ secrets.TARGET_USER }}
+          TARGET_PASS: ${{ secrets.TARGET_PASSWORD }}
         run: |
-          cat > /tmp/deploy.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 900
-          set jump_pass $env(JUMP_PASS)
-          set target_pass $env(TARGET_PASS)
-          set deploy_path $env(DEPLOY_PATH)
-          set repo_url $env(REPO_URL)
-          set branch $env(BRANCH)
-          
-          spawn ssh target
-          
-          expect {
-            -re "password:" {
-              send "$jump_pass\r"
-              exp_continue
-            }
-            -re "Password:" {
-              send "$target_pass\r"
-              exp_continue
-            }
-            -re {\$ $} {
-              puts "✅ Connected to target"
-            }
-            timeout {
-              puts "❌ SSH timeout"
-              exit 1
-            }
-          }
-          
-          # Check if repo exists, clone or pull
-          send "if \[ -d $deploy_path/.git \]; then echo 'REPO_EXISTS'; else echo 'CLONE_NEEDED'; fi\r"
-          expect {
-            "REPO_EXISTS" {
-              puts "📦 Pulling latest changes..."
-              send "cd $deploy_path && git fetch origin && git reset --hard origin/$branch\r"
-            }
-            "CLONE_NEEDED" {
-              puts "📦 Cloning repository..."
-              send "git clone -b $branch $repo_url $deploy_path\r"
-            }
-            -re {\$ $} {}
-          }
-          expect -re {\$ $}
-          
-          # Build and deploy
-          puts "🚀 Building and deploying..."
-          send "cd $deploy_path && docker compose down && docker compose build && docker compose up -d\r"
-          expect {
-            -re {\$ $} {
-              puts "✅ Docker compose completed"
-            }
-            timeout {
-              puts "❌ Docker compose timeout (may still be running)"
-              exit 1
-            }
-          }
-          
-          # Show status
-          send "docker compose ps\r"
-          expect -re {\$ $}
-          
-          send "exit\r"
-          expect eof
-          puts "✅ Deployment complete!"
-          EOF
-          chmod +x /tmp/deploy.exp
-          
-          export JUMP_PASS='${{ secrets.JUMP_PASSWORD }}'
-          export TARGET_PASS='${{ secrets.TARGET_PASSWORD }}'
-          export DEPLOY_PATH='${{ env.DEPLOY_PATH }}'
-          export REPO_URL='${{ env.REPO_URL }}'
-          export BRANCH='${{ github.ref_name }}'
-          /tmp/deploy.exp
+          echo "Testing connectivity through jump server..."
+          sshpass -p "$JUMP_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            "$JUMP_USER@$JUMP_HOST" \
+            "echo '✅ Jump server OK' && sshpass -p '$TARGET_PASS' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              $TARGET_USER@$TARGET_HOST 'echo ✅ Target server OK && hostname && whoami'"
 
       - name: Summary
         run: |
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ inputs.test_only }}" = "true" ]; then
-            echo "🔍 **Test only** - no deployment performed" >> $GITHUB_STEP_SUMMARY
+            echo "🔍 **Test only** - connectivity verified" >> $GITHUB_STEP_SUMMARY
           else
             echo "✅ **Deployed successfully**" >> $GITHUB_STEP_SUMMARY
           fi
