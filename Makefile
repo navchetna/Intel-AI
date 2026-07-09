@@ -24,17 +24,17 @@ install-frontend: ## Install frontend deps (npm)
 	cd $(FRONTEND) && npm install
 
 ## ---- Dev ----
-BACKEND_PORT  ?= 8000
+BACKEND_PORT  ?= 8040
 FRONTEND_PORT ?= 3000
-DB_PORT       ?= 5432
+DB_PORT       ?= 5436
 
 .PHONY: dev-db
 dev-db: ## Run the Postgres dev database (override port: make dev-db DB_PORT=5433)
 	DB_PORT=$(DB_PORT) docker compose up db
 
 .PHONY: dev-backend
-dev-backend: ## Run backend dev server (override port: make dev-backend BACKEND_PORT=8001)
-	cd $(BACKEND) && uv run uvicorn app.main:app --reload --app-dir src --port $(BACKEND_PORT)
+dev-backend: ## Run backend dev server (override port: make dev-backend BACKEND_PORT=8001 DB_PORT=5436)
+	cd $(BACKEND) && PORT=$(BACKEND_PORT) DB_PORT=$(DB_PORT) uv run uvicorn app.main:app --reload --app-dir src --port $(BACKEND_PORT)
 
 .PHONY: dev-frontend
 dev-frontend: ## Run frontend dev server (override port: make dev-frontend FRONTEND_PORT=3001)
