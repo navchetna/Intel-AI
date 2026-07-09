@@ -51,16 +51,12 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index(
-        "ix_inference_benchmarks_platform", "inference_benchmarks", ["platform"]
-    )
+    op.create_index("ix_inference_benchmarks_platform", "inference_benchmarks", ["platform"])
     op.create_index("ix_inference_benchmarks_model", "inference_benchmarks", ["model"])
     op.create_index(
         "ix_inference_benchmarks_input_tokens", "inference_benchmarks", ["input_tokens"]
     )
-    op.create_index(
-        "ix_inference_benchmarks_concurrency", "inference_benchmarks", ["concurrency"]
-    )
+    op.create_index("ix_inference_benchmarks_concurrency", "inference_benchmarks", ["concurrency"])
 
     op.create_table(
         "benchmark_users",

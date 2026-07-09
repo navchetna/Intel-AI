@@ -26,8 +26,7 @@ def get_overview() -> LlmBenchInfo:
             ),
             Highlight(
                 title="Exportable results",
-                body="Emit CSV/JSON artifacts ready for dashboards and "
-                "regression tracking.",
+                body="Emit CSV/JSON artifacts ready for dashboards and regression tracking.",
             ),
         ],
     )

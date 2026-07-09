@@ -83,9 +83,7 @@ async def template_columns() -> list[str]:
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> LoginResponse:
     user = await service.authenticate(db, payload.username, payload.password)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     token = security.create_token(user.username, settings.auth_secret, settings.auth_token_ttl)
     return LoginResponse(token=token, username=user.username)
 

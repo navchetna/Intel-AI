@@ -67,18 +67,22 @@ async def query_records(
 async def chart_data(db: AsyncSession, f: BenchmarkFilters) -> ChartsResponse:
     """Aggregate mean TTFT (grouped by input tokens) and mean ITL by batch size."""
     # TTFT grouped by (input_tokens, concurrency)
-    ttft_stmt = _apply_filters(
-        select(
-            InferenceBenchmark.input_tokens,
-            InferenceBenchmark.concurrency,
-            func.avg(InferenceBenchmark.mean_ttft_ms),
-        ),
-        f,
-    ).where(
-        InferenceBenchmark.concurrency.is_not(None),
-        InferenceBenchmark.input_tokens.is_not(None),
-        InferenceBenchmark.mean_ttft_ms.is_not(None),
-    ).group_by(InferenceBenchmark.input_tokens, InferenceBenchmark.concurrency)
+    ttft_stmt = (
+        _apply_filters(
+            select(
+                InferenceBenchmark.input_tokens,
+                InferenceBenchmark.concurrency,
+                func.avg(InferenceBenchmark.mean_ttft_ms),
+            ),
+            f,
+        )
+        .where(
+            InferenceBenchmark.concurrency.is_not(None),
+            InferenceBenchmark.input_tokens.is_not(None),
+            InferenceBenchmark.mean_ttft_ms.is_not(None),
+        )
+        .group_by(InferenceBenchmark.input_tokens, InferenceBenchmark.concurrency)
+    )
 
     grouped: dict[int, list[ChartPoint]] = defaultdict(list)
     for input_tokens, concurrency, avg_ttft in (await db.execute(ttft_stmt)).all():
@@ -91,16 +95,21 @@ async def chart_data(db: AsyncSession, f: BenchmarkFilters) -> ChartsResponse:
     ]
 
     # ITL by concurrency
-    itl_stmt = _apply_filters(
-        select(
-            InferenceBenchmark.concurrency,
-            func.avg(InferenceBenchmark.mean_itl_ms),
-        ),
-        f,
-    ).where(
-        InferenceBenchmark.concurrency.is_not(None),
-        InferenceBenchmark.mean_itl_ms.is_not(None),
-    ).group_by(InferenceBenchmark.concurrency).order_by(InferenceBenchmark.concurrency)
+    itl_stmt = (
+        _apply_filters(
+            select(
+                InferenceBenchmark.concurrency,
+                func.avg(InferenceBenchmark.mean_itl_ms),
+            ),
+            f,
+        )
+        .where(
+            InferenceBenchmark.concurrency.is_not(None),
+            InferenceBenchmark.mean_itl_ms.is_not(None),
+        )
+        .group_by(InferenceBenchmark.concurrency)
+        .order_by(InferenceBenchmark.concurrency)
+    )
 
     itl_points = [
         ChartPoint(batch_size=int(concurrency), value=round(float(avg_itl), 3))
@@ -128,9 +137,7 @@ async def bulk_insert(db: AsyncSession, rows: list[dict]) -> BulkUploadResponse:
         try:
             record = BenchmarkRecordCreate.model_validate(raw)
         except ValidationError as exc:
-            errors.append(
-                RowError(row=i, errors=[_format_error(e) for e in exc.errors()])
-            )
+            errors.append(RowError(row=i, errors=[_format_error(e) for e in exc.errors()]))
             continue
         valid.append(InferenceBenchmark(**record.model_dump()))
 

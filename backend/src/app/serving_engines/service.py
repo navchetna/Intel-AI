@@ -16,8 +16,7 @@ def get_overview() -> ServingEnginesInfo:
         highlights=[
             Highlight(
                 title="Engine matrix",
-                body="Side-by-side capabilities, quantization support, and "
-                "batching strategies.",
+                body="Side-by-side capabilities, quantization support, and batching strategies.",
             ),
             Highlight(
                 title="One-click recipes",

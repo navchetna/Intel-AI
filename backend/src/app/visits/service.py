@@ -14,9 +14,7 @@ COUNTER_ID = 1
 
 async def get_count(db: AsyncSession) -> int:
     """Return the current visit count (0 if no visits have been recorded)."""
-    result = await db.execute(
-        select(VisitCounter.count).where(VisitCounter.id == COUNTER_ID)
-    )
+    result = await db.execute(select(VisitCounter.count).where(VisitCounter.id == COUNTER_ID))
     return result.scalar_one_or_none() or 0
 
 
