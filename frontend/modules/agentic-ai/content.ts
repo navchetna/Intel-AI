@@ -1,10 +1,10 @@
 import type { FeatureContent } from "@/components/FeatureLanding";
 
-export const agenticStackContent: FeatureContent = {
-  slug: "agentic-stack",
-  title: "Agentic Stack",
-  tagline: "agentic-stack",
-  apiPrefix: "/agentic-stack",
+export const agenticAiContent: FeatureContent = {
+  slug: "agentic-ai",
+  title: "Agentic AI",
+  tagline: "agentic-ai",
+  apiPrefix: "/agentic-ai",
   description:
     "A composable runtime for building, deploying, and orchestrating AI agents on Intel hardware — from single-step tools to multi-agent pipelines with memory, planning, and tool use.",
   highlights: [
@@ -34,3 +34,22 @@ export const agenticStackContent: FeatureContent = {
     },
   ],
 };
+
+/** A single entry in the Agentic AI sub-navigation bar. */
+export interface AgenticNavItem {
+  /** App-internal path, e.g. "/agentic-ai/benchmarks". */
+  href: string;
+  /** Label shown in the sub-navbar. */
+  label: string;
+}
+
+/**
+ * Agentic AI section sub-navigation. Rendered below the global navbar on every
+ * `/agentic-ai/*` route via `app/(modules)/agentic-ai/layout.tsx`.
+ */
+export const agenticNav: AgenticNavItem[] = [
+  { href: "/agentic-ai", label: "Overview" },
+  { href: "/agentic-ai/agentic-stack", label: "Agentic Stack" },
+  { href: "/agentic-ai/benchmarks", label: "Benchmarks" },
+  { href: "/agentic-ai/cpu-gpu-ratio", label: "CPU-GPU Ratio" },
+];

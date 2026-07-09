@@ -9,7 +9,7 @@ The landing UI ships with four feature routes plus the home page:
 | ----------------- | -------------------------------------------- | ------------------------------------ | ------------------ |
 | `/`               | `frontend/app/page.tsx`                      | — (renders the nav registry)         | —                  |
 | `/llm-bench`      | `frontend/app/(modules)/llm-bench/page.tsx`      | `frontend/modules/llm-bench/`      | `/llm-bench`       |
-| `/serving-engines`| `frontend/app/(modules)/serving-engines/page.tsx`| `frontend/modules/serving-engines/`| `/serving-engines` |
+| `/inference`      | `frontend/app/(modules)/inference/page.tsx`      | `frontend/modules/inference/`      | `/inference`       |
 | `/silicon`        | `frontend/app/(modules)/silicon/page.tsx`        | `frontend/modules/silicon/`        | `/silicon`         |
 | `/intel-bluelens` | `frontend/app/(modules)/intel-bluelens/page.tsx` | `frontend/modules/intel-bluelens/` | `/intel-bluelens`  |
 

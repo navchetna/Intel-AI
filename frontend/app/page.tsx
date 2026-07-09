@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { navRoutes } from "@/lib/navigation";
+import { withBase } from "@/lib/deployment";
 
 export default function Home() {
   return (
@@ -17,14 +17,14 @@ export default function Home() {
             silicon. Pick a workspace below to get started.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Link
-              href="/llm-bench"
+            <a
+              href={withBase("/llm-bench")}
               className="rounded-md bg-intel-blue px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-intel-dark"
             >
               Explore LLM Bench
-            </Link>
+            </a>
             <a
-              href="/intel-bluelens/"
+              href={withBase("/intel-bluelens")}
               className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-intel-blue ring-1 ring-intel-blue/30 transition-colors hover:bg-intel-haze"
             >
               Open BlueLens
@@ -49,14 +49,10 @@ export default function Home() {
                 </p>
               </>
             );
-            return route.external ? (
-              <a key={route.slug} href={`/${route.slug}/`} className={cardClassName}>
+            return (
+              <a key={route.slug} href={withBase(`/${route.slug}`)} className={cardClassName}>
                 {cardBody}
               </a>
-            ) : (
-              <Link key={route.slug} href={`/${route.slug}`} className={cardClassName}>
-                {cardBody}
-              </Link>
             );
           })}
         </div>

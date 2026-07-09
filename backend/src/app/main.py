@@ -17,6 +17,17 @@ async def lifespan(_: FastAPI):
         from app.core.database import init_db
 
         await init_db()
+
+        # Seed the bootstrap admin for the benchmarks admin panel (idempotent).
+        from app.core.database import SessionLocal
+        from app.inference_benchmarks import service as ib_service
+
+        async with SessionLocal() as session:
+            await ib_service.ensure_default_admin(
+                session,
+                settings.default_admin_username,
+                settings.default_admin_password,
+            )
     yield
     # Shutdown
     from app.core.database import engine
