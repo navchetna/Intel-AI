@@ -1,34 +1,76 @@
 import type { NextConfig } from "next";
 
-// The deployment proxy (nginx) STRIPS the `/intel-ai/` prefix before forwarding
-// (`proxy_pass http://localhost:3005/;`), so Next.js runs at the root path and
-// CANNOT use `basePath`. Static assets are prefixed via `assetPrefix` (and
-// images via ./image-loader.js); internal navigation uses full-page links built
-// with `withBase()` (see lib/deployment.ts). Override with ASSET_PREFIX.
-const assetPrefix = process.env.ASSET_PREFIX ?? "/intel-ai";
+// ---------------------------------------------------------------------------
+// Single, configurable URL prefix for the whole app.
+//
+// `basePath` makes Next.js serve EVERY route, page and static asset
+// (`_next/static/*` CSS + JS) as well as `next/image` URLs under this prefix.
+// Because Next owns the prefix end-to-end, the reverse proxy must forward the
+// path as-is (do NOT strip the prefix) — this is what fixes broken CSS.
+//
+// Configure at build time via NEXT_PUBLIC_BASE_PATH:
+//   - "/intel-ai" (default) serves the app under https://host/intel-ai/...
+//   - ""          serves the app at the root (deploy on a server with no prefix)
+// The value is normalized below, so "intel-ai", "/intel-ai" and "/intel-ai/"
+// are all treated the same. Set to "" to remove the prefix entirely.
+// ---------------------------------------------------------------------------
+function normalizePrefix(value: string | undefined, fallback: string): string {
+  const raw = (value ?? fallback).trim().replace(/\/+$/, "");
+  if (!raw || raw === "/") return "";
+  return raw.startsWith("/") ? raw : `/${raw}`;
+}
+
+const basePath = normalizePrefix(process.env.NEXT_PUBLIC_BASE_PATH, "/intel-ai");
+
+const bluelensUrl = process.env.BLUELENS_URL ?? "http://intel-bluelens:3003";
+// The backend is internal-only (no host port). Browser API calls hit this app
+// same-origin under the prefix and are proxied to the backend service DNS name.
+const backendUrl = process.env.BACKEND_URL ?? "http://backend:8000";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: "standalone",
-  assetPrefix,
+  // basePath alone prefixes routes, next/link, next/router, next/image and all
+  // `_next/static` assets. We deliberately do NOT set `assetPrefix`: combined
+  // with basePath it makes the image optimizer fetch sources at the un-prefixed
+  // path (e.g. `/logo.webp` -> 404) and return 400.
+  ...(basePath ? { basePath } : {}),
   images: {
-    // `assetPrefix` is NOT applied to next/image URLs, so a custom loader
-    // (./image-loader.js) prepends the `/intel-ai` prefix and returns the raw
-    // asset path. The browser requests `/intel-ai/intel-logo.webp`, which nginx
-    // strips back to `/intel-logo.webp`.
+    // A custom loader prepends the deployment prefix and returns the raw public
+    // path, bypassing `/_next/image`. The optimizer can't fetch local sources
+    // behind a prefixed reverse proxy (400s), and basePath is NOT applied to
+    // raw <img src>, so the loader is what carries the prefix onto image URLs.
     loader: "custom",
     loaderFile: "./image-loader.js",
   },
   async rewrites() {
-    // The browser requests `/intel-ai/intel-bluelens`; nginx strips the prefix
-    // to `/intel-bluelens`, which matches the `source` below. Defaults to the
-    // docker-compose service DNS name; override with BLUELENS_URL if needed.
-    const bluelensUrl = process.env.BLUELENS_URL ?? "http://intel-bluelens:3003";
+    // Intel BlueLens runs in a separate container whose Vite `base` is
+    // `${basePath}/intel-bluelens/`. Forward the prefixed paths to it verbatim.
+    // `basePath: false` matches the fully-qualified source path so this keeps
+    // working whatever prefix is configured.
     return {
       beforeFiles: [
-        { source: "/intel-bluelens", destination: `${bluelensUrl}/intel-bluelens/` },
-        { source: "/intel-bluelens/", destination: `${bluelensUrl}/intel-bluelens/` },
-        { source: "/intel-bluelens/:path*", destination: `${bluelensUrl}/intel-bluelens/:path*` },
+        {
+          // Proxy `${basePath}/api/*` to the internal backend (no host port).
+          source: `${basePath}/api/:path*`,
+          destination: `${backendUrl}/api/:path*`,
+          basePath: false,
+        },
+        {
+          source: `${basePath}/intel-bluelens`,
+          destination: `${bluelensUrl}${basePath}/intel-bluelens/`,
+          basePath: false,
+        },
+        {
+          source: `${basePath}/intel-bluelens/`,
+          destination: `${bluelensUrl}${basePath}/intel-bluelens/`,
+          basePath: false,
+        },
+        {
+          source: `${basePath}/intel-bluelens/:path*`,
+          destination: `${bluelensUrl}${basePath}/intel-bluelens/:path*`,
+          basePath: false,
+        },
       ],
     };
   },

@@ -27,9 +27,9 @@ export function Navbar() {
             }`;
             return (
               <li key={route.slug}>
-                {/* The deployment proxy strips the `/intel-ai` prefix, which is
-                    incompatible with Next.js client-side routing, so every route
-                    is a full-page link carrying the prefix via withBase(). The
+                {/* Plain anchors are not auto-prefixed by Next's basePath, so
+                    withBase() carries the deployment prefix. Full-page links
+                    also keep the standalone BlueLens route working. The
                     trailing slash is omitted to avoid a prefix-dropping 308. */}
                 <a
                   href={withBase(`/${route.slug}`)}

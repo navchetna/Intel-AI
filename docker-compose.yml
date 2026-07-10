@@ -20,15 +20,18 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-intelai}:${POSTGRES_PASSWORD:-intelai}@db:5432/${POSTGRES_DB:-intelai}
       CORS_ORIGINS: "http://localhost:${FRONTEND_PORT:-3010},http://localhost:3010,http://localhost:3000"
-    ports:
-      - "${BACKEND_PORT:-8015}:8000"
+    # Internal-only: reachable by other services on the compose network as
+    # `backend:8000`. No host port is published; the browser reaches the API
+    # through the frontend proxy at `${NEXT_PUBLIC_BASE_PATH}/api/*` (see next.config.ts).
+    expose:
+      - "8000"
     depends_on:
       db:
         condition: service_healthy
 
   intel-bluelens:
-    # Built from GitHub repo. Vite `base` is set to `/intel-ai/intel-bluelens/`
-    # (nginx strips `/intel-ai` and the frontend rewrites `/intel-bluelens/*` here).
+    # Built from GitHub repo. Vite `base` must match `${NEXT_PUBLIC_BASE_PATH}/intel-bluelens/`;
+    # the Next.js frontend rewrites `${NEXT_PUBLIC_BASE_PATH}/intel-bluelens/*` to this container.
     build:
       context: https://github.com/navchetna/Intel-BlueLens.git
     expose:
@@ -39,9 +42,15 @@ services:
     build:
       context: ./frontend
       args:
-        ASSET_PREFIX: ""
-        NEXT_PUBLIC_BASE_PATH: ""
-        NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-8015}
+        # Single configurable URL prefix. All routes, pages and assets are
+        # served under this path. Set NEXT_PUBLIC_BASE_PATH="" to serve at the root.
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/intel-ai}
+        # Browser calls the API same-origin under the prefix; the frontend
+        # proxies `${NEXT_PUBLIC_BASE_PATH}/api/*` to the internal backend service.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_BASE_PATH:-/intel-ai}
+    environment:
+      # Runtime target for the Next.js API rewrite (internal service DNS).
+      BACKEND_URL: http://backend:8000
     ports:
       - "${FRONTEND_PORT:-3010}:3000"
     depends_on:
