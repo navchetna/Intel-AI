@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { settings } from "@/config/settings";
 import { Navbar } from "@/components/Navbar";
 import { VisitorCounter } from "@/components/VisitorCounter";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,12 +16,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Navbar />
-        {children}
-        {/* Visitor counter — fixed bottom-right pill */}
-        <div className="fixed bottom-5 right-5 z-50">
-          <VisitorCounter />
-        </div>
+        <ThemeProvider>
+          <Navbar />
+          {children}
+          {/* Visitor counter — fixed bottom-right pill */}
+          <div className="fixed bottom-5 right-5 z-50">
+            <VisitorCounter />
+          </div>
+        </ThemeProvider>
       </body>
     </html>
   );
