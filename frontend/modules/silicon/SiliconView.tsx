@@ -291,8 +291,9 @@ function ChipCard({ chip, onClick }: { chip: Chip; onClick?: () => void }) {
     <div
       className={`relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] ${clickable ? "cursor-pointer group" : ""}`}
       style={{
-        background: "linear-gradient(155deg, #050f22 0%, #071535 55%, #0a1d42 100%)",
-        boxShadow: `0 0 0 1px rgba(255,255,255,0.03), 0 20px 60px rgba(0,0,0,0.55), 0 0 60px ${chip.glow}`,
+        background: "var(--dm-card-bg)",
+        boxShadow: `0 0 0 1px var(--dm-card-ring), var(--dm-card-depth), 0 0 60px ${chip.glow}`,
+        borderColor: "var(--dm-card-border)",
       }}
       onClick={onClick}
     >
@@ -375,7 +376,7 @@ export function SiliconView() {
   }
 
   return (
-    <main style={{ background: "linear-gradient(170deg, #020c1f 0%, #040d20 50%, #020c1f 100%)", minHeight: "100vh" }}>
+    <main style={{ background: "var(--dm-page-bg)", minHeight: "100vh" }}>
       <div className="mx-auto max-w-screen-2xl px-6 pt-10 pb-12">
         <div className="mb-8">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 mb-4">

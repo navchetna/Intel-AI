@@ -8,6 +8,132 @@
   --color-intel-haze: #e9f4fb;
 }
 
+/* ── Dark-module CSS variables ───────────────────────────────────────────────
+   All dark-themed pages reference these vars in their inline styles.
+   :root / [data-theme="dark"] = current dark aesthetic.
+   [data-theme="light"]        = clean Intel light.                            */
+
+:root,
+[data-theme="dark"] {
+  /* Page & card backgrounds */
+  --dm-page-bg:     linear-gradient(170deg, #020c1f 0%, #050f22 50%, #020c1f 100%);
+  --dm-card-bg:     linear-gradient(155deg, #050f22 0%, #071535 55%, #0a1d42 100%);
+  --dm-card-bg-alt: linear-gradient(160deg, #050f22 0%, #071535 60%, #0a1d42 100%);
+  --dm-card-ring:   rgba(255,255,255,0.03);
+  --dm-card-depth:  0 20px 60px rgba(0,0,0,0.55);
+  --dm-card-border: rgba(255,255,255,0.07);
+
+  /* Text */
+  --dm-txt-primary:   rgba(255,255,255,1);
+  --dm-txt-body:      rgba(255,255,255,0.88);
+  --dm-txt-secondary: rgba(255,255,255,0.70);
+  --dm-txt-muted:     rgba(255,255,255,0.50);
+  --dm-txt-faint:     rgba(255,255,255,0.35);
+  --dm-txt-faintest:  rgba(255,255,255,0.25);
+
+  /* Surfaces / borders */
+  --dm-surface-a:  rgba(255,255,255,0.03);
+  --dm-surface-b:  rgba(255,255,255,0.05);
+  --dm-surface-c:  rgba(255,255,255,0.07);
+  --dm-border-a:   rgba(255,255,255,0.05);
+  --dm-border-b:   rgba(255,255,255,0.10);
+
+  /* Table / form */
+  --dm-table-bg:   rgba(5,15,34,0.8);
+  --dm-table-head: rgba(255,255,255,0.04);
+  --dm-table-row:  rgba(255,255,255,0.03);
+  --dm-input-bg:   rgba(255,255,255,0.06);
+  --dm-input-border: rgba(255,255,255,0.10);
+  --dm-input-color:  rgba(255,255,255,0.80);
+  --dm-filterbar-bg: rgba(255,255,255,0.03);
+
+  /* Stack diagram */
+  --diag-bg:          #0a1428;
+  --diag-border:      rgba(255,255,255,0.08);
+  --diag-label-col:   #0a1428;
+  --diag-band-title:  rgba(255,255,255,0.60);
+  --diag-group-title: rgba(255,255,255,0.90);
+  --diag-group-sub:   rgba(255,255,255,0.50);
+  --diag-group-bg:    rgba(18,98,181,0.14);
+  --diag-silicon-bg:  rgba(10,40,15,0.40);
+}
+
+[data-theme="light"] {
+  /* Page & card backgrounds */
+  --dm-page-bg:     linear-gradient(170deg, #f0f6ff 0%, #eef3fb 50%, #f0f6ff 100%);
+  --dm-card-bg:     linear-gradient(155deg, #ffffff 0%, #f8faff 55%, #f0f6ff 100%);
+  --dm-card-bg-alt: linear-gradient(160deg, #ffffff 0%, #f8faff 60%, #f0f6ff 100%);
+  --dm-card-ring:   rgba(0,113,197,0.08);
+  --dm-card-depth:  0 4px 24px rgba(0,0,0,0.07);
+  --dm-card-border: rgba(0,113,197,0.12);
+
+  /* Text */
+  --dm-txt-primary:   #0f172a;
+  --dm-txt-body:      #1e293b;
+  --dm-txt-secondary: rgba(30,41,59,0.75);
+  --dm-txt-muted:     rgba(30,41,59,0.55);
+  --dm-txt-faint:     rgba(30,41,59,0.40);
+  --dm-txt-faintest:  rgba(30,41,59,0.30);
+
+  /* Surfaces / borders */
+  --dm-surface-a:  rgba(0,113,197,0.02);
+  --dm-surface-b:  rgba(0,113,197,0.03);
+  --dm-surface-c:  rgba(0,113,197,0.05);
+  --dm-border-a:   rgba(0,113,197,0.07);
+  --dm-border-b:   rgba(0,113,197,0.12);
+
+  /* Table / form */
+  --dm-table-bg:   rgba(255,255,255,0.95);
+  --dm-table-head: rgba(0,113,197,0.04);
+  --dm-table-row:  rgba(0,113,197,0.02);
+  --dm-input-bg:   rgba(0,113,197,0.04);
+  --dm-input-border: rgba(0,113,197,0.15);
+  --dm-input-color:  #1e293b;
+  --dm-filterbar-bg: rgba(255,255,255,0.80);
+
+  /* Stack diagram */
+  --diag-bg:          #ffffff;
+  --diag-border:      #d1d5db;
+  --diag-label-col:   #ffffff;
+  --diag-band-title:  #374151;
+  --diag-group-title: #1e293b;
+  --diag-group-sub:   #6b7280;
+  --diag-group-bg:    rgba(18,98,181,0.06);
+  --diag-silicon-bg:  rgba(215,228,210,0.25);
+}
+
+/* ── Tailwind text-white/* class overrides for light mode ────────────────────
+   Dark pages use Tailwind opacity-modifier classes for most of their text.
+   These overrides make that text readable on a light background.               */
+[data-theme="light"] .text-white                            { color: #1e293b !important; }
+[data-theme="light"] .text-white\/95, [data-theme="light"] .text-white\/90,
+[data-theme="light"] .text-white\/88, [data-theme="light"] .text-white\/80  { color: rgba(30,41,59,0.90) !important; }
+[data-theme="light"] .text-white\/75, [data-theme="light"] .text-white\/70,
+[data-theme="light"] .text-white\/65                                         { color: rgba(30,41,59,0.75) !important; }
+[data-theme="light"] .text-white\/60, [data-theme="light"] .text-white\/55,
+[data-theme="light"] .text-white\/50                                         { color: rgba(30,41,59,0.60) !important; }
+[data-theme="light"] .text-white\/45, [data-theme="light"] .text-white\/40  { color: rgba(30,41,59,0.50) !important; }
+[data-theme="light"] .text-white\/35, [data-theme="light"] .text-white\/30,
+[data-theme="light"] .text-white\/25                                         { color: rgba(30,41,59,0.38) !important; }
+[data-theme="light"] .text-white\/20, [data-theme="light"] .text-white\/15  { color: rgba(30,41,59,0.28) !important; }
+[data-theme="light"] .text-blue-300\/50, [data-theme="light"] .text-blue-300\/45,
+[data-theme="light"] .text-blue-400\/40                                      { color: rgba(30,41,59,0.45) !important; }
+[data-theme="light"] .placeholder-white\/20::placeholder                    { color: rgba(30,41,59,0.30) !important; }
+
+/* Border overrides */
+[data-theme="light"] .border-white\/\[0\.07\]  { border-color: rgba(0,113,197,0.10) !important; }
+[data-theme="light"] .border-white\/\[0\.06\]  { border-color: rgba(0,113,197,0.08) !important; }
+[data-theme="light"] .border-white\/\[0\.05\]  { border-color: rgba(0,113,197,0.07) !important; }
+[data-theme="light"] .border-white\/10         { border-color: rgba(0,113,197,0.12) !important; }
+[data-theme="light"] .border-white\/\[0\.05\]  { border-color: rgba(0,113,197,0.07) !important; }
+
+/* Semi-transparent white backgrounds used as inner card surfaces */
+[data-theme="light"] .bg-white\/\[0\.03\]  { background: rgba(0,113,197,0.03) !important; }
+[data-theme="light"] .bg-white\/\[0\.04\]  { background: rgba(0,113,197,0.04) !important; }
+[data-theme="light"] .bg-white\/\[0\.05\]  { background: rgba(0,113,197,0.04) !important; }
+[data-theme="light"] .bg-white\/5          { background: rgba(0,113,197,0.05) !important; }
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
 :root {
   --background: #ffffff;
   --foreground: #171717;
