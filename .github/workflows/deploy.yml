@@ -1,0 +1,115 @@
+name: Deploy (via Jump Server)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      use_custom_jump_port:
+        description: 'Jump server uses custom port?'
+        required: true
+        type: boolean
+        default: false
+      test_only:
+        description: 'Test connectivity only (no deploy)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  DEPLOY_PATH: /home/ritik-intel/Intel-AI
+  REPO_URL: https://github.com/navchetna/Intel-AI.git
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Deploy (with custom jump port)
+        if: ${{ inputs.use_custom_jump_port && !inputs.test_only }}
+        env:
+          JUMP_HOST: ${{ secrets.JUMP_HOST }}
+          JUMP_PORT: ${{ secrets.JUMP_PORT }}
+          JUMP_USER: ${{ secrets.JUMP_USER }}
+          JUMP_PASS: ${{ secrets.JUMP_PASSWORD }}
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_USER: ${{ secrets.TARGET_USER }}
+          TARGET_PASS: ${{ secrets.TARGET_PASSWORD }}
+        run: |
+          # SSH through jump server using sshpass for both hops
+          sshpass -p "$JUMP_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -p "$JUMP_PORT" "$JUMP_USER@$JUMP_HOST" \
+            "sshpass -p '$TARGET_PASS' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              $TARGET_USER@$TARGET_HOST \
+              'cd ${{ env.DEPLOY_PATH }} 2>/dev/null && git pull origin ${{ github.ref_name }} || git clone -b ${{ github.ref_name }} ${{ env.REPO_URL }} ${{ env.DEPLOY_PATH }} && cd ${{ env.DEPLOY_PATH }} && docker compose down || true && docker compose build && docker compose up -d && docker compose ps'"
+
+      - name: Deploy (default jump port)
+        if: ${{ !inputs.use_custom_jump_port && !inputs.test_only }}
+        env:
+          JUMP_HOST: ${{ secrets.JUMP_HOST }}
+          JUMP_USER: ${{ secrets.JUMP_USER }}
+          JUMP_PASS: ${{ secrets.JUMP_PASSWORD }}
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_USER: ${{ secrets.TARGET_USER }}
+          TARGET_PASS: ${{ secrets.TARGET_PASSWORD }}
+        run: |
+          # SSH through jump server using sshpass for both hops
+          sshpass -p "$JUMP_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            "$JUMP_USER@$JUMP_HOST" \
+            "sshpass -p '$TARGET_PASS' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              $TARGET_USER@$TARGET_HOST \
+              'cd ${{ env.DEPLOY_PATH }} 2>/dev/null && git pull origin ${{ github.ref_name }} || git clone -b ${{ github.ref_name }} ${{ env.REPO_URL }} ${{ env.DEPLOY_PATH }} && cd ${{ env.DEPLOY_PATH }} && docker compose down || true && docker compose build && docker compose up -d && docker compose ps'"
+
+      - name: Test connectivity (with custom jump port)
+        if: ${{ inputs.use_custom_jump_port && inputs.test_only }}
+        env:
+          JUMP_HOST: ${{ secrets.JUMP_HOST }}
+          JUMP_PORT: ${{ secrets.JUMP_PORT }}
+          JUMP_USER: ${{ secrets.JUMP_USER }}
+          JUMP_PASS: ${{ secrets.JUMP_PASSWORD }}
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_USER: ${{ secrets.TARGET_USER }}
+          TARGET_PASS: ${{ secrets.TARGET_PASSWORD }}
+        run: |
+          echo "Testing connectivity through jump server..."
+          sshpass -p "$JUMP_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -p "$JUMP_PORT" "$JUMP_USER@$JUMP_HOST" \
+            "echo '✅ Jump server OK' && sshpass -p '$TARGET_PASS' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              $TARGET_USER@$TARGET_HOST 'echo ✅ Target server OK && hostname && whoami'"
+
+      - name: Test connectivity (default jump port)
+        if: ${{ !inputs.use_custom_jump_port && inputs.test_only }}
+        env:
+          JUMP_HOST: ${{ secrets.JUMP_HOST }}
+          JUMP_USER: ${{ secrets.JUMP_USER }}
+          JUMP_PASS: ${{ secrets.JUMP_PASSWORD }}
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_USER: ${{ secrets.TARGET_USER }}
+          TARGET_PASS: ${{ secrets.TARGET_PASSWORD }}
+        run: |
+          echo "Testing connectivity through jump server..."
+          sshpass -p "$JUMP_PASS" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            "$JUMP_USER@$JUMP_HOST" \
+            "echo '✅ Jump server OK' && sshpass -p '$TARGET_PASS' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              $TARGET_USER@$TARGET_HOST 'echo ✅ Target server OK && hostname && whoami'"
+
+      - name: Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.test_only }}" = "true" ]; then
+            echo "🔍 **Test only** - connectivity verified" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **Deployed successfully**" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Path:** ${{ env.DEPLOY_PATH }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY

@@ -55,6 +55,8 @@ make dev-backend        # terminal 1 → http://localhost:8000/docs
 make dev-frontend       # terminal 2 → http://localhost:3000
 ```
 
+**NOTE** - Incase of port conflicts, update the port in the Makefile and run the commands again.
+
 Run `make help` to see all targets.
 
 ## Common tasks

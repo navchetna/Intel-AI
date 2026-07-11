@@ -1,14 +1,22 @@
 // Custom next/image loader.
 //
-// The deployment proxy (nginx) strips the `/intel-ai/` prefix before forwarding
-// to this app, and Next.js does NOT apply `assetPrefix` to next/image URLs.
-// This loader returns the raw asset path with the prefix prepended, so the
-// browser requests `/intel-ai/intel-logo.webp` and nginx strips it back to
-// `/intel-logo.webp` (served from /public). Remote URLs are returned unchanged.
-// Override with NEXT_PUBLIC_ASSET_PREFIX.
-const ASSET_PREFIX = process.env.NEXT_PUBLIC_ASSET_PREFIX ?? "/intel-ai";
+// Bypasses the `/_next/image` optimizer (which cannot fetch local sources when
+// the app is served under a reverse-proxied URL prefix, yielding 400s) and
+// returns the raw public asset path prefixed with the deployment base path.
+// The browser then requests e.g. `/intel-ai/intel-logo.webp`, served directly
+// from /public. Remote URLs are returned unchanged.
+//
+// Keep the prefix logic in sync with next.config.ts / lib/deployment.ts.
+function normalizePrefix(value) {
+  const raw = (value ?? "/intel-ai").trim().replace(/\/+$/, "");
+  if (!raw || raw === "/") return "";
+  return raw.startsWith("/") ? raw : `/${raw}`;
+}
+
+const PREFIX = normalizePrefix(process.env.NEXT_PUBLIC_BASE_PATH);
 
 export default function intelImageLoader({ src }) {
   if (/^https?:\/\//.test(src)) return src;
-  return `${ASSET_PREFIX}${src}`;
+  const path = src.startsWith("/") ? src : `/${src}`;
+  return `${PREFIX}${path}`;
 }

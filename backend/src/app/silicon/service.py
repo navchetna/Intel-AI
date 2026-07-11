@@ -16,8 +16,7 @@ def get_overview() -> SiliconInfo:
         highlights=[
             Highlight(
                 title="Device discovery",
-                body="Enumerate available accelerators and their memory/compute "
-                "envelopes.",
+                body="Enumerate available accelerators and their memory/compute envelopes.",
             ),
             Highlight(
                 title="Hardware-aware tuning",

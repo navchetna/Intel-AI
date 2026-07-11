@@ -16,8 +16,7 @@ def get_overview() -> IntelBluelensInfo:
         highlights=[
             Highlight(
                 title="Distributed tracing",
-                body="Follow a request across frontend, backend, and inference "
-                "engines.",
+                body="Follow a request across frontend, backend, and inference engines.",
             ),
             Highlight(
                 title="Live timelines",

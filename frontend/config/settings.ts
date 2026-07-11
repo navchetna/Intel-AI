@@ -6,7 +6,7 @@
  */
 export const settings = {
   appName: "Intel-AI",
-  apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000",
+  apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8040",
   apiPrefix: "/api",
 } as const;
 
