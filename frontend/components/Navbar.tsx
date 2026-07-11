@@ -22,7 +22,6 @@ export function Navbar() {
     <header className="sticky top-0 z-50 border-b border-gray-200/80 bg-white/92 backdrop-blur-md">
       <nav className="mx-auto flex max-w-screen-2xl items-center justify-between px-6 py-2.5">
 
-<<<<<<< HEAD
         {/* ── Far left: branding ─────────────────────────────────────────── */}
         <Link href="/" className="flex items-center gap-2 flex-shrink-0">
           <Logo />
@@ -88,33 +87,6 @@ export function Navbar() {
             </svg>
           )}
         </button>
-=======
-        <ul className="ml-auto flex flex-wrap items-center gap-1">
-          {navRoutes.map((route) => {
-            const active = pathname === `/${route.slug}`;
-            const className = `rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              active
-                ? "bg-intel-haze text-intel-blue"
-                : "text-gray-600 hover:bg-intel-haze/60 hover:text-intel-blue"
-            }`;
-            return (
-              <li key={route.slug}>
-                {/* Plain anchors are not auto-prefixed by Next's basePath, so
-                    withBase() carries the deployment prefix. Full-page links
-                    also keep the standalone BlueLens route working. The
-                    trailing slash is omitted to avoid a prefix-dropping 308. */}
-                <a
-                  href={withBase(`/${route.slug}`)}
-                  aria-current={active ? "page" : undefined}
-                  className={className}
-                >
-                  {route.label}
-                </a>
-              </li>
-            );
-          })}
-        </ul>
->>>>>>> origin/main
       </nav>
     </header>
   );
