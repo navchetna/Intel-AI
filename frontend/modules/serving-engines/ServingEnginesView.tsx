@@ -171,8 +171,9 @@ function EngineCard({ engine }: { engine: Engine }) {
     <div
       className="relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.07]"
       style={{
-        background: "linear-gradient(160deg, #050f22 0%, #071535 60%, #0a1d42 100%)",
-        boxShadow: `0 0 0 1px rgba(255,255,255,0.04), 0 24px 64px rgba(0,0,0,0.6), 0 0 80px ${engine.glow}`,
+        background: "var(--dm-card-bg-alt)",
+        boxShadow: `0 0 0 1px var(--dm-card-ring), var(--dm-card-depth), 0 0 80px ${engine.glow}`,
+        borderColor: "var(--dm-card-border)",
       }}
     >
       {/* Accent gradient top bar */}
@@ -276,7 +277,7 @@ export function ServingEnginesView() {
   return (
     <main
       style={{
-        background: "linear-gradient(170deg, #020c1f 0%, #050f22 50%, #020c1f 100%)",
+        background: "var(--dm-page-bg)",
         minHeight: "100vh",
       }}
     >

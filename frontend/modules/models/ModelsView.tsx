@@ -53,6 +53,13 @@ function BoolIcon({ val }: { val: boolean }) {
     : <span className="text-white/20 text-sm select-none">—</span>;
 }
 
+const SELECT_STYLE: React.CSSProperties = {
+  background: "#0e1d38",
+  border: "1px solid rgba(255,255,255,0.12)",
+  color: "rgba(255,255,255,0.85)",
+  colorScheme: "dark",
+};
+
 function DarkSelect({ label, value, onChange, children }: {
   label: string; value: string;
   onChange: (v: string) => void;
@@ -64,8 +71,8 @@ function DarkSelect({ label, value, onChange, children }: {
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="py-2 px-3 text-sm rounded-lg text-white/80 focus:outline-none focus:ring-1 appearance-none pr-7"
-        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+        className="py-2 px-3 text-sm rounded-lg focus:outline-none"
+        style={SELECT_STYLE}
       >
         {children}
       </select>
@@ -238,15 +245,15 @@ export function ModelsView() {
   const COLS = 12;
 
   const inputStyle = {
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.1)",
-    color: "rgba(255,255,255,0.8)",
-  };
+    background: "var(--dm-input-bg)",
+    border: "1px solid var(--dm-input-border)",
+    color: "var(--dm-input-color)",
+  } as React.CSSProperties;
 
   return (
     <main
       className="min-h-screen"
-      style={{ background: "linear-gradient(170deg, #020c1f 0%, #040d20 50%, #020c1f 100%)" }}
+      style={{ background: "var(--dm-page-bg)" }}
     >
       <div className="mx-auto max-w-screen-2xl px-6 pt-10 pb-12">
 
@@ -265,7 +272,7 @@ export function ModelsView() {
         {/* ── filter bar ── */}
         <div
           className="rounded-2xl border border-white/[0.07] p-5 mb-6"
-          style={{ background: "rgba(255,255,255,0.03)", boxShadow: "0 0 0 1px rgba(255,255,255,0.02)" }}
+          style={{ background: "var(--dm-filterbar-bg)", boxShadow: "0 0 0 1px var(--dm-border-a)" }}
         >
           <div className="flex flex-wrap gap-3 items-end">
             {/* Search */}
@@ -290,8 +297,8 @@ export function ModelsView() {
               <select
                 value={categoryFilter}
                 onChange={e => setCategoryFilter(e.target.value as Category | "All")}
-                className="w-full py-2 px-3 text-sm rounded-lg text-white/80 focus:outline-none"
-                style={inputStyle}
+                className="w-full py-2 px-3 text-sm rounded-lg focus:outline-none"
+                style={SELECT_STYLE}
               >
                 <option value="All">All categories</option>
                 {CATEGORY_ORDER.map(c => (
@@ -371,35 +378,35 @@ export function ModelsView() {
         {/* ── table ── */}
         <div
           className="rounded-2xl border border-white/[0.07] overflow-hidden"
-          style={{ background: "rgba(5,15,34,0.8)", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}
+          style={{ background: "var(--dm-table-bg)", boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}
         >
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
+            <table className="w-full text-sm border-collapse table-fixed">
               <thead>
-                <tr style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-                  <th className="px-4 py-3 w-8" />
-                  <th className="px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none whitespace-nowrap text-xs uppercase tracking-wider"
+                <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
+                  <th className="w-10 px-3 py-3" />
+                  <th className="w-44 px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none text-xs uppercase tracking-wider"
                       onClick={() => toggleSort("name")}>
                     Model <SortIcon k="name" />
                   </th>
-                  <th className="px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none text-xs uppercase tracking-wider"
+                  <th className="w-36 px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none text-xs uppercase tracking-wider"
                       onClick={() => toggleSort("category")}>
                     Category <SortIcon k="category" />
                   </th>
-                  <th className="px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none text-xs uppercase tracking-wider"
+                  <th className="w-24 px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none text-xs uppercase tracking-wider"
                       onClick={() => toggleSort("year")}>
                     Year <SortIcon k="year" />
                   </th>
-                  <th className="px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none text-xs uppercase tracking-wider whitespace-nowrap"
+                  <th className="w-28 px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none text-xs uppercase tracking-wider"
                       onClick={() => toggleSort("params")}>
                     Params <SortIcon k="params" />
                   </th>
-                  <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider whitespace-nowrap">Size</th>
-                  <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">VRAM</th>
-                  <th className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">CPU</th>
-                  <th className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider whitespace-nowrap">Commercial</th>
-                  <th className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider whitespace-nowrap">Active</th>
-                  <th className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider whitespace-nowrap">Finetune</th>
+                  <th className="w-28 px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Size</th>
+                  <th className="w-28 px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">VRAM</th>
+                  <th className="w-12 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">CPU</th>
+                  <th className="w-20 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Com.</th>
+                  <th className="w-14 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Act.</th>
+                  <th className="w-16 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Fine.</th>
                   <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Origin</th>
                 </tr>
               </thead>
@@ -445,14 +452,14 @@ export function ModelsView() {
                               >▶</span>
                             </td>
                             {/* name */}
-                            <td className="px-4 py-3">
-                              <div className="font-semibold text-white/90 text-sm leading-tight">{model.name}</div>
-                              <div className="text-[11px] text-white/30 mt-0.5 font-mono">{model.hfId}</div>
+                            <td className="px-4 py-3 overflow-hidden">
+                              <div className="font-semibold text-white/90 text-sm leading-tight truncate">{model.name}</div>
+                              <div className="text-[11px] text-white/30 mt-0.5 font-mono truncate">{model.hfId}</div>
                             </td>
                             {/* category */}
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3 overflow-hidden">
                               <span
-                                className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none"
+                                className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none truncate max-w-full"
                                 style={{ background: col.badge, color: col.badgeText }}
                               >
                                 {model.category}
@@ -461,21 +468,27 @@ export function ModelsView() {
                             {/* year */}
                             <td className="px-4 py-3 text-white/50 whitespace-nowrap text-xs font-mono">{model.yearLabel}</td>
                             {/* params */}
-                            <td className="px-4 py-3 font-mono text-xs whitespace-nowrap font-semibold" style={{ color: col.accent }}>{model.params}</td>
+                            <td className="px-4 py-3 overflow-hidden">
+                              <span className="font-mono text-xs font-semibold truncate block" style={{ color: col.accent }} title={model.params}>{model.params}</span>
+                            </td>
                             {/* size */}
-                            <td className="px-4 py-3 text-white/50 whitespace-nowrap text-xs">{model.modelSize}</td>
+                            <td className="px-4 py-3 overflow-hidden">
+                              <span className="text-white/50 text-xs truncate block" title={model.modelSize}>{model.modelSize}</span>
+                            </td>
                             {/* vram */}
-                            <td className="px-4 py-3 text-white/50 whitespace-nowrap text-xs">{model.vram}</td>
+                            <td className="px-4 py-3 overflow-hidden">
+                              <span className="text-white/50 text-xs truncate block" title={model.vram}>{model.vram}</span>
+                            </td>
                             {/* cpu */}
-                            <td className="px-4 py-3 text-center"><BoolIcon val={model.cpuSupport} /></td>
+                            <td className="px-2 py-3 text-center"><BoolIcon val={model.cpuSupport} /></td>
                             {/* commercial */}
-                            <td className="px-4 py-3 text-center"><BoolIcon val={model.commercial} /></td>
+                            <td className="px-2 py-3 text-center"><BoolIcon val={model.commercial} /></td>
                             {/* maintained */}
-                            <td className="px-4 py-3 text-center"><BoolIcon val={model.maintained} /></td>
+                            <td className="px-2 py-3 text-center"><BoolIcon val={model.maintained} /></td>
                             {/* finetune */}
-                            <td className="px-4 py-3 text-center"><BoolIcon val={model.finetuning} /></td>
+                            <td className="px-2 py-3 text-center"><BoolIcon val={model.finetuning} /></td>
                             {/* origin */}
-                            <td className="px-4 py-3 text-white/40 text-xs whitespace-nowrap">{model.origin}</td>
+                            <td className="px-4 py-3 text-white/40 text-xs">{model.origin}</td>
                           </tr>
                           {isExpanded && (
                             <ExpandedRow key={`${model.hfId}-exp`} model={model} colSpan={COLS} />
