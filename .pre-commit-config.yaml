@@ -1,8 +1,8 @@
 # Lint-before-commit + DCO sign-off for the 4-developer workflow.
 # Install once:
 #   pip install pre-commit
-#   pre-commit install --hook-type pre-commit --hook-type commit-msg
-default_install_hook_types: [pre-commit, commit-msg]
+#   pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -41,3 +41,18 @@ repos:
         entry: scripts/check-signoff.sh
         language: script
         stages: [commit-msg]
+
+      # Block pushes when the branch is behind origin/main.
+      - id: up-to-date-with-main
+        name: check branch is up to date with origin/main
+        entry: >-
+          bash -c '
+          git fetch --quiet origin main || { echo "⚠ could not fetch origin/main — skipping"; exit 0; };
+          git merge-base --is-ancestor origin/main HEAD && exit 0;
+          echo "✖ Your branch is behind origin/main by $(git rev-list --count HEAD..origin/main) commit(s).";
+          echo "  Run: git pull --rebase origin main";
+          exit 1'
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [pre-push]
