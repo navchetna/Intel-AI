@@ -44,10 +44,10 @@ const nextConfig: NextConfig = {
     loaderFile: "./image-loader.js",
   },
   async rewrites() {
-    // Intel BlueLens runs in a separate container whose Vite `base` is
-    // `${basePath}/intel-bluelens/`. Forward the prefixed paths to it verbatim.
-    // `basePath: false` matches the fully-qualified source path so this keeps
-    // working whatever prefix is configured.
+    // Intel BlueLens runs in a separate container whose Vite `base` is `/intel-bluelens/`.
+    // Browser requests `${basePath}/intel-bluelens/*` for pages, but assets use absolute `/intel-bluelens/*` paths.
+    // Both need to be proxied to the container at `/intel-bluelens/*`.
+    // `basePath: false` matches the fully-qualified source path so this keeps working whatever prefix is configured.
     return {
       beforeFiles: [
         {
@@ -56,19 +56,36 @@ const nextConfig: NextConfig = {
           destination: `${backendUrl}/api/:path*`,
           basePath: false,
         },
+        // Intel BlueLens: prefixed paths (for page navigation)
         {
           source: `${basePath}/intel-bluelens`,
-          destination: `${bluelensUrl}${basePath}/intel-bluelens/`,
+          destination: `${bluelensUrl}/intel-bluelens/`,
           basePath: false,
         },
         {
           source: `${basePath}/intel-bluelens/`,
-          destination: `${bluelensUrl}${basePath}/intel-bluelens/`,
+          destination: `${bluelensUrl}/intel-bluelens/`,
           basePath: false,
         },
         {
           source: `${basePath}/intel-bluelens/:path*`,
-          destination: `${bluelensUrl}${basePath}/intel-bluelens/:path*`,
+          destination: `${bluelensUrl}/intel-bluelens/:path*`,
+          basePath: false,
+        },
+        // Intel BlueLens: non-prefixed paths (for assets referenced in the HTML)
+        {
+          source: `/intel-bluelens`,
+          destination: `${bluelensUrl}/intel-bluelens/`,
+          basePath: false,
+        },
+        {
+          source: `/intel-bluelens/`,
+          destination: `${bluelensUrl}/intel-bluelens/`,
+          basePath: false,
+        },
+        {
+          source: `/intel-bluelens/:path*`,
+          destination: `${bluelensUrl}/intel-bluelens/:path*`,
           basePath: false,
         },
       ],

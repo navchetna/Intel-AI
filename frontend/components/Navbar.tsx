@@ -51,12 +51,15 @@ export function Navbar() {
                         ? "bg-intel-haze text-intel-blue"
                         : "text-gray-600 hover:bg-intel-haze/60 hover:text-intel-blue"
                     }`;
+                    // External routes need the full path including basePath prefix
+                    const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "/intel-ai";
+                    const href = route.external ? `${basePath}/${route.slug}/` : `/${route.slug}`;
                     return (
                       <li key={route.slug}>
                         {route.external ? (
-                          <a href={`/${route.slug}/`} className={cls}>{route.label}</a>
+                          <a href={href} className={cls}>{route.label}</a>
                         ) : (
-                          <Link href={`/${route.slug}`} aria-current={active ? "page" : undefined} className={cls}>
+                          <Link href={href} aria-current={active ? "page" : undefined} className={cls}>
                             {route.label}
                           </Link>
                         )}
