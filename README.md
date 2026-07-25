@@ -1,9 +1,8 @@
 # Intel-AI
 
-Modular full-stack boilerplate: **FastAPI** (backend) + **Next.js** (frontend),
-designed for multiple developers to work in parallel with minimal merge
-conflicts. Each feature is a self-contained *module* (backend) or *feature route
-group* (frontend), so PRs stay scoped and independent.
+Full-stack AI platform: **FastAPI** (backend) + **Next.js** (frontend) + **Intel BlueLens** (trace visualization).
+Modular architecture designed for parallel development with minimal conflicts. Features include silicon products,
+AI workflows, serving engines, model catalog, and integrated performance profiling.
 
 ```
 Intel-AI/
@@ -38,24 +37,34 @@ Intel-AI/
 
 ## Quick start
 
-### Option A — Docker (full stack)
+### Development (local)
 
 ```bash
 cp .env.example .env
-make build
-make up                 # backend :8000, frontend :3000, postgres :5432
-make logs
-```
-
-### Option B — Local dev
-
-```bash
 make install            # uv sync + npm install
 make dev-backend        # terminal 1 → http://localhost:8000/docs
 make dev-frontend       # terminal 2 → http://localhost:3000
 ```
 
-**NOTE** - Incase of port conflicts, update the port in the Makefile and run the commands again.
+### Production deployment
+
+```bash
+# Configure environment (optional - defaults provided)
+# NEXT_PUBLIC_BASE_PATH=/intel-ai    # URL prefix for frontend
+# FRONTEND_PORT=3005                 # Frontend exposed port
+# DB_PORT=5435                       # PostgreSQL exposed port
+
+# Build and start all services (backend, frontend, db, intel-bluelens)
+docker compose -f docker-compose-prod.yml up -d --build
+
+# Services:
+# - Frontend: localhost:3005 (serve under /intel-ai via nginx)
+# - Backend API: internal only, proxied via frontend
+# - PostgreSQL: localhost:5435
+# - Intel BlueLens: /intel-ai/intel-bluelens (internal routing only)
+```
+
+**Nginx reverse proxy required** — see deployment notes below.
 
 Run `make help` to see all targets.
 
@@ -78,16 +87,41 @@ Run `make help` to see all targets.
 A new module should touch **only its own folder** plus a single line in the
 router/endpoint registry — this is what keeps parallel work conflict-free.
 
-## Working as a team (4 developers)
+## Deployment notes
 
-- Branch per change: `feature/<module>-<short-desc>`; keep PRs scoped to one module.
-- Install git hooks once:
-  `pre-commit install --hook-type pre-commit --hook-type commit-msg`
-  (lints backend + frontend before every commit).
-- **Sign off every commit** with `git commit -s` (DCO). The commit-msg hook and
-  the CI **DCO** job both reject commits without a `Signed-off-by` trailer.
-- Reviews are routed by [.github/CODEOWNERS](.github/CODEOWNERS) — update the handles.
-- CI is **manually triggered**: Actions tab → **CI** → **Run workflow** (optionally pass a ref).
-- Every PR uses the checklist in [.github/pull_request_template.md](.github/pull_request_template.md).
+**Nginx reverse proxy configuration:**
 
-See [docs/](docs/) for architecture, backend, frontend, contributing and workflow guides.
+The application expects to run behind nginx with the following routing:
+
+```nginx
+# Main frontend and API
+location /intel-ai {
+    proxy_pass http://localhost:3005;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# Intel BlueLens assets (required for asset loading)
+location /intel-bluelens/ {
+    proxy_pass http://localhost:3005/intel-bluelens/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+After nginx configuration, access the application at: `http://your-host/intel-ai`
+
+## Team workflow
+
+- Branch per module: `feature/<module>-<desc>`, keep PRs scoped
+- Install hooks: `pre-commit install --hook-type pre-commit --hook-type commit-msg`
+- Sign commits: `git commit -s` (DCO required)
+- CI is manually triggered via GitHub Actions
+
+See [docs/](docs/) for detailed architecture and guides.
