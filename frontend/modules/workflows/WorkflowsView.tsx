@@ -64,7 +64,7 @@ curl -X POST https://api.intel-ai.local/v1/workflows/run \\
 
 // ── Field renderer ─────────────────────────────────────────────────────────────
 
-const FIELD_BASE = "w-full rounded-lg px-3 py-2 text-sm focus:outline-none transition-colors";
+const FIELD_BASE = "w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 transition-colors";
 const FIELD_STYLE: React.CSSProperties = {
   background: "#0e1d38",
   border: "1px solid rgba(255,255,255,0.12)",
@@ -88,7 +88,7 @@ function FieldRow({ field, value, onChange }: {
           <button
             type="button"
             onClick={() => onChange(!value)}
-            className="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-150 focus:outline-none"
+            className="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-offset-1 focus-visible:ring-offset-[#0a1428] focus-visible:ring-white/40"
             style={{ background: value ? "#1262B5" : "rgba(255,255,255,0.12)" }}
           >
             <span
@@ -224,27 +224,6 @@ function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }
           >×</button>
         </div>
 
-        {/* Tool badge */}
-        <div className="flex-shrink-0 flex items-center gap-2 px-5 py-3 border-b border-white/[0.06]">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Built with</span>
-          <span
-            className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-            style={wf.tool === "n8n"
-              ? { background: "rgba(255,110,0,0.15)", color: "#fb923c", border: "1px solid rgba(255,110,0,0.25)" }
-              : { background: "rgba(18,98,181,0.20)", color: "#60a5fa", border: "1px solid rgba(18,98,181,0.35)" }}
-          >
-            {wf.tool === "n8n" ? "N8N" : "Intel Custom"}
-          </span>
-          <div className="flex flex-wrap gap-1 ml-auto">
-            {wf.tags.slice(0, 3).map(t => (
-              <span key={t} className="text-[9px] px-1.5 py-0.5 rounded font-medium text-white/40"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                {t}
-              </span>
-            ))}
-          </div>
-        </div>
-
         {/* Config form */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-4">Configuration</p>
@@ -318,55 +297,25 @@ function WorkflowCard({ wf, onConfigure }: { wf: WorkflowDef; onConfigure: () =>
   const meta = CATEGORY_META[wf.category];
   return (
     <div
-      className="flex flex-col rounded-xl overflow-hidden transition-transform duration-150 hover:-translate-y-0.5"
+      onClick={onConfigure}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onConfigure(); } }}
+      className="flex flex-col rounded-xl overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5"
       style={{
         background: "linear-gradient(150deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.02) 100%)",
         border: "1px solid rgba(255,255,255,0.07)",
         boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
       }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `rgba(${meta.accentRgb},0.35)`; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.07)"; }}
     >
       {/* Top accent strip */}
       <div className="h-1 flex-shrink-0" style={{ background: `linear-gradient(90deg, rgba(${meta.accentRgb},0.9) 0%, rgba(${meta.accentRgb},0.3) 100%)` }} />
 
-      <div className="flex flex-col gap-3 p-4 flex-1">
-        {/* Header row */}
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-sm font-bold text-white/90 leading-tight">{wf.name}</h3>
-          <span
-            className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-            style={wf.tool === "n8n"
-              ? { background: "rgba(255,110,0,0.15)", color: "#fb923c" }
-              : { background: "rgba(18,98,181,0.20)", color: "#60a5fa" }}
-          >
-            {wf.tool === "n8n" ? "N8N" : "Custom"}
-          </span>
-        </div>
-
-        {/* Description */}
+      <div className="flex flex-col gap-2 p-4 flex-1">
+        <h3 className="text-sm font-bold text-white/90 leading-tight">{wf.name}</h3>
         <p className="text-[11px] text-white/45 leading-relaxed flex-1">{wf.description}</p>
-
-        {/* Tags */}
-        <div className="flex flex-wrap gap-1">
-          {wf.tags.map(t => (
-            <span key={t} className="text-[9px] px-1.5 py-0.5 rounded font-medium text-white/40"
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
-              {t}
-            </span>
-          ))}
-        </div>
-
-        {/* Configure button */}
-        <button
-          onClick={onConfigure}
-          className="mt-1 w-full py-1.5 text-xs font-semibold rounded-lg transition-all hover:brightness-110 active:scale-[0.98]"
-          style={{
-            background: `rgba(${meta.accentRgb},0.12)`,
-            border: `1px solid rgba(${meta.accentRgb},0.25)`,
-            color: meta.accent,
-          }}
-        >
-          Configure &amp; Export →
-        </button>
       </div>
     </div>
   );
@@ -404,8 +353,6 @@ function WorkflowTable({ workflows, onConfigure }: { workflows: WorkflowDef[]; o
               <th className="w-44 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Category</th>
               <th className="w-20 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Tool</th>
               <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Description</th>
-              <th className="w-32 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Tags</th>
-              <th className="w-32 px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-white/40">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -414,7 +361,8 @@ function WorkflowTable({ workflows, onConfigure }: { workflows: WorkflowDef[]; o
               return (
                 <tr
                   key={wf.id}
-                  className="transition-colors"
+                  onClick={() => onConfigure(wf)}
+                  className="cursor-pointer transition-colors"
                   style={{
                     background: idx % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent",
                     borderBottom: "1px solid rgba(255,255,255,0.04)",
@@ -442,23 +390,6 @@ function WorkflowTable({ workflows, onConfigure }: { workflows: WorkflowDef[]; o
                   </td>
                   <td className="px-4 py-3 overflow-hidden">
                     <span className="text-white/40 text-xs truncate block">{wf.description}</span>
-                  </td>
-                  <td className="px-4 py-3 overflow-hidden">
-                    <div className="flex flex-wrap gap-1">
-                      {wf.tags.slice(0, 2).map(t => (
-                        <span key={t} className="text-[9px] px-1 py-0.5 rounded text-white/35"
-                          style={{ background: "rgba(255,255,255,0.05)" }}>{t}</span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => onConfigure(wf)}
-                      className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide rounded-lg transition-all hover:brightness-110"
-                      style={{ background: `rgba(${meta.accentRgb},0.12)`, border: `1px solid rgba(${meta.accentRgb},0.22)`, color: meta.accent }}
-                    >
-                      Configure
-                    </button>
                   </td>
                 </tr>
               );
@@ -546,7 +477,7 @@ export function WorkflowsView() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Name, tag, description…"
-                className="w-full px-3 py-2 text-sm rounded-lg focus:outline-none placeholder-white/20"
+                className="w-full px-3 py-2 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 placeholder-white/20"
                 style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)" }}
               />
             </div>
@@ -557,7 +488,7 @@ export function WorkflowsView() {
               <select
                 value={toolFilter}
                 onChange={e => setToolFilter(e.target.value as "all" | "n8n" | "custom")}
-                className="py-2 px-3 text-sm rounded-lg focus:outline-none"
+                className="py-2 px-3 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
                 style={{ background: "#0e1d38", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.85)", colorScheme: "dark" }}
               >
                 <option value="all">All tools</option>

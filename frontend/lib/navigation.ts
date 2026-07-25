@@ -28,6 +28,8 @@ export interface NavRoute {
   apiPrefix: string;
   /** Visual cluster this route belongs to. */
   cluster: NavCluster;
+  /** Overrides the navbar link target; defaults to `/${slug}` when omitted. */
+  href?: string;
   /**
    * When true, the route is served by a separate container (proxied via
    * next.config rewrites), so the navbar uses a full-page anchor instead of
@@ -37,7 +39,7 @@ export interface NavRoute {
 }
 
 export const CLUSTER_LABELS: Record<NavCluster, string> = {
-  "hardware":      "Silicon",
+  "hardware":      "Infrastructure",
   "ai-stack":      "AI Stack",
   "manufacturing": "Manufacturing",
   "tools":         "Tools",
@@ -52,15 +54,16 @@ export const CLUSTER_ORDER: NavCluster[] = [
 
 export const navRoutes: NavRoute[] = [
   // ── Cluster 1: Hardware / Silicon ─────────────────────────────────────────
-  { slug: "rack",                label: "Rack",        module: "rack",                apiPrefix: "/rack",                cluster: "hardware" },
-  { slug: "silicon",             label: "Products",    module: "silicon",             apiPrefix: "/silicon",             cluster: "hardware" },
-  { slug: "silicon-ingredients", label: "Ingredients", module: "silicon-ingredients", apiPrefix: "/silicon-ingredients", cluster: "hardware" },
+  { slug: "silicon",             label: "Silicon", module: "silicon",             apiPrefix: "/silicon",             cluster: "hardware" },
+  { slug: "silicon-ingredients", label: "System",  module: "silicon-ingredients", apiPrefix: "/silicon-ingredients", cluster: "hardware" },
+  { slug: "rack",                label: "Rack",    module: "rack",                apiPrefix: "/rack",                cluster: "hardware" },
 
   // ── Cluster 2: AI Stack ────────────────────────────────────────────────────
-  { slug: "agentic-ai",      label: "Agents",          module: "agentic-ai",      apiPrefix: "/agentic-ai",      cluster: "ai-stack" },
-  { slug: "workflows",       label: "Workflows",       module: "workflows",       apiPrefix: "/workflows",       cluster: "ai-stack" },
-  { slug: "serving-engines", label: "Serving Engines", module: "serving-engines", apiPrefix: "/serving-engines", cluster: "ai-stack" },
-  { slug: "models",          label: "Models",          module: "models",          apiPrefix: "/models",          cluster: "ai-stack" },
+  { slug: "models",     label: "Models", module: "models",     apiPrefix: "/models",     cluster: "ai-stack" },
+  { slug: "workflows",  label: "Tasks",  module: "workflows",  apiPrefix: "/workflows",  cluster: "ai-stack" },
+  { slug: "agentic-ai", label: "Agents", module: "agentic-ai", apiPrefix: "/agentic-ai", cluster: "ai-stack", href: "/agentic-ai/agentic-stack" },
+  { slug: "data-pipes", label: "Data-Pipes", module: "data-pipes", apiPrefix: "/data-pipes", cluster: "ai-stack" },
+  { slug: "training",   label: "Training",   module: "training",   apiPrefix: "/training",   cluster: "ai-stack" },
 
   // ── Cluster 3: Manufacturing ───────────────────────────────────────────────
   { slug: "mfg-tools", label: "Tools",     module: "mfg-tools", apiPrefix: "/mfg-tools", cluster: "manufacturing" },

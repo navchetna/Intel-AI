@@ -6,6 +6,14 @@
   --color-intel-dark: #003c71;
   --color-intel-energy: #00c7fd;
   --color-intel-haze: #e9f4fb;
+
+  /* Semantic status colors — one source of truth for success/warning/danger/info,
+     used via text-success, bg-danger/15, border-warning/30, etc. Chosen to read
+     clearly on both the light Intel-brand chrome and the dark dashboard canvas. */
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger:  #f87171;
+  --color-info:    #38bdf8;
 }
 
 /* ── Dark-module CSS variables ───────────────────────────────────────────────
@@ -56,6 +64,16 @@
   --diag-group-sub:   rgba(255,255,255,0.50);
   --diag-group-bg:    rgba(18,98,181,0.14);
   --diag-silicon-bg:  rgba(10,40,15,0.40);
+
+  /* Navbar (global chrome — theme-aware) */
+  --dm-nav-bg:          rgba(5,15,34,0.92);
+  --dm-nav-border:      rgba(255,255,255,0.08);
+  --dm-nav-brand-text:  #ffffff;
+  --dm-nav-text:        rgba(255,255,255,0.65);
+  --dm-nav-text-dim:    rgba(255,255,255,0.35);
+  --dm-nav-hover-bg:    rgba(255,255,255,0.07);
+  --dm-nav-active-bg:   rgba(0,199,253,0.14);
+  --dm-nav-active-text: #00c7fd;
 }
 
 [data-theme="light"] {
@@ -100,6 +118,16 @@
   --diag-group-sub:   #6b7280;
   --diag-group-bg:    rgba(18,98,181,0.06);
   --diag-silicon-bg:  rgba(215,228,210,0.25);
+
+  /* Navbar (global chrome — theme-aware) */
+  --dm-nav-bg:          rgba(255,255,255,0.92);
+  --dm-nav-border:      rgba(0,113,197,0.12);
+  --dm-nav-brand-text:  #003c71;
+  --dm-nav-text:        #4b5563;
+  --dm-nav-text-dim:    #9ca3af;
+  --dm-nav-hover-bg:    rgba(0,113,197,0.06);
+  --dm-nav-active-bg:   #e9f4fb;
+  --dm-nav-active-text: #0071c5;
 }
 
 /* ── Tailwind text-white/* class overrides for light mode ────────────────────
@@ -152,4 +180,20 @@ body {
 
 .animate-fade-slide-in {
   animation: fade-slide-in 0.18s ease-out both;
+}
+
+/* ── Navbar interaction classes ──────────────────────────────────────────────
+   Theme-driven so hover/active colors follow --dm-nav-* without JS handlers. */
+.nav-link       { color: var(--dm-nav-text); }
+.nav-link:hover { background: var(--dm-nav-hover-bg); color: var(--dm-nav-active-text); }
+.nav-link-active { background: var(--dm-nav-active-bg); color: var(--dm-nav-active-text); }
+
+.nav-icon-btn       { color: var(--dm-nav-text); }
+.nav-icon-btn:hover { background: var(--dm-nav-hover-bg); color: var(--dm-nav-active-text); }
+
+.nav-menu-item:hover { background: var(--dm-surface-b); }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-slide-in, .animate-pulse { animation: none; }
+  * { transition-duration: 0.01ms !important; }
 }

@@ -54,21 +54,23 @@ function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-function filterParams(filters: BenchmarkFilters): string {
+function filterParams(filters: BenchmarkFilters, limit?: number): string {
   const params = new URLSearchParams();
   if (filters.model.trim()) params.set("model", filters.model.trim());
   if (filters.input_tokens) params.set("input_tokens", filters.input_tokens);
   if (filters.output_tokens) params.set("output_tokens", filters.output_tokens);
   if (filters.batch_size) params.set("batch_size", filters.batch_size);
   if (filters.platform) params.set("platform", filters.platform);
+  if (filters.serving_engine) params.set("serving_engine", filters.serving_engine);
+  if (limit) params.set("limit", String(limit));
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
 
 // --- Public reads -------------------------------------------------------------
 
-export async function fetchRecords(filters: BenchmarkFilters): Promise<RecordsResponse> {
-  const res = await fetch(apiUrl(`/records${filterParams(filters)}`), { cache: "no-store" });
+export async function fetchRecords(filters: BenchmarkFilters, limit?: number): Promise<RecordsResponse> {
+  const res = await fetch(apiUrl(`/records${filterParams(filters, limit)}`), { cache: "no-store" });
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }

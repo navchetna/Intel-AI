@@ -14,6 +14,8 @@ function isActive(pathname: string, href: string): boolean {
 export function AgenticSubNav() {
   const pathname = usePathname();
 
+  if (agenticNav.length < 2) return null;
+
   return (
     <div className="sticky top-[57px] z-40 border-b border-gray-200 bg-white/95 backdrop-blur">
       <nav className="mx-auto flex max-w-6xl flex-wrap items-center gap-1 px-6 py-2">

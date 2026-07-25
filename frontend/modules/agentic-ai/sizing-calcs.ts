@@ -1,3 +1,9 @@
+// ── Shared types ───────────────────────────────────────────────────────────────
+
+export type SizingTool =
+  | "postgres" | "qdrant" | "neo4j" | "mongodb" | "elastic"
+  | "pydantic-ai" | "logfire" | "clickhouse";
+
 // ── Shared helpers ─────────────────────────────────────────────────────────────
 
 function snapUp(n: number, tiers: number[]): number {
@@ -891,4 +897,559 @@ export function calcMongoDB(i: MongoDBInputs): MongoDBResults {
     },
     conf: { cacheSizeGB, blockCompressor, oplogSizeMB, maxIncomingConnections },
   };
+}
+
+// ── Pydantic AI (Agent App Tier) ──────────────────────────────────────────────────
+// Formulas ported 1:1 from pydantic_ai_sizing.xlsx (public/) — verified against its sample figures.
+
+export interface PydanticAIInputs {
+  peakRunsPerSec: number;
+  stepsPerRun: number;
+  avgLlmLatencyPerStepSec: number;
+  toolCallsPerRun: number;
+  avgToolLatencyPerCallSec: number;
+  localCpuWorkPerStepMs: number;
+  ramPerInFlightRunMB: number;
+  retryOverheadFactor: number;
+  maxConcurrentRunsPerWorker: number;
+  workerProcessesPerNode: number;
+  usableVcpuPerNode: number;
+  usableRamPerNodeGB: number;
+  cpuUtilizationTarget: number;
+  concurrencySafetyHeadroom: number;
+  durableExecutionBackend: "None" | "DBOS (Postgres)" | "Temporal (cluster)";
+  checkpointsPerRun: number;
+  avgCheckpointSizeKB: number;
+}
+
+export interface PydanticAIResults {
+  concurrency: {
+    avgRunWallTimeSec: number;
+    activeCpuPerRunMs: number;
+    ioWaitFraction: number;
+    peakConcurrentInFlightRuns: number;
+    provisionedConcurrency: number;
+  };
+  fleet: {
+    workersByConcurrency: number;
+    activeCpuSecondsPerSecFleet: number;
+    coresByActiveCpu: number;
+    requiredWorkers: number;
+  };
+  memory: {
+    ramForInFlightRunsGB: number;
+    workerRuntimeOverheadGB: number;
+    totalAgentTierRamGB: number;
+  };
+  recommended: {
+    nodesByWorkers: number;
+    nodesByRam: number;
+    nodesByVcpu: number;
+    recommendedNodes: number;
+    recommendedFleetVcpu: number;
+    recommendedFleetRamGB: number;
+  };
+  modelDemand: {
+    modelRequestsPerSecDemanded: number;
+    peakConcurrentModelCalls: number;
+  };
+  durability: {
+    enabled: boolean;
+    checkpointWriteRate: number;
+    checkpointWriteThroughputMBs: number;
+    durabilityWriteIOPS: number;
+  };
+}
+
+export const PYDANTIC_AI_DEFAULTS: PydanticAIInputs = {
+  peakRunsPerSec: 50,
+  stepsPerRun: 4,
+  avgLlmLatencyPerStepSec: 3,
+  toolCallsPerRun: 3,
+  avgToolLatencyPerCallSec: 0.4,
+  localCpuWorkPerStepMs: 15,
+  ramPerInFlightRunMB: 8,
+  retryOverheadFactor: 1.15,
+  maxConcurrentRunsPerWorker: 250,
+  workerProcessesPerNode: 8,
+  usableVcpuPerNode: 64,
+  usableRamPerNodeGB: 128,
+  cpuUtilizationTarget: 0.7,
+  concurrencySafetyHeadroom: 0.3,
+  durableExecutionBackend: "DBOS (Postgres)",
+  checkpointsPerRun: 8,
+  avgCheckpointSizeKB: 12,
+};
+
+export function calcPydanticAI(i: PydanticAIInputs): PydanticAIResults {
+  const avgRunWallTimeSec = (i.stepsPerRun * i.avgLlmLatencyPerStepSec + i.toolCallsPerRun * i.avgToolLatencyPerCallSec) * i.retryOverheadFactor;
+  const activeCpuPerRunMs = i.stepsPerRun * i.localCpuWorkPerStepMs * i.retryOverheadFactor;
+  const ioWaitFraction = 1 - (activeCpuPerRunMs / 1000) / avgRunWallTimeSec;
+  const peakConcurrentInFlightRuns = i.peakRunsPerSec * avgRunWallTimeSec;
+  const provisionedConcurrency = peakConcurrentInFlightRuns * (1 + i.concurrencySafetyHeadroom);
+
+  const workersByConcurrency = Math.ceil(provisionedConcurrency / i.maxConcurrentRunsPerWorker);
+  const activeCpuSecondsPerSecFleet = i.peakRunsPerSec * (activeCpuPerRunMs / 1000);
+  const coresByActiveCpu = Math.ceil(activeCpuSecondsPerSecFleet / i.cpuUtilizationTarget);
+  const requiredWorkers = Math.max(workersByConcurrency, coresByActiveCpu);
+
+  const ramForInFlightRunsGB = provisionedConcurrency * i.ramPerInFlightRunMB / 1000;
+  const workerRuntimeOverheadGB = requiredWorkers * 0.25;
+  const totalAgentTierRamGB = ramForInFlightRunsGB + workerRuntimeOverheadGB;
+
+  const nodesByWorkers = Math.ceil(requiredWorkers / i.workerProcessesPerNode);
+  const nodesByRam = Math.ceil(totalAgentTierRamGB / i.usableRamPerNodeGB);
+  const nodesByVcpu = Math.ceil(coresByActiveCpu / i.usableVcpuPerNode);
+  const recommendedNodes = Math.max(nodesByWorkers, nodesByRam, nodesByVcpu, 2);
+  const recommendedFleetVcpu = recommendedNodes * i.usableVcpuPerNode;
+  const recommendedFleetRamGB = recommendedNodes * i.usableRamPerNodeGB;
+
+  const modelRequestsPerSecDemanded = i.peakRunsPerSec * i.stepsPerRun * i.retryOverheadFactor;
+  const peakConcurrentModelCalls = i.peakRunsPerSec * i.stepsPerRun * i.avgLlmLatencyPerStepSec * i.retryOverheadFactor;
+
+  const durabilityEnabled = i.durableExecutionBackend !== "None";
+  const checkpointWriteRate = durabilityEnabled ? i.peakRunsPerSec * i.checkpointsPerRun * i.retryOverheadFactor : 0;
+  const checkpointWriteThroughputMBs = checkpointWriteRate * i.avgCheckpointSizeKB / 1000;
+  const durabilityWriteIOPS = checkpointWriteRate * 1.5;
+
+  return {
+    concurrency: { avgRunWallTimeSec, activeCpuPerRunMs, ioWaitFraction, peakConcurrentInFlightRuns, provisionedConcurrency },
+    fleet: { workersByConcurrency, activeCpuSecondsPerSecFleet, coresByActiveCpu, requiredWorkers },
+    memory: { ramForInFlightRunsGB, workerRuntimeOverheadGB, totalAgentTierRamGB },
+    recommended: { nodesByWorkers, nodesByRam, nodesByVcpu, recommendedNodes, recommendedFleetVcpu, recommendedFleetRamGB },
+    modelDemand: { modelRequestsPerSecDemanded, peakConcurrentModelCalls },
+    durability: { enabled: durabilityEnabled, checkpointWriteRate, checkpointWriteThroughputMBs, durabilityWriteIOPS },
+  };
+}
+
+// ── Pydantic Logfire (Self-Hosted) ────────────────────────────────────────────────
+// Formulas ported 1:1 from pydantic_logfire_sizing.xlsx (public/) — verified against its sample figures.
+
+export interface LogfireInputs {
+  peakSpansPerSec: number;
+  peakLogsPerSec: number;
+  peakMetricPointsPerSec: number;
+  avgBytesPerSpan: number;
+  avgBytesPerLog: number;
+  avgBytesPerMetricPoint: number;
+  peakToAvgRatio: number;
+  compressionRatio: number;
+  retentionDays: number;
+  peakQueryQPS: number;
+  haMinReplicas: number;
+  localSsdScratchFloorGB: number;
+  ingestPodThroughputPerPod: number;
+  ingestPodVcpu: number;
+  ingestPodRamGB: number;
+  queryPodVcpu: number;
+  queryPodRamGB: number;
+  queryPodQPSPerPod: number;
+  cachePods: number;
+  cacheStoragePerPodGB: number;
+  cacheWorkerPodVcpuEach: number;
+  cacheWorkerPodRamEachGB: number;
+  compactionMaintenanceWorkers: number;
+  fixedSupportVcpu: number;
+  fixedSupportRamGB: number;
+  postgresVcpu: number;
+  postgresRamGB: number;
+  refNodeUsableVcpu: number;
+  refNodeUsableRamGB: number;
+}
+
+export interface LogfireResults {
+  objectStorage: {
+    avgSpansPerSec: number;
+    avgLogsPerSec: number;
+    avgMetricPtsPerSec: number;
+    uncompressedPerDayGB: number;
+    compressedPerDayGB: number;
+    retainedObjectStorageRawGB: number;
+    objectStorageWithHeadroomGB: number;
+    recommendedObjectStorageGB: number;
+    recommendedObjectStorageTB: number;
+  };
+  ingestTier: {
+    totalIngestEventsPerSecPeak: number;
+    ingestPodsByLoad: number;
+    recommendedIngestPods: number;
+    ingestTierVcpu: number;
+    ingestTierRamGB: number;
+    ingestScratchPVCGB: number;
+    cacheStorageTotalGB: number;
+    compactionScratchGB: number;
+    modeledLocalSSDGB: number;
+    recommendedLocalSSDScratchGB: number;
+  };
+  queryWorkerTier: {
+    queryPodsByLoad: number;
+    recommendedQueryPods: number;
+    queryTierVcpu: number;
+    queryTierRamGB: number;
+    cacheTierVcpu: number;
+    cacheTierRamGB: number;
+    workerTierVcpu: number;
+    workerTierRamGB: number;
+  };
+  cluster: {
+    totalApplicationVcpu: number;
+    totalApplicationRamGB: number;
+    nodesByVcpu: number;
+    nodesByRam: number;
+    recommendedWorkerNodes: number;
+    totalProvisionedVcpu: number;
+    totalProvisionedRamGB: number;
+    objectStorageCapacityTB: number;
+    localSSDScratchTotalGB: number;
+    postgresVcpu: number;
+    postgresRamGB: number;
+  };
+}
+
+export const LOGFIRE_DEFAULTS: LogfireInputs = {
+  peakSpansPerSec: 20000,
+  peakLogsPerSec: 5000,
+  peakMetricPointsPerSec: 2000,
+  avgBytesPerSpan: 1200,
+  avgBytesPerLog: 600,
+  avgBytesPerMetricPoint: 120,
+  peakToAvgRatio: 3,
+  compressionRatio: 8,
+  retentionDays: 30,
+  peakQueryQPS: 30,
+  haMinReplicas: 3,
+  localSsdScratchFloorGB: 512,
+  ingestPodThroughputPerPod: 3000,
+  ingestPodVcpu: 2,
+  ingestPodRamGB: 4,
+  queryPodVcpu: 2,
+  queryPodRamGB: 2,
+  queryPodQPSPerPod: 8,
+  cachePods: 2,
+  cacheStoragePerPodGB: 256,
+  cacheWorkerPodVcpuEach: 4,
+  cacheWorkerPodRamEachGB: 8,
+  compactionMaintenanceWorkers: 4,
+  fixedSupportVcpu: 6,
+  fixedSupportRamGB: 10,
+  postgresVcpu: 4,
+  postgresRamGB: 16,
+  refNodeUsableVcpu: 64,
+  refNodeUsableRamGB: 256,
+};
+
+function snapUpTo(n: number, step: number): number {
+  return Math.ceil(n / step) * step;
+}
+
+export function calcLogfire(i: LogfireInputs): LogfireResults {
+  const avgSpansPerSec = i.peakSpansPerSec / i.peakToAvgRatio;
+  const avgLogsPerSec = i.peakLogsPerSec / i.peakToAvgRatio;
+  const avgMetricPtsPerSec = i.peakMetricPointsPerSec / i.peakToAvgRatio;
+  const uncompressedPerDayGB =
+    (avgSpansPerSec * i.avgBytesPerSpan + avgLogsPerSec * i.avgBytesPerLog + avgMetricPtsPerSec * i.avgBytesPerMetricPoint)
+    * 86400 / 1e9;
+  const compressedPerDayGB = uncompressedPerDayGB / i.compressionRatio;
+  const retainedObjectStorageRawGB = compressedPerDayGB * i.retentionDays;
+  const objectStorageWithHeadroomGB = retainedObjectStorageRawGB * 1.3;
+  const recommendedObjectStorageGB = snapUpTo(objectStorageWithHeadroomGB, 1000);
+  const recommendedObjectStorageTB = recommendedObjectStorageGB / 1000;
+
+  const totalIngestEventsPerSecPeak = i.peakSpansPerSec + i.peakLogsPerSec + i.peakMetricPointsPerSec;
+  const ingestPodsByLoad = Math.ceil(totalIngestEventsPerSecPeak / i.ingestPodThroughputPerPod);
+  const recommendedIngestPods = Math.max(ingestPodsByLoad, 2 * i.haMinReplicas);
+  const ingestTierVcpu = recommendedIngestPods * i.ingestPodVcpu;
+  const ingestTierRamGB = recommendedIngestPods * i.ingestPodRamGB;
+  const ingestScratchPVCGB = recommendedIngestPods * 16;
+  const cacheStorageTotalGB = i.cachePods * i.cacheStoragePerPodGB;
+  const compactionScratchGB = i.compactionMaintenanceWorkers * 32;
+  const modeledLocalSSDGB = ingestScratchPVCGB + cacheStorageTotalGB + compactionScratchGB;
+  const recommendedLocalSSDScratchGB = snapUpTo(Math.max(modeledLocalSSDGB, i.localSsdScratchFloorGB), 128);
+
+  const queryPodsByLoad = Math.ceil(i.peakQueryQPS / i.queryPodQPSPerPod);
+  const recommendedQueryPods = Math.max(queryPodsByLoad, i.haMinReplicas);
+  const queryTierVcpu = recommendedQueryPods * i.queryPodVcpu;
+  const queryTierRamGB = recommendedQueryPods * i.queryPodRamGB;
+  const cacheTierVcpu = i.cachePods * i.cacheWorkerPodVcpuEach;
+  const cacheTierRamGB = i.cachePods * i.cacheWorkerPodRamEachGB;
+  const workerTierVcpu = i.compactionMaintenanceWorkers * i.cacheWorkerPodVcpuEach;
+  const workerTierRamGB = i.compactionMaintenanceWorkers * i.cacheWorkerPodRamEachGB;
+
+  const totalApplicationVcpu = ingestTierVcpu + queryTierVcpu + cacheTierVcpu + workerTierVcpu + i.fixedSupportVcpu;
+  const totalApplicationRamGB = ingestTierRamGB + queryTierRamGB + cacheTierRamGB + workerTierRamGB + i.fixedSupportRamGB;
+  const nodesByVcpu = Math.ceil(totalApplicationVcpu / i.refNodeUsableVcpu);
+  const nodesByRam = Math.ceil(totalApplicationRamGB / i.refNodeUsableRamGB);
+  const recommendedWorkerNodes = Math.max(nodesByVcpu, nodesByRam, i.haMinReplicas);
+  const totalProvisionedVcpu = recommendedWorkerNodes * i.refNodeUsableVcpu;
+  const totalProvisionedRamGB = recommendedWorkerNodes * i.refNodeUsableRamGB;
+
+  return {
+    objectStorage: {
+      avgSpansPerSec, avgLogsPerSec, avgMetricPtsPerSec, uncompressedPerDayGB, compressedPerDayGB,
+      retainedObjectStorageRawGB, objectStorageWithHeadroomGB, recommendedObjectStorageGB, recommendedObjectStorageTB,
+    },
+    ingestTier: {
+      totalIngestEventsPerSecPeak, ingestPodsByLoad, recommendedIngestPods, ingestTierVcpu, ingestTierRamGB,
+      ingestScratchPVCGB, cacheStorageTotalGB, compactionScratchGB, modeledLocalSSDGB, recommendedLocalSSDScratchGB,
+    },
+    queryWorkerTier: {
+      queryPodsByLoad, recommendedQueryPods, queryTierVcpu, queryTierRamGB,
+      cacheTierVcpu, cacheTierRamGB, workerTierVcpu, workerTierRamGB,
+    },
+    cluster: {
+      totalApplicationVcpu, totalApplicationRamGB, nodesByVcpu, nodesByRam, recommendedWorkerNodes,
+      totalProvisionedVcpu, totalProvisionedRamGB, objectStorageCapacityTB: recommendedObjectStorageTB,
+      localSSDScratchTotalGB: recommendedLocalSSDScratchGB, postgresVcpu: i.postgresVcpu, postgresRamGB: i.postgresRamGB,
+    },
+  };
+}
+
+// ── ClickHouse (Observability / Logs) ─────────────────────────────────────────────
+// Formulas ported 1:1 from clickhouse_sizing.xlsx (public/) — verified against its sample figures.
+
+export interface ClickHouseInputs {
+  dailyRawIngestTodayGB: number;
+  avgRawEventSizeBytes: number;
+  annualDataGrowth: number;
+  planningHorizonYears: number;
+  compressionRatio: number;
+  mergePartOverhead: number;
+  hotRetentionDays: number;
+  coldRetentionDays: number;
+  replicationFactor: number;
+  nvmeUtilizationTarget: number;
+  peakToAvgIngestRatio: number;
+  ingestMergeThroughputPerVcpuMBs: number;
+  peakConcurrentQueries: number;
+  avgDataScannedPerQueryGB: number;
+  targetQueryLatencyP95Sec: number;
+  scanThroughputPerVcpuGBs: number;
+  workingMemPerQueryGB: number;
+  coldCacheFractionLocal: number;
+  ramReservedFraction: number;
+  maxRamPerNodeGB: number;
+  maxVcpuPerNode: number;
+  maxNvmePerNodeGB: number;
+  keeperEnsemble: boolean;
+}
+
+export interface ClickHouseResults {
+  dataFootprint: {
+    dailyRawIngestAtHorizonGB: number;
+    rowsPerDayAtHorizon: number;
+    dailyOnDiskCompressedGB: number;
+    hotData1CopyGB: number;
+    hotLocalStoredInclMergeGB: number;
+    coldData1CopyGB: number;
+    coldLocalCacheGB: number;
+    localNvmePerCopyProvisionedGB: number;
+    totalNvmeInclReplicasGB: number;
+    objectStoreCapacityColdGB: number;
+    totalUniqueDataManagedGB: number;
+    storageSavedVsRaw: number;
+  };
+  ingestMerge: {
+    avgIngestRateMBs: number;
+    peakIngestRateMBs: number;
+    peakInsertRateRowsPerSec: number;
+    ingestMergeCores: number;
+    backgroundMergeAllowanceCores: number;
+  };
+  queryCompute: {
+    queryScanCores: number;
+    queryWorkingRamGB: number;
+    totalVcpuDemand: number;
+    totalQueryRamDemandGB: number;
+  };
+  sharding: {
+    usableQueryRamPerNodeGB: number;
+    shardsByNvme: number;
+    shardsByCpu: number;
+    shardsByRam: number;
+    recommendedShards: number;
+    bindingConstraint: string;
+  };
+  cluster: {
+    shards: number;
+    replicasPerShard: number;
+    serverNodes: number;
+    keeperNodes: number;
+    totalNodes: number;
+    perNodeRamGB: number;
+    perNodeVcpu: number;
+    perNodeNvmeGB: number;
+    totalClusterVcpu: number;
+    totalClusterRamGB: number;
+    totalNvmeProvisionedGB: number;
+  };
+  conf: {
+    tableEngine: string;
+    orderBy: string;
+    partitionBy: string;
+    indexGranularity: number;
+    ttlMoveDays: number;
+    ttlDeleteDays: number;
+    storagePolicy: string;
+    timestampCodec: string;
+    defaultCodec: string;
+    minInsertBatchRows: number;
+    partsToThrowInsert: number;
+    maxConcurrentQueries: number;
+    backgroundPoolSize: number;
+  };
+}
+
+export const CLICKHOUSE_DEFAULTS: ClickHouseInputs = {
+  dailyRawIngestTodayGB: 2000,
+  avgRawEventSizeBytes: 600,
+  annualDataGrowth: 0.5,
+  planningHorizonYears: 2,
+  compressionRatio: 10,
+  mergePartOverhead: 1.3,
+  hotRetentionDays: 30,
+  coldRetentionDays: 180,
+  replicationFactor: 2,
+  nvmeUtilizationTarget: 0.8,
+  peakToAvgIngestRatio: 1.5,
+  ingestMergeThroughputPerVcpuMBs: 20,
+  peakConcurrentQueries: 20,
+  avgDataScannedPerQueryGB: 3,
+  targetQueryLatencyP95Sec: 3,
+  scanThroughputPerVcpuGBs: 1.5,
+  workingMemPerQueryGB: 4,
+  coldCacheFractionLocal: 0.05,
+  ramReservedFraction: 0.2,
+  maxRamPerNodeGB: 256,
+  maxVcpuPerNode: 64,
+  maxNvmePerNodeGB: 24000,
+  keeperEnsemble: true,
+};
+
+export function calcClickHouse(i: ClickHouseInputs): ClickHouseResults {
+  const dailyRawIngestAtHorizonGB = i.dailyRawIngestTodayGB * Math.pow(1 + i.annualDataGrowth, i.planningHorizonYears);
+  const rowsPerDayAtHorizon = dailyRawIngestAtHorizonGB * 1e9 / i.avgRawEventSizeBytes;
+  const dailyOnDiskCompressedGB = dailyRawIngestAtHorizonGB / i.compressionRatio;
+  const hotData1CopyGB = dailyOnDiskCompressedGB * i.hotRetentionDays;
+  const hotLocalStoredInclMergeGB = hotData1CopyGB * i.mergePartOverhead;
+  const coldData1CopyGB = dailyOnDiskCompressedGB * i.coldRetentionDays;
+  const coldLocalCacheGB = coldData1CopyGB * i.coldCacheFractionLocal;
+  const localNvmePerCopyProvisionedGB = (hotLocalStoredInclMergeGB + coldLocalCacheGB) / i.nvmeUtilizationTarget;
+  const totalNvmeInclReplicasGB = localNvmePerCopyProvisionedGB * i.replicationFactor;
+  const objectStoreCapacityColdGB = coldData1CopyGB;
+  const totalUniqueDataManagedGB = hotData1CopyGB + coldData1CopyGB;
+  const storageSavedVsRaw = 1 - 1 / i.compressionRatio;
+
+  const avgIngestRateMBs = dailyRawIngestAtHorizonGB * 1000 / 86400;
+  const peakIngestRateMBs = avgIngestRateMBs * i.peakToAvgIngestRatio;
+  const peakInsertRateRowsPerSec = (rowsPerDayAtHorizon / 86400) * i.peakToAvgIngestRatio;
+  const ingestMergeCores = Math.ceil(peakIngestRateMBs / i.ingestMergeThroughputPerVcpuMBs);
+  const backgroundMergeAllowanceCores = Math.ceil(ingestMergeCores / 2);
+
+  const queryScanCores = Math.ceil(
+    (i.peakConcurrentQueries * i.avgDataScannedPerQueryGB) / (i.scanThroughputPerVcpuGBs * i.targetQueryLatencyP95Sec),
+  );
+  const queryWorkingRamGB = i.peakConcurrentQueries * i.workingMemPerQueryGB;
+  const totalVcpuDemand = ingestMergeCores + backgroundMergeAllowanceCores + queryScanCores;
+  const totalQueryRamDemandGB = queryWorkingRamGB;
+
+  const usableQueryRamPerNodeGB = i.maxRamPerNodeGB * (1 - i.ramReservedFraction);
+  const shardsByNvme = Math.ceil(localNvmePerCopyProvisionedGB / i.maxNvmePerNodeGB);
+  const shardsByCpu = Math.ceil(totalVcpuDemand / i.maxVcpuPerNode);
+  const shardsByRam = Math.ceil(totalQueryRamDemandGB / usableQueryRamPerNodeGB);
+  const recommendedShards = Math.max(shardsByNvme, shardsByCpu, shardsByRam, 1);
+  const bindingConstraint =
+    recommendedShards === shardsByNvme ? "NVMe capacity"
+    : recommendedShards === shardsByCpu ? "CPU (vCPU demand)"
+    : "Query RAM";
+
+  const shards = recommendedShards;
+  const replicasPerShard = i.replicationFactor;
+  const serverNodes = shards * replicasPerShard;
+  const keeperNodes = i.keeperEnsemble ? 3 : 0;
+  const totalNodes = serverNodes + keeperNodes;
+  const totalClusterVcpu = serverNodes * i.maxVcpuPerNode;
+  const totalClusterRamGB = serverNodes * i.maxRamPerNodeGB;
+  const totalNvmeProvisionedGB = serverNodes * i.maxNvmePerNodeGB;
+
+  return {
+    dataFootprint: {
+      dailyRawIngestAtHorizonGB, rowsPerDayAtHorizon, dailyOnDiskCompressedGB, hotData1CopyGB, hotLocalStoredInclMergeGB,
+      coldData1CopyGB, coldLocalCacheGB, localNvmePerCopyProvisionedGB, totalNvmeInclReplicasGB,
+      objectStoreCapacityColdGB, totalUniqueDataManagedGB, storageSavedVsRaw,
+    },
+    ingestMerge: { avgIngestRateMBs, peakIngestRateMBs, peakInsertRateRowsPerSec, ingestMergeCores, backgroundMergeAllowanceCores },
+    queryCompute: { queryScanCores, queryWorkingRamGB, totalVcpuDemand, totalQueryRamDemandGB },
+    sharding: { usableQueryRamPerNodeGB, shardsByNvme, shardsByCpu, shardsByRam, recommendedShards, bindingConstraint },
+    cluster: {
+      shards, replicasPerShard, serverNodes, keeperNodes, totalNodes,
+      perNodeRamGB: i.maxRamPerNodeGB, perNodeVcpu: i.maxVcpuPerNode, perNodeNvmeGB: i.maxNvmePerNodeGB,
+      totalClusterVcpu, totalClusterRamGB, totalNvmeProvisionedGB,
+    },
+    conf: {
+      tableEngine: "ReplicatedMergeTree",
+      orderBy: "(service, toStartOfHour(ts), level)",
+      partitionBy: "toYYYYMMDD(timestamp)",
+      indexGranularity: 8192,
+      ttlMoveDays: i.hotRetentionDays,
+      ttlDeleteDays: i.hotRetentionDays + i.coldRetentionDays,
+      storagePolicy: "hot_nvme + cold_s3 (tiered)",
+      timestampCodec: "CODEC(Delta, ZSTD(1))",
+      defaultCodec: "ZSTD(1)",
+      minInsertBatchRows: 100000,
+      partsToThrowInsert: 3000,
+      maxConcurrentQueries: 100,
+      backgroundPoolSize: 32,
+    },
+  };
+}
+
+// ── Cross-tool normalizer (Agentic Stack sizing table) ──────────────────────────
+
+export type AnyInputs =
+  | PGInputs | QdrantInputs | Neo4jInputs | MongoDBInputs | ElasticInputs
+  | PydanticAIInputs | LogfireInputs | ClickHouseInputs;
+
+export interface ResourceSummary {
+  cores: number;
+  ramGB: number;
+  /** GPU accelerators needed. 0 for every calculator today — populated once a GPU-serving tool is wired in. */
+  gpuCount: number;
+}
+
+/** Collapses each tool's differently-shaped Results into one normalized resource row. */
+export function summarizeResources(tool: SizingTool, inputs: AnyInputs): ResourceSummary {
+  switch (tool) {
+    case "postgres": {
+      const r = calcPG(inputs as PGInputs);
+      return { cores: r.cpu.recommendedCores, ramGB: r.memory.recommendedRAM, gpuCount: 0 };
+    }
+    case "qdrant": {
+      const r = calcQdrant(inputs as QdrantInputs);
+      return { cores: r.cluster.totalClusterVCPU, ramGB: r.cluster.totalClusterRAM, gpuCount: 0 };
+    }
+    case "neo4j": {
+      const r = calcNeo4j(inputs as Neo4jInputs);
+      return { cores: r.cluster.totalClusterVCPU, ramGB: r.cluster.totalClusterRAM, gpuCount: 0 };
+    }
+    case "mongodb": {
+      const r = calcMongoDB(inputs as MongoDBInputs);
+      return { cores: r.cluster.totalVcpu, ramGB: r.cluster.totalRAMGB, gpuCount: 0 };
+    }
+    case "elastic": {
+      const r = calcElastic(inputs as ElasticInputs);
+      return { cores: r.cluster.totalDataTierVcpu, ramGB: r.cluster.totalDataTierRAM, gpuCount: 0 };
+    }
+    case "pydantic-ai": {
+      const r = calcPydanticAI(inputs as PydanticAIInputs);
+      return { cores: r.recommended.recommendedFleetVcpu, ramGB: r.recommended.recommendedFleetRamGB, gpuCount: 0 };
+    }
+    case "logfire": {
+      const r = calcLogfire(inputs as LogfireInputs);
+      return { cores: r.cluster.totalProvisionedVcpu, ramGB: r.cluster.totalProvisionedRamGB, gpuCount: 0 };
+    }
+    case "clickhouse": {
+      const r = calcClickHouse(inputs as ClickHouseInputs);
+      return { cores: r.cluster.totalClusterVcpu, ramGB: r.cluster.totalClusterRamGB, gpuCount: 0 };
+    }
+  }
 }

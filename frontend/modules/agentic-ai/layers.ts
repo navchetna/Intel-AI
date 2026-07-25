@@ -37,6 +37,9 @@ export const mainLayers: ClickableItem[] = [
     id: "agent-frameworks",
     title: "Agent frameworks",
     subtitle: "LangGraph, CrewAI, AutoGen, Pydantic AI",
+    icons: [
+      { src: "/pydantic-ai.jpg", alt: "Pydantic AI" },
+    ],
     description:
       "High-level orchestration frameworks that implement agent patterns — ReAct, plan-and-execute, multi-agent debate — and expose them via a unified API optimised for Intel hardware.",
     details: [
@@ -139,10 +142,11 @@ export const mainLayers: ClickableItem[] = [
         id: "database",
         title: "Database",
         icons: [
-          { src: "/mysql.jpg",   alt: "MySQL" },
-          { src: "/postgre.jpg", alt: "PostgreSQL" },
-          { src: "/mongo.jpg",   alt: "MongoDB" },
-          { src: "/neo4j.jpg",   alt: "Neo4J" },
+          { src: "/mysql.jpg",     alt: "MySQL" },
+          { src: "/postgre.jpg",   alt: "PostgreSQL" },
+          { src: "/mongo.jpg",     alt: "MongoDB" },
+          { src: "/neo4j.jpg",     alt: "Neo4J" },
+          { src: "/clickhouse.jpg", alt: "ClickHouse" },
         ],
       },
       {
@@ -176,7 +180,7 @@ export const mainLayers: ClickableItem[] = [
     description:
       "Connects agents to structured and unstructured enterprise knowledge — relational databases, vector indices, streaming pipelines, and data connectors — with access controls inherited from the governance layer.",
     details: [
-      { heading: "Databases", body: "MySQL, PostgreSQL, MongoDB, and Neo4J provide relational, document, and graph storage with schema introspection and safe SQL generation." },
+      { heading: "Databases", body: "MySQL, PostgreSQL, MongoDB, and Neo4J provide relational, document, and graph storage with schema introspection and safe SQL generation. ClickHouse adds columnar OLAP storage for high-volume logs, traces, and analytical queries." },
       { heading: "Vector Databases", body: "Redis, QDrant, and Milvus power AVX-512 / AMX-accelerated dense similarity search for sub-millisecond RAG and semantic retrieval." },
       { heading: "Pipelines", body: "Kafka streams real-time events, Spark handles batch analytics, and Airflow orchestrates end-to-end data pipelines with lineage tracking." },
       { heading: "Connectors", body: "Elasticsearch for full-text search, Fluentd for log aggregation, and Debezium for database change capture to keep downstream stores in sync." },
@@ -220,6 +224,9 @@ export const sidePanels: ClickableItem[] = [
     id: "observability-telemetry",
     title: "Observability & telemetry",
     subtitle: "+ Langfuse",
+    icons: [
+      { src: "/pydantic-logfire.jpg", alt: "Pydantic Logfire" },
+    ],
     description:
       "Cross-cutting monitoring, tracing, and continual performance analysis spanning every layer of the stack.",
     details: [
@@ -265,4 +272,25 @@ export const sidePanels: ClickableItem[] = [
       { heading: "Model Promotion", body: "Automated model evaluation pipeline that gates promotion from the model registry to production serving." },
     ],
   },
+];
+
+// ── flat, stack-ordered list of every icon (used for workload selection/sizing) ──
+
+export interface WorkloadLocation {
+  icon: { src: string; alt: string };
+  /** The owning main layer or cross-cutting panel. */
+  layer: ClickableItem;
+  /** Set when the icon lives inside a sub-layer (e.g. Data & knowledge → Database). */
+  subLayer?: SubLayer;
+}
+
+export const allWorkloadIcons: WorkloadLocation[] = [
+  ...mainLayers.flatMap(layer => {
+    if (layer.subLayers) {
+      return layer.subLayers.flatMap(subLayer =>
+        subLayer.icons.map(icon => ({ icon, layer, subLayer })));
+    }
+    return (layer.icons ?? []).map(icon => ({ icon, layer }));
+  }),
+  ...sidePanels.flatMap(panel => (panel.icons ?? []).map(icon => ({ icon, layer: panel }))),
 ];
