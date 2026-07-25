@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { mainLayers, sidePanels, type ClickableItem, type SubLayer } from "./layers";
-import { SizingSheet, type SizingTool } from "./SizingSheet";
+import { SIZING_MAP } from "./sizing-wiring";
 
 // Two visual families matching the image's blue / warm distinction
 // Blue family (platform layers): cyan → azure → royal blue
@@ -21,14 +21,10 @@ const LAYER_COLORS: string[] = [
   "#3a77cc",  // 10 Infrastructure            — Intel Royal Blue (blue family)
 ];
 
-// Icons that have a sizing sheet — keyed by the icon's alt text
-const SIZING_MAP: Partial<Record<string, SizingTool>> = {
-  "PostgreSQL": "postgres",
-  "QDrant":     "qdrant",
-  "Neo4J":      "neo4j",
-  "MongoDB":    "mongodb",
-  "Elastic":    "elastic",
-};
+const EMPTY_SELECTION: Set<string> = new Set();
+
+/** Layer-click detail panel is pending accurate content — flip back on once it's ready. */
+const SHOW_LAYER_DETAILS = false;
 
 function hexToRgb(hex: string) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -40,16 +36,23 @@ function hexToRgb(hex: string) {
 // ── Cross-cutting panel (left column, horizontal text) ────────────────────────
 
 function CrossCuttingPanel({
-  item, active, onToggle, className = "",
+  item, active, onToggle, className = "", onSizingClick = () => {}, selectionMode, selectedWorkloads, onToggleWorkload,
 }: {
-  item: ClickableItem; active: boolean; onToggle: (i: ClickableItem) => void; className?: string;
+  item: ClickableItem;
+  active: boolean;
+  onToggle: (i: ClickableItem) => void;
+  className?: string;
+  onSizingClick?: (workloadId: string) => void;
+  selectionMode?: boolean;
+  selectedWorkloads?: Set<string>;
+  onToggleWorkload?: (workloadId: string) => void;
 }) {
   const accentColor = "#818cf8";
   const accentRgb   = "129,140,248";
   return (
     <button
       onClick={() => onToggle(item)}
-      className={`group relative flex flex-col items-start justify-center gap-0.5 px-3 py-3 text-left w-full focus:outline-none transition-all duration-200 ${className}`}
+      className={`group relative flex flex-col items-start justify-center gap-0.5 px-3 py-3 text-left w-full focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/40 transition-all duration-200 ${className}`}
       style={{
         background: active
           ? `rgba(${accentRgb},0.10)`
@@ -80,6 +83,22 @@ function CrossCuttingPanel({
           {item.subtitle}
         </span>
       )}
+      {item.icons && item.icons.length > 0 && (
+        <div className="relative flex items-center gap-2.5 mt-2">
+          {item.icons.map(icon => (
+            <SizableIcon
+              key={icon.alt}
+              icon={icon}
+              rgb={accentRgb}
+              size={44}
+              onSizingClick={onSizingClick}
+              selectionMode={selectionMode}
+              selectedWorkloads={selectedWorkloads}
+              onToggleWorkload={onToggleWorkload}
+            />
+          ))}
+        </div>
+      )}
     </button>
   );
 }
@@ -87,16 +106,20 @@ function CrossCuttingPanel({
 // ── Selectable icon (with optional sizing badge) ───────────────────────────────
 
 function SizableIcon({
-  icon, rgb, size = 44, onSizingClick,
+  icon, rgb, size = 44, onSizingClick, selectionMode = false, selectedWorkloads = EMPTY_SELECTION, onToggleWorkload = () => {},
 }: {
   icon: { src: string; alt: string };
   rgb: string;
   size?: number;
-  onSizingClick: (tool: SizingTool) => void;
+  onSizingClick: (workloadId: string) => void;
+  selectionMode?: boolean;
+  selectedWorkloads?: Set<string>;
+  onToggleWorkload?: (workloadId: string) => void;
 }) {
   const [hov, setHov] = useState(false);
   const tool = SIZING_MAP[icon.alt];
   const dim = size === 44 ? "w-11 h-11" : "w-12 h-12";
+  const isSelected = selectedWorkloads.has(icon.alt);
 
   return (
     <div
@@ -104,55 +127,65 @@ function SizableIcon({
       title={tool ? `Open ${icon.alt} sizing tool` : icon.alt}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
-      onClick={tool ? e => { e.stopPropagation(); onSizingClick(tool); } : undefined}
+      onClick={tool ? e => { e.stopPropagation(); onSizingClick(icon.alt); } : undefined}
     >
-      <div
-        className={`relative ${dim} rounded-lg overflow-hidden flex items-center justify-center transition-all duration-200`}
-        style={{
-          border: `1px solid rgba(${rgb},${tool && hov ? 0.55 : 0.2})`,
-          background: `rgba(${rgb},${tool && hov ? 0.15 : 0.07})`,
-          boxShadow: tool && hov ? `0 0 14px rgba(${rgb},0.35)` : undefined,
-        }}
-      >
-        <Image
-          src={icon.src} alt={icon.alt}
-          width={size} height={size}
-          className="w-full h-full object-contain"
-        />
-
-        {/* Hover overlay for sizeable icons */}
-        {tool && (
+      <div className={`relative ${dim}`}>
+        {/* Selection checkmark — sits outside the icon, top-left corner */}
+        {selectionMode && (
           <div
-            className="absolute inset-0 flex items-center justify-center transition-opacity duration-150"
+            role="checkbox"
+            aria-checked={isSelected}
+            onClick={e => { e.stopPropagation(); onToggleWorkload(icon.alt); }}
+            className="absolute -top-2 -left-2 z-10 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer transition-colors duration-150"
             style={{
-              background: `rgba(${rgb},0.72)`,
-              opacity: hov ? 1 : 0,
+              background: isSelected ? "#22d3ee" : "rgba(8,15,32,0.9)",
+              border: isSelected ? "2px solid rgba(255,255,255,0.9)" : "2px solid rgba(255,255,255,0.65)",
+              boxShadow: isSelected ? "0 0 8px rgba(34,211,238,0.7)" : "0 1px 3px rgba(0,0,0,0.5)",
             }}
           >
-            <div className="flex flex-col items-center gap-0.5">
-              {/* Ruler SVG */}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 3l18 18M8 16l2-2M13 11l2-2M18 6l-2 2" />
+            {isSelected && (
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6L9 17l-5-5" />
               </svg>
-              <span className="text-[8px] font-bold text-white tracking-widest">SIZE</span>
-            </div>
+            )}
           </div>
         )}
+        <div
+          className="w-full h-full rounded-lg overflow-hidden flex items-center justify-center transition-all duration-200"
+          style={{
+            border: `1px solid rgba(${rgb},${tool && hov ? 0.55 : 0.2})`,
+            background: `rgba(${rgb},${tool && hov ? 0.15 : 0.07})`,
+            boxShadow: tool && hov ? `0 0 14px rgba(${rgb},0.35)` : undefined,
+          }}
+        >
+          <Image
+            src={icon.src} alt={icon.alt}
+            width={size} height={size}
+            className="w-full h-full object-contain"
+          />
 
-        {/* Sizing badge (bottom-right corner) — always visible when has tool */}
-        {tool && !hov && (
-          <div
-            className="absolute bottom-0.5 right-0.5 w-3 h-3 rounded-[3px] flex items-center justify-center"
-            style={{ background: `rgba(${rgb},0.9)`, boxShadow: `0 0 6px rgba(${rgb},0.5)` }}
-          >
-            <svg width="7" height="7" viewBox="0 0 24 24" fill="white">
-              <path d="M4 4h16v3H4zM4 10h5v3H4zM4 16h5v3H4zM11 10h5v3h-5zM11 16h5v3h-5zM18 10h2v3h-2zM18 16h2v3h-2z" />
-            </svg>
-          </div>
-        )}
+          {/* Hover overlay for sizeable icons */}
+          {tool && (
+            <div
+              className="absolute inset-0 flex items-center justify-center transition-opacity duration-150"
+              style={{
+                background: `rgba(${rgb},0.72)`,
+                opacity: hov ? 1 : 0,
+              }}
+            >
+              <div className="flex flex-col items-center gap-0.5">
+                {/* Ruler SVG */}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 3l18 18M8 16l2-2M13 11l2-2M18 6l-2 2" />
+                </svg>
+                <span className="text-[8px] font-bold text-white tracking-widest">SIZE</span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <span
-        className="text-[9px] font-medium leading-none transition-colors duration-150"
+        className="text-[10px] font-medium leading-none transition-colors duration-150"
         style={{ color: tool && hov ? `rgba(${rgb},0.9)` : "rgba(147,197,253,0.45)" }}
       >
         {icon.alt}
@@ -164,13 +197,16 @@ function SizableIcon({
 // ── Layer row (right column) ──────────────────────────────────────────────────
 
 function LayerRow({
-  layer, active, onToggle, color, onSizingClick,
+  layer, active, onToggle, color, onSizingClick, selectionMode, selectedWorkloads, onToggleWorkload,
 }: {
   layer: ClickableItem;
   active: boolean;
   onToggle: (i: ClickableItem) => void;
   color: string;
-  onSizingClick: (tool: SizingTool) => void;
+  onSizingClick: (workloadId: string) => void;
+  selectionMode?: boolean;
+  selectedWorkloads?: Set<string>;
+  onToggleWorkload?: (workloadId: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const rgb = hexToRgb(color);
@@ -219,31 +255,31 @@ function LayerRow({
         onClick={() => onToggle(layer)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        className="group relative w-full text-left flex flex-col border-b border-white/[0.06] last:border-0 focus:outline-none overflow-hidden"
+        className="group relative w-full text-left flex flex-col border-b border-white/[0.06] last:border-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/40 overflow-hidden"
         style={bgStyle}
       >
         {accentBar}
         {shimmer}
         {/* Title row */}
-        <div className="relative flex items-center gap-3 px-8 pt-4 pb-2 w-full">
+        <div className="relative flex items-center gap-3 px-8 pt-5 pb-3 w-full">
           <div className="pl-2 flex-1 min-w-0">
-            <p className="font-bold text-[15px] leading-tight tracking-wide transition-colors duration-200"
+            <p className="font-bold text-base leading-tight tracking-wide transition-colors duration-200"
               style={{ color: active ? color : hovered ? "var(--dm-txt-primary)" : "var(--dm-txt-body)" }}>
               {layer.title}
             </p>
-            <p className="text-blue-300/50 text-xs mt-0.5 font-medium">{layer.subtitle}</p>
+            <p className="text-blue-300/50 text-xs mt-1 font-medium">{layer.subtitle}</p>
           </div>
           {chevron}
         </div>
         {/* Sub-layers strip */}
-        <div className="relative flex flex-wrap items-start gap-x-6 gap-y-3 px-10 pb-5 border-t border-white/[0.05]">
+        <div className="relative flex flex-wrap items-start gap-x-8 gap-y-5 px-10 pb-7 border-t border-white/[0.05]">
           {(layer.subLayers as SubLayer[]).map(sub => (
-            <div key={sub.id} className="flex flex-col gap-2 pt-4">
-              <span className="text-[10px] font-semibold uppercase tracking-widest"
+            <div key={sub.id} className="flex flex-col gap-3 pt-5">
+              <span className="text-[11px] font-semibold uppercase tracking-widest"
                 style={{ color: `rgba(${rgb},0.65)` }}>
                 {sub.title}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 {sub.icons.map(icon => (
                   <SizableIcon
                     key={icon.alt}
@@ -251,6 +287,9 @@ function LayerRow({
                     rgb={rgb}
                     size={44}
                     onSizingClick={onSizingClick}
+                    selectionMode={selectionMode}
+                    selectedWorkloads={selectedWorkloads}
+                    onToggleWorkload={onToggleWorkload}
                   />
                 ))}
               </div>
@@ -266,21 +305,21 @@ function LayerRow({
       onClick={() => onToggle(layer)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="group relative w-full text-left flex items-center gap-3 px-8 py-4 border-b border-white/[0.06] last:border-0 focus:outline-none overflow-hidden"
+      className="group relative w-full text-left flex items-center gap-3 px-8 py-6 border-b border-white/[0.06] last:border-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/40 overflow-hidden"
       style={bgStyle}
     >
       {accentBar}
       {shimmer}
       <div className="relative pl-2 flex-1 min-w-0">
-        <p className="font-bold text-[15px] leading-tight tracking-wide transition-colors duration-200"
+        <p className="font-bold text-base leading-tight tracking-wide transition-colors duration-200"
           style={{ color: active ? color : hovered ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.88)" }}>
           {layer.title}
         </p>
-        <p className="text-blue-300/50 text-xs mt-0.5 font-medium">{layer.subtitle}</p>
+        <p className="text-blue-300/50 text-xs mt-1 font-medium">{layer.subtitle}</p>
       </div>
       {/* Inline icons */}
       {layer.icons && layer.icons.length > 0 && (
-        <div className="relative flex items-center gap-3 flex-shrink-0">
+        <div className="relative flex items-center gap-4 flex-shrink-0">
           {layer.icons.map(icon => (
             <SizableIcon
               key={icon.alt}
@@ -288,6 +327,9 @@ function LayerRow({
               rgb={rgb}
               size={48}
               onSizingClick={onSizingClick}
+              selectionMode={selectionMode}
+              selectedWorkloads={selectedWorkloads}
+              onToggleWorkload={onToggleWorkload}
             />
           ))}
         </div>
@@ -299,15 +341,26 @@ function LayerRow({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function AgenticStackView() {
+interface AgenticStackViewProps {
+  selectionMode?: boolean;
+  selectedWorkloads?: Set<string>;
+  onToggleWorkload?: (workloadId: string) => void;
+  onSizingClick?: (workloadId: string) => void;
+}
+
+export function AgenticStackView({
+  selectionMode = false,
+  selectedWorkloads = EMPTY_SELECTION,
+  onToggleWorkload = () => {},
+  onSizingClick = () => {},
+}: AgenticStackViewProps = {}) {
   const [selected, setSelected]       = useState<ClickableItem | null>(null);
-  const [openSizing, setOpenSizing]   = useState<SizingTool | null>(null);
 
   const toggle = (item: ClickableItem) =>
     setSelected(prev => prev?.id === item.id ? null : item);
 
   return (
-    <main>
+    <div>
       <section className="mx-auto max-w-screen-2xl px-6 py-6">
         <div className="flex flex-col gap-8 xl:flex-row xl:items-stretch">
 
@@ -340,8 +393,7 @@ export function AgenticStackView() {
                 </span>
                 {/* Legend */}
                 <div className="ml-auto flex items-center gap-1.5 text-[10px] text-white/25">
-                  <div className="w-2 h-2 rounded-sm" style={{ background: "rgba(96,165,250,0.7)" }} />
-                  <span>= sizing tool available</span>
+                  <span>Hover an icon to size it</span>
                 </div>
               </div>
 
@@ -370,6 +422,10 @@ export function AgenticStackView() {
                         active={selected?.id === panel.id}
                         onToggle={toggle}
                         className="flex-1"
+                        onSizingClick={onSizingClick}
+                        selectionMode={selectionMode}
+                        selectedWorkloads={selectedWorkloads}
+                        onToggleWorkload={onToggleWorkload}
                       />
                     ))}
                   </div>
@@ -384,7 +440,10 @@ export function AgenticStackView() {
                       active={selected?.id === layer.id}
                       onToggle={toggle}
                       color={LAYER_COLORS[index]}
-                      onSizingClick={setOpenSizing}
+                      onSizingClick={onSizingClick}
+                      selectionMode={selectionMode}
+                      selectedWorkloads={selectedWorkloads}
+                      onToggleWorkload={onToggleWorkload}
                     />
                   ))}
                 </div>
@@ -392,7 +451,8 @@ export function AgenticStackView() {
             </div>
           </div>
 
-          {/* ── Details panel ── */}
+          {/* ── Details panel (hidden until content is ready — SHOW_LAYER_DETAILS) ── */}
+          {SHOW_LAYER_DETAILS && (
           <div className="xl:w-[420px] xl:flex-shrink-0 min-w-0 flex flex-col">
             {selected ? (
               <div
@@ -450,16 +510,9 @@ export function AgenticStackView() {
               </div>
             )}
           </div>
+          )}
         </div>
       </section>
-
-      {/* ── Sizing Sheet Modal ── */}
-      {openSizing && (
-        <SizingSheet
-          tool={openSizing}
-          onClose={() => setOpenSizing(null)}
-        />
-      )}
-    </main>
+    </div>
   );
 }

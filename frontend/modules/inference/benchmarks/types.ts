@@ -5,6 +5,7 @@ export interface BenchmarkRecord {
   id: number;
   timestamp: string;
   platform: string;
+  serving_engine: string | null;
   model: string;
   tp: number | null;
   num_deployments: number | null;
@@ -53,6 +54,7 @@ export interface BenchmarkFilters {
   output_tokens: string;
   batch_size: string;
   platform: string;
+  serving_engine: string;
 }
 
 export const EMPTY_FILTERS: BenchmarkFilters = {
@@ -61,6 +63,7 @@ export const EMPTY_FILTERS: BenchmarkFilters = {
   output_tokens: "",
   batch_size: "",
   platform: "",
+  serving_engine: "",
 };
 
 /** Batch-size options (powers of two, 1 → 1024). Maps to the `concurrency` column. */
@@ -69,6 +72,9 @@ export const BATCH_SIZES: number[] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 102
 /** Default hardware options; merged with distinct platforms loaded from the API. */
 export const DEFAULT_HARDWARE: string[] = ["Xeon", "Battlemage B70"];
 
+/** Serving engines the Models-page Benchmarks tab filters by. */
+export const SERVING_ENGINES: string[] = ["vLLM", "SGLang"];
+
 /**
  * Canonical Excel/template column headers, in order. Used to build the
  * downloadable template and to map uploaded cells to record fields.
@@ -76,6 +82,7 @@ export const DEFAULT_HARDWARE: string[] = ["Xeon", "Battlemage B70"];
 export const EXCEL_COLUMNS = [
   "Timestamp",
   "Platform",
+  "Serving_Engine",
   "Model",
   "TP",
   "Num_Deployments",
@@ -102,6 +109,7 @@ export const EXCEL_COLUMNS = [
 export const TABLE_COLUMNS: { key: keyof BenchmarkRecord; label: string }[] = [
   { key: "timestamp", label: "Timestamp" },
   { key: "platform", label: "Platform" },
+  { key: "serving_engine", label: "Serving_Engine" },
   { key: "model", label: "Model" },
   { key: "tp", label: "TP" },
   { key: "num_deployments", label: "Num_Deployments" },

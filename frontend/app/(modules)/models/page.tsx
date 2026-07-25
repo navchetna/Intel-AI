@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { ModelsView } from "@/modules/models/ModelsView";
+import { ModelsPageView } from "@/modules/models/ModelsPageView";
 
 export const metadata: Metadata = { title: "Model Catalog — Intel-AI" };
 
 export default function ModelsPage() {
-  return <ModelsView />;
+  return <ModelsPageView />;
 }

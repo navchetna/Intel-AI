@@ -1,20 +1,29 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import Image from "next/image";
 import {
-  calcPG, PG_DEFAULTS, type PGInputs,
-  calcQdrant, QDRANT_DEFAULTS, type QdrantInputs,
-  calcNeo4j, NEO4J_DEFAULTS, type Neo4jInputs,
-  calcMongoDB, MONGODB_DEFAULTS, type MongoDBInputs,
-  calcElastic, ELASTIC_DEFAULTS, type ElasticInputs, type ElasticWorkload,
+  calcPG, type PGInputs,
+  calcQdrant, type QdrantInputs,
+  calcNeo4j, type Neo4jInputs,
+  calcMongoDB, type MongoDBInputs,
+  calcElastic, type ElasticInputs, type ElasticWorkload,
+  calcPydanticAI, type PydanticAIInputs,
+  calcLogfire, type LogfireInputs,
+  calcClickHouse, type ClickHouseInputs,
+  type AnyInputs, type SizingTool,
 } from "./sizing-calcs";
+
+export type { SizingTool } from "./sizing-calcs";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-export type SizingTool = "postgres" | "qdrant" | "neo4j" | "mongodb" | "elastic";
-
-interface Props { tool: SizingTool; onClose: () => void; }
+interface Props {
+  tool: SizingTool;
+  inputs: AnyInputs;
+  onInputsChange: (inputs: AnyInputs) => void;
+  onClose: () => void;
+}
 
 const TOOL_META: Record<SizingTool, { name: string; accent: string; accentRgb: string; logo: string; tagline: string }> = {
   postgres: { name: "PostgreSQL OLTP Sizing",  accent: "#38bdf8", accentRgb: "56,189,248",  logo: "/postgre.jpg", tagline: "Estimate CPU, RAM & postgresql.conf for production OLTP workloads" },
@@ -22,6 +31,9 @@ const TOOL_META: Record<SizingTool, { name: string; accent: string; accentRgb: s
   neo4j:    { name: "Neo4j Graph DB Sizing",    accent: "#34d399", accentRgb: "52,211,153",  logo: "/neo4j.jpg",   tagline: "Size a Neo4j cluster for graph analytics and traversal" },
   mongodb:  { name: "MongoDB WiredTiger Sizing",    accent: "#00ED64", accentRgb: "0,237,100",   logo: "/mongo.jpg",   tagline: "Size a MongoDB replica set or sharded cluster with WiredTiger storage engine" },
   elastic:  { name: "Elasticsearch Cluster Sizing", accent: "#F04E98", accentRgb: "240,78,152",  logo: "/elastic.jpg", tagline: "Size a hot/warm/cold Elastic cluster for logs or full-text search workloads" },
+  "pydantic-ai": { name: "Pydantic AI Agent Tier Sizing", accent: "#E92063", accentRgb: "233,32,99", logo: "/pydantic-ai.jpg", tagline: "Size the agent orchestration fleet (Xeon-class) with Little's Law concurrency" },
+  logfire:  { name: "Pydantic Logfire Sizing", accent: "#8B5CF6", accentRgb: "139,92,246", logo: "/pydantic-logfire.jpg", tagline: "Size a self-hosted Logfire cluster — object storage, ingest/query pods, and Postgres metadata" },
+  clickhouse: { name: "ClickHouse Cluster Sizing", accent: "#FFCC01", accentRgb: "255,204,1", logo: "/clickhouse.jpg", tagline: "Size a ClickHouse cluster for high-volume logs, traces, and metrics" },
 };
 
 // ── Shared input primitives ────────────────────────────────────────────────────
@@ -118,10 +130,12 @@ function WorkingRow({ label, value, unit }: { label: string; value: string | num
 
 // ── PostgreSQL form + results ──────────────────────────────────────────────────
 
-function PGForm({ accent, accentRgb }: { accent: string; accentRgb: string }) {
-  const [inp, setInp] = useState<PGInputs>(PG_DEFAULTS);
+function PGForm({ accent, accentRgb, inputs, onChange }: {
+  accent: string; accentRgb: string; inputs: PGInputs; onChange: (i: PGInputs) => void;
+}) {
+  const inp = inputs;
   const r = useMemo(() => calcPG(inp), [inp]);
-  const set = <K extends keyof PGInputs>(k: K, v: PGInputs[K]) => setInp(p => ({ ...p, [k]: v }));
+  const set = <K extends keyof PGInputs>(k: K, v: PGInputs[K]) => onChange({ ...inp, [k]: v });
 
   return (
     <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
@@ -195,10 +209,12 @@ function PGForm({ accent, accentRgb }: { accent: string; accentRgb: string }) {
 
 // ── Qdrant form + results ──────────────────────────────────────────────────────
 
-function QdrantForm({ accent, accentRgb }: { accent: string; accentRgb: string }) {
-  const [inp, setInp] = useState<QdrantInputs>(QDRANT_DEFAULTS);
+function QdrantForm({ accent, accentRgb, inputs, onChange }: {
+  accent: string; accentRgb: string; inputs: QdrantInputs; onChange: (i: QdrantInputs) => void;
+}) {
+  const inp = inputs;
   const r = useMemo(() => calcQdrant(inp), [inp]);
-  const set = <K extends keyof QdrantInputs>(k: K, v: QdrantInputs[K]) => setInp(p => ({ ...p, [k]: v }));
+  const set = <K extends keyof QdrantInputs>(k: K, v: QdrantInputs[K]) => onChange({ ...inp, [k]: v });
   const fmt = (n: number) => n < 1 ? n.toFixed(3) : n.toFixed(1);
 
   return (
@@ -290,10 +306,12 @@ function QdrantForm({ accent, accentRgb }: { accent: string; accentRgb: string }
 
 // ── Neo4j form + results ───────────────────────────────────────────────────────
 
-function Neo4jForm({ accent, accentRgb }: { accent: string; accentRgb: string }) {
-  const [inp, setInp] = useState<Neo4jInputs>(NEO4J_DEFAULTS);
+function Neo4jForm({ accent, accentRgb, inputs, onChange }: {
+  accent: string; accentRgb: string; inputs: Neo4jInputs; onChange: (i: Neo4jInputs) => void;
+}) {
+  const inp = inputs;
   const r = useMemo(() => calcNeo4j(inp), [inp]);
-  const set = <K extends keyof Neo4jInputs>(k: K, v: Neo4jInputs[K]) => setInp(p => ({ ...p, [k]: v }));
+  const set = <K extends keyof Neo4jInputs>(k: K, v: Neo4jInputs[K]) => onChange({ ...inp, [k]: v });
   const fmt2 = (n: number) => n.toFixed(2);
 
   return (
@@ -394,10 +412,12 @@ function Neo4jForm({ accent, accentRgb }: { accent: string; accentRgb: string })
 
 // ── Elasticsearch form + results ──────────────────────────────────────────────
 
-function ElasticForm({ accent, accentRgb }: { accent: string; accentRgb: string }) {
-  const [inp, setInp] = useState<ElasticInputs>(ELASTIC_DEFAULTS);
+function ElasticForm({ accent, accentRgb, inputs, onChange }: {
+  accent: string; accentRgb: string; inputs: ElasticInputs; onChange: (i: ElasticInputs) => void;
+}) {
+  const inp = inputs;
   const r = useMemo(() => calcElastic(inp), [inp]);
-  const set = <K extends keyof ElasticInputs>(k: K, v: ElasticInputs[K]) => setInp(p => ({ ...p, [k]: v }));
+  const set = <K extends keyof ElasticInputs>(k: K, v: ElasticInputs[K]) => onChange({ ...inp, [k]: v });
   const fmt = (n: number) => n < 1 ? n.toFixed(3) : n.toFixed(1);
   const isSearch = inp.workloadType === "Search";
 
@@ -582,10 +602,12 @@ function ElasticForm({ accent, accentRgb }: { accent: string; accentRgb: string 
 
 // ── MongoDB form + results ─────────────────────────────────────────────────────
 
-function MongoDBForm({ accent, accentRgb }: { accent: string; accentRgb: string }) {
-  const [inp, setInp] = useState<MongoDBInputs>(MONGODB_DEFAULTS);
+function MongoDBForm({ accent, accentRgb, inputs, onChange }: {
+  accent: string; accentRgb: string; inputs: MongoDBInputs; onChange: (i: MongoDBInputs) => void;
+}) {
+  const inp = inputs;
   const r = useMemo(() => calcMongoDB(inp), [inp]);
-  const set = <K extends keyof MongoDBInputs>(k: K, v: MongoDBInputs[K]) => setInp(p => ({ ...p, [k]: v }));
+  const set = <K extends keyof MongoDBInputs>(k: K, v: MongoDBInputs[K]) => onChange({ ...inp, [k]: v });
   const fmt = (n: number) => n.toFixed(2);
 
   return (
@@ -709,9 +731,384 @@ function MongoDBForm({ accent, accentRgb }: { accent: string; accentRgb: string 
   );
 }
 
+// ── Pydantic AI form + results ─────────────────────────────────────────────────
+
+function PydanticAIForm({ accent, accentRgb, inputs, onChange }: {
+  accent: string; accentRgb: string; inputs: PydanticAIInputs; onChange: (i: PydanticAIInputs) => void;
+}) {
+  const inp = inputs;
+  const r = useMemo(() => calcPydanticAI(inp), [inp]);
+  const set = <K extends keyof PydanticAIInputs>(k: K, v: PydanticAIInputs[K]) => onChange({ ...inp, [k]: v });
+  const fmt = (n: number) => n < 10 ? n.toFixed(2) : n.toFixed(1);
+
+  return (
+    <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
+      {/* Inputs */}
+      <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
+        <SectionTitle>Workload</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Peak agent runs/sec" value={inp.peakRunsPerSec} min={0.1} step={1} onChange={v => set("peakRunsPerSec", v)} />
+          <NumField label="Steps per run" value={inp.stepsPerRun} min={1} step={1} onChange={v => set("stepsPerRun", v)} note="LLM round-trips per run" />
+          <NumField label="Avg LLM latency/step (s)" value={inp.avgLlmLatencyPerStepSec} min={0.1} step={0.1} onChange={v => set("avgLlmLatencyPerStepSec", v)} />
+          <NumField label="Tool calls per run" value={inp.toolCallsPerRun} min={0} step={1} onChange={v => set("toolCallsPerRun", v)} />
+          <NumField label="Avg tool latency/call (s)" value={inp.avgToolLatencyPerCallSec} min={0} step={0.05} onChange={v => set("avgToolLatencyPerCallSec", v)} />
+          <NumField label="Local CPU work/step (ms)" value={inp.localCpuWorkPerStepMs} min={0} step={1} onChange={v => set("localCpuWorkPerStepMs", v)} />
+          <NumField label="RAM/in-flight run (MB)" value={inp.ramPerInFlightRunMB} min={0} step={1} onChange={v => set("ramPerInFlightRunMB", v)} />
+          <NumField label="Retry/overhead factor" value={inp.retryOverheadFactor} min={1} step={0.01} onChange={v => set("retryOverheadFactor", v)} note="x" />
+        </div>
+        <SectionTitle>Fleet</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Max concurrent runs/worker" value={inp.maxConcurrentRunsPerWorker} min={1} step={10} onChange={v => set("maxConcurrentRunsPerWorker", v)} />
+          <NumField label="Worker processes/node" value={inp.workerProcessesPerNode} min={1} step={1} onChange={v => set("workerProcessesPerNode", v)} />
+          <NumField label="Usable vCPU/node" value={inp.usableVcpuPerNode} min={1} step={1} onChange={v => set("usableVcpuPerNode", v)} />
+          <NumField label="Usable RAM/node (GB)" value={inp.usableRamPerNodeGB} min={1} step={1} onChange={v => set("usableRamPerNodeGB", v)} />
+          <NumField label="CPU utilization target" value={inp.cpuUtilizationTarget} min={0.1} step={0.05} onChange={v => set("cpuUtilizationTarget", v)} note="0.1–1.0" />
+          <NumField label="Concurrency safety headroom" value={inp.concurrencySafetyHeadroom} min={0} step={0.05} onChange={v => set("concurrencySafetyHeadroom", v)} note="0.3 = +30%" />
+        </div>
+        <SectionTitle>Durable execution</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <SelField label="Backend" value={inp.durableExecutionBackend} onChange={v => set("durableExecutionBackend", v)} options={["None", "DBOS (Postgres)", "Temporal (cluster)"]} />
+          <NumField label="Checkpoints per run" value={inp.checkpointsPerRun} min={0} step={1} onChange={v => set("checkpointsPerRun", v)} />
+          <NumField label="Avg checkpoint size (KB)" value={inp.avgCheckpointSizeKB} min={0} step={1} onChange={v => set("avgCheckpointSizeKB", v)} />
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-4">Recommended fleet</p>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <MetricCard label="Recommended nodes" value={r.recommended.recommendedNodes} unit="nodes" accent={accentRgb} />
+          <MetricCard label="Fleet vCPU" value={r.recommended.recommendedFleetVcpu} unit="vCPU" accent={accentRgb} />
+          <MetricCard label="Fleet RAM" value={fmt(r.recommended.recommendedFleetRamGB)} unit="GB" accent={accentRgb} />
+          <MetricCard label="Required workers" value={r.fleet.requiredWorkers} unit="workers" accent={accentRgb} />
+        </div>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Concurrency (Little&apos;s Law)</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Avg run wall-time" value={fmt(r.concurrency.avgRunWallTimeSec)} unit="s" />
+            <WorkingRow label="Active CPU per run" value={fmt(r.concurrency.activeCpuPerRunMs)} unit="ms" />
+            <WorkingRow label="I/O wait fraction" value={(r.concurrency.ioWaitFraction * 100).toFixed(1)} unit="%" />
+            <WorkingRow label="Peak concurrent in-flight runs" value={fmt(r.concurrency.peakConcurrentInFlightRuns)} />
+            <WorkingRow label="Provisioned concurrency" value={fmt(r.concurrency.provisionedConcurrency)} />
+          </div>
+        </details>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Worker fleet &amp; CPU</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Workers by concurrency" value={r.fleet.workersByConcurrency} />
+            <WorkingRow label="Active CPU-seconds/sec (fleet)" value={fmt(r.fleet.activeCpuSecondsPerSecFleet)} unit="core-s/s" />
+            <WorkingRow label="Cores by active CPU" value={r.fleet.coresByActiveCpu} />
+          </div>
+        </details>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Memory</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="RAM for in-flight runs" value={fmt(r.memory.ramForInFlightRunsGB)} unit="GB" />
+            <WorkingRow label="Worker runtime overhead" value={fmt(r.memory.workerRuntimeOverheadGB)} unit="GB" />
+            <WorkingRow label="Total agent-tier RAM" value={fmt(r.memory.totalAgentTierRamGB)} unit="GB" />
+          </div>
+        </details>
+
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-2">Model-tier demand (handoff to inference sizing)</p>
+        <div className="rounded-lg border border-white/[0.07] p-3 mb-4">
+          <ConfRow k="Model requests/sec demanded" v={`${fmt(r.modelDemand.modelRequestsPerSecDemanded)} req/s`} />
+          <ConfRow k="Peak concurrent model calls" v={fmt(r.modelDemand.peakConcurrentModelCalls)} />
+        </div>
+
+        {r.durability.enabled && (
+          <>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-2">Durability store</p>
+            <div className="rounded-lg border border-white/[0.07] p-3 mb-4">
+              <ConfRow k="Checkpoint write rate" v={`${fmt(r.durability.checkpointWriteRate)} writes/s`} />
+              <ConfRow k="Checkpoint write throughput" v={`${fmt(r.durability.checkpointWriteThroughputMBs)} MB/s`} />
+              <ConfRow k="Durability write IOPS (approx)" v={fmt(r.durability.durabilityWriteIOPS)} />
+            </div>
+          </>
+        )}
+
+        <div className="rounded-lg border border-white/[0.07] p-3 text-[11px] text-white/35 leading-relaxed">
+          <strong className="text-white/50">Notes: </strong>
+          Agent runs are I/O-bound — wall-time is dominated by LLM + tool latency, so concurrency (not CPU) binds the
+          fleet. This sizes the orchestration tier only (Xeon-class); LLM inference (Gaudi/GPU) is sized separately
+          and governs real throughput.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Pydantic Logfire form + results ────────────────────────────────────────────
+
+function LogfireForm({ accent, accentRgb, inputs, onChange }: {
+  accent: string; accentRgb: string; inputs: LogfireInputs; onChange: (i: LogfireInputs) => void;
+}) {
+  const inp = inputs;
+  const r = useMemo(() => calcLogfire(inp), [inp]);
+  const set = <K extends keyof LogfireInputs>(k: K, v: LogfireInputs[K]) => onChange({ ...inp, [k]: v });
+  const fmt = (n: number) => n < 10 ? n.toFixed(2) : n.toFixed(1);
+
+  return (
+    <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
+      {/* Inputs */}
+      <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
+        <SectionTitle>Telemetry volume</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Peak spans/sec" value={inp.peakSpansPerSec} min={0} step={1000} onChange={v => set("peakSpansPerSec", v)} />
+          <NumField label="Peak logs/sec" value={inp.peakLogsPerSec} min={0} step={500} onChange={v => set("peakLogsPerSec", v)} />
+          <NumField label="Peak metric pts/sec" value={inp.peakMetricPointsPerSec} min={0} step={500} onChange={v => set("peakMetricPointsPerSec", v)} />
+          <NumField label="Bytes/span" value={inp.avgBytesPerSpan} min={0} step={50} onChange={v => set("avgBytesPerSpan", v)} />
+          <NumField label="Bytes/log" value={inp.avgBytesPerLog} min={0} step={50} onChange={v => set("avgBytesPerLog", v)} />
+          <NumField label="Bytes/metric point" value={inp.avgBytesPerMetricPoint} min={0} step={10} onChange={v => set("avgBytesPerMetricPoint", v)} />
+          <NumField label="Peak-to-average ratio" value={inp.peakToAvgRatio} min={1} step={0.5} onChange={v => set("peakToAvgRatio", v)} note="x" />
+        </div>
+        <SectionTitle>Compression &amp; retention</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Compression ratio" value={inp.compressionRatio} min={1} step={1} onChange={v => set("compressionRatio", v)} note="x, 5–12 typical" />
+          <NumField label="Retention (days)" value={inp.retentionDays} min={1} step={1} onChange={v => set("retentionDays", v)} />
+        </div>
+        <SectionTitle>Query &amp; HA</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Peak analytical QPS" value={inp.peakQueryQPS} min={0} step={1} onChange={v => set("peakQueryQPS", v)} />
+          <NumField label="HA min replicas" value={inp.haMinReplicas} min={1} step={1} onChange={v => set("haMinReplicas", v)} />
+          <NumField label="Local SSD scratch floor (GB)" value={inp.localSsdScratchFloorGB} min={0} step={64} onChange={v => set("localSsdScratchFloorGB", v)} note="vendor hard minimum" />
+        </div>
+        <SectionTitle>Ingest pods</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Throughput/pod (events/s)" value={inp.ingestPodThroughputPerPod} min={1} step={100} onChange={v => set("ingestPodThroughputPerPod", v)} />
+          <NumField label="vCPU/pod" value={inp.ingestPodVcpu} min={1} step={1} onChange={v => set("ingestPodVcpu", v)} />
+          <NumField label="RAM/pod (GB)" value={inp.ingestPodRamGB} min={1} step={1} onChange={v => set("ingestPodRamGB", v)} />
+        </div>
+        <SectionTitle>Query pods</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="vCPU/pod" value={inp.queryPodVcpu} min={1} step={1} onChange={v => set("queryPodVcpu", v)} />
+          <NumField label="RAM/pod (GB)" value={inp.queryPodRamGB} min={1} step={1} onChange={v => set("queryPodRamGB", v)} />
+          <NumField label="QPS/pod" value={inp.queryPodQPSPerPod} min={1} step={1} onChange={v => set("queryPodQPSPerPod", v)} />
+        </div>
+        <SectionTitle>Cache &amp; workers</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Cache pods" value={inp.cachePods} min={0} step={1} onChange={v => set("cachePods", v)} />
+          <NumField label="Cache storage/pod (GB)" value={inp.cacheStoragePerPodGB} min={0} step={32} onChange={v => set("cacheStoragePerPodGB", v)} />
+          <NumField label="Cache/worker vCPU (each)" value={inp.cacheWorkerPodVcpuEach} min={1} step={1} onChange={v => set("cacheWorkerPodVcpuEach", v)} />
+          <NumField label="Cache/worker RAM (each, GB)" value={inp.cacheWorkerPodRamEachGB} min={1} step={1} onChange={v => set("cacheWorkerPodRamEachGB", v)} />
+          <NumField label="Compaction+maintenance workers" value={inp.compactionMaintenanceWorkers} min={0} step={1} onChange={v => set("compactionMaintenanceWorkers", v)} />
+        </div>
+        <SectionTitle>Fixed support &amp; Postgres</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Fixed support vCPU" value={inp.fixedSupportVcpu} min={0} step={1} onChange={v => set("fixedSupportVcpu", v)} />
+          <NumField label="Fixed support RAM (GB)" value={inp.fixedSupportRamGB} min={0} step={1} onChange={v => set("fixedSupportRamGB", v)} />
+          <NumField label="Postgres vCPU" value={inp.postgresVcpu} min={1} step={1} onChange={v => set("postgresVcpu", v)} note="metadata only" />
+          <NumField label="Postgres RAM (GB)" value={inp.postgresRamGB} min={1} step={1} onChange={v => set("postgresRamGB", v)} />
+        </div>
+        <SectionTitle>Node template</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Ref node usable vCPU" value={inp.refNodeUsableVcpu} min={1} step={1} onChange={v => set("refNodeUsableVcpu", v)} />
+          <NumField label="Ref node usable RAM (GB)" value={inp.refNodeUsableRamGB} min={1} step={1} onChange={v => set("refNodeUsableRamGB", v)} />
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-4">Recommended cluster</p>
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <MetricCard label="Worker nodes" value={r.cluster.recommendedWorkerNodes} unit="nodes" accent={accentRgb} />
+          <MetricCard label="Object storage" value={r.objectStorage.recommendedObjectStorageTB} unit="TB" accent={accentRgb} />
+          <MetricCard label="Local SSD scratch" value={r.ingestTier.recommendedLocalSSDScratchGB} unit="GB" accent={accentRgb} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <MetricCard label="Provisioned vCPU" value={r.cluster.totalProvisionedVcpu} unit="cores" accent={accentRgb} />
+          <MetricCard label="Provisioned RAM" value={r.cluster.totalProvisionedRamGB} unit="GB" accent={accentRgb} />
+        </div>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Object storage sizing</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Avg spans/sec" value={fmt(r.objectStorage.avgSpansPerSec)} />
+            <WorkingRow label="Uncompressed telemetry/day" value={fmt(r.objectStorage.uncompressedPerDayGB)} unit="GB" />
+            <WorkingRow label="Compressed telemetry/day" value={fmt(r.objectStorage.compressedPerDayGB)} unit="GB" />
+            <WorkingRow label="Retained object storage (raw)" value={fmt(r.objectStorage.retainedObjectStorageRawGB)} unit="GB" />
+            <WorkingRow label="+ 30% ops headroom" value={fmt(r.objectStorage.objectStorageWithHeadroomGB)} unit="GB" />
+          </div>
+        </details>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Ingest tier &amp; local SSD</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Total ingest events/sec (peak)" value={r.ingestTier.totalIngestEventsPerSecPeak} />
+            <WorkingRow label="Recommended ingest pods" value={r.ingestTier.recommendedIngestPods} />
+            <WorkingRow label="Ingest tier vCPU / RAM" value={`${r.ingestTier.ingestTierVcpu} / ${r.ingestTier.ingestTierRamGB}`} unit="cores/GB" />
+            <WorkingRow label="Modeled local SSD" value={r.ingestTier.modeledLocalSSDGB} unit="GB" />
+          </div>
+        </details>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Query &amp; worker tiers</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Recommended query pods" value={r.queryWorkerTier.recommendedQueryPods} />
+            <WorkingRow label="Query tier vCPU / RAM" value={`${r.queryWorkerTier.queryTierVcpu} / ${r.queryWorkerTier.queryTierRamGB}`} unit="cores/GB" />
+            <WorkingRow label="Cache tier vCPU / RAM" value={`${r.queryWorkerTier.cacheTierVcpu} / ${r.queryWorkerTier.cacheTierRamGB}`} unit="cores/GB" />
+            <WorkingRow label="Worker tier vCPU / RAM" value={`${r.queryWorkerTier.workerTierVcpu} / ${r.queryWorkerTier.workerTierRamGB}`} unit="cores/GB" />
+          </div>
+        </details>
+
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-2">Cluster totals</p>
+        <div className="rounded-lg border border-white/[0.07] p-3 mb-4">
+          <ConfRow k="Total application vCPU" v={r.cluster.totalApplicationVcpu} />
+          <ConfRow k="Total application RAM" v={`${r.cluster.totalApplicationRamGB} GB`} />
+          <ConfRow k="Postgres (metadata)" v={`${r.cluster.postgresVcpu} vCPU / ${r.cluster.postgresRamGB} GB`} />
+        </div>
+
+        <div className="rounded-lg border border-white/[0.07] p-3 text-[11px] text-white/35 leading-relaxed">
+          <strong className="text-white/50">Notes: </strong>
+          Telemetry never lands in Postgres — it lives in object storage. Object storage capacity is the dominant
+          cost and scales with retention ÷ compression; local SSD scratch has a hard vendor floor regardless of the
+          modeled figure. Self-hosted Logfire is a Pydantic Enterprise offering — verify per-pod footprints against
+          your Helm chart version.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ClickHouse form + results ──────────────────────────────────────────────────
+
+function ClickHouseForm({ accent, accentRgb, inputs, onChange }: {
+  accent: string; accentRgb: string; inputs: ClickHouseInputs; onChange: (i: ClickHouseInputs) => void;
+}) {
+  const inp = inputs;
+  const r = useMemo(() => calcClickHouse(inp), [inp]);
+  const set = <K extends keyof ClickHouseInputs>(k: K, v: ClickHouseInputs[K]) => onChange({ ...inp, [k]: v });
+  const fmt = (n: number) => n < 10 ? n.toFixed(2) : n.toFixed(1);
+
+  return (
+    <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
+      {/* Inputs */}
+      <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
+        <SectionTitle>Ingest &amp; growth</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Daily raw ingest today (GB)" value={inp.dailyRawIngestTodayGB} min={1} step={100} onChange={v => set("dailyRawIngestTodayGB", v)} />
+          <NumField label="Avg raw event size (B)" value={inp.avgRawEventSizeBytes} min={1} step={50} onChange={v => set("avgRawEventSizeBytes", v)} />
+          <NumField label="Annual data growth" value={inp.annualDataGrowth} min={0} step={0.05} onChange={v => set("annualDataGrowth", v)} note="0.5 = 50%/yr" />
+          <NumField label="Planning horizon (yrs)" value={inp.planningHorizonYears} min={1} step={1} onChange={v => set("planningHorizonYears", v)} />
+        </div>
+        <SectionTitle>Compression &amp; retention</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Compression ratio" value={inp.compressionRatio} min={1} step={1} onChange={v => set("compressionRatio", v)} note="x, raw→on-disk" />
+          <NumField label="Merge &amp; part overhead" value={inp.mergePartOverhead} min={1} step={0.05} onChange={v => set("mergePartOverhead", v)} note="x" />
+          <NumField label="Hot (NVMe) retention (days)" value={inp.hotRetentionDays} min={1} step={1} onChange={v => set("hotRetentionDays", v)} />
+          <NumField label="Cold (object store) retention (days)" value={inp.coldRetentionDays} min={0} step={1} onChange={v => set("coldRetentionDays", v)} />
+          <NumField label="Replication factor" value={inp.replicationFactor} min={1} step={1} onChange={v => set("replicationFactor", v)} note="copies" />
+          <NumField label="NVMe utilization target" value={inp.nvmeUtilizationTarget} min={0.1} step={0.05} onChange={v => set("nvmeUtilizationTarget", v)} note="0.1–1.0" />
+          <NumField label="Cold cache fraction (local)" value={inp.coldCacheFractionLocal} min={0} step={0.01} onChange={v => set("coldCacheFractionLocal", v)} />
+        </div>
+        <SectionTitle>Ingest &amp; merge throughput</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Peak-to-avg ingest ratio" value={inp.peakToAvgIngestRatio} min={1} step={0.1} onChange={v => set("peakToAvgIngestRatio", v)} />
+          <NumField label="Ingest+merge throughput/vCPU (MB/s)" value={inp.ingestMergeThroughputPerVcpuMBs} min={1} step={1} onChange={v => set("ingestMergeThroughputPerVcpuMBs", v)} />
+        </div>
+        <SectionTitle>Query</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Peak concurrent queries" value={inp.peakConcurrentQueries} min={1} step={1} onChange={v => set("peakConcurrentQueries", v)} />
+          <NumField label="Avg data scanned/query (GB)" value={inp.avgDataScannedPerQueryGB} min={0.01} step={0.5} onChange={v => set("avgDataScannedPerQueryGB", v)} />
+          <NumField label="Target P95 latency (s)" value={inp.targetQueryLatencyP95Sec} min={0.1} step={0.5} onChange={v => set("targetQueryLatencyP95Sec", v)} />
+          <NumField label="Scan throughput/vCPU (GB/s)" value={inp.scanThroughputPerVcpuGBs} min={0.1} step={0.1} onChange={v => set("scanThroughputPerVcpuGBs", v)} />
+          <NumField label="Working memory/query (GB)" value={inp.workingMemPerQueryGB} min={0.5} step={0.5} onChange={v => set("workingMemPerQueryGB", v)} />
+        </div>
+        <SectionTitle>Node template</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="RAM reserved fraction (OS+cache)" value={inp.ramReservedFraction} min={0} step={0.05} onChange={v => set("ramReservedFraction", v)} />
+          <NumField label="Max RAM/node (GB)" value={inp.maxRamPerNodeGB} min={16} step={16} onChange={v => set("maxRamPerNodeGB", v)} />
+          <NumField label="Max vCPU/node" value={inp.maxVcpuPerNode} min={4} step={4} onChange={v => set("maxVcpuPerNode", v)} />
+          <NumField label="Max NVMe/node (GB)" value={inp.maxNvmePerNodeGB} min={100} step={1000} onChange={v => set("maxNvmePerNodeGB", v)} />
+          <BoolField label="ClickHouse Keeper ensemble" value={inp.keeperEnsemble} onChange={v => set("keeperEnsemble", v)} note="3-node quorum" />
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-4">Recommended cluster</p>
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <MetricCard label="Shards" value={r.sharding.recommendedShards} unit="shards" accent={accentRgb} />
+          <MetricCard label="Server nodes" value={r.cluster.serverNodes} unit="nodes" accent={accentRgb} />
+          <MetricCard label="Total nodes" value={r.cluster.totalNodes} unit="incl. Keeper" accent={accentRgb} />
+        </div>
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <MetricCard label="Cluster vCPU" value={r.cluster.totalClusterVcpu} unit="cores" accent={accentRgb} />
+          <MetricCard label="Cluster RAM" value={r.cluster.totalClusterRamGB} unit="GB" accent={accentRgb} />
+          <MetricCard label="NVMe provisioned" value={Math.round(r.cluster.totalNvmeProvisionedGB).toLocaleString()} unit="GB" accent={accentRgb} />
+        </div>
+        <MetricCard label="Object storage (cold, S3)" value={Math.round(r.dataFootprint.objectStoreCapacityColdGB).toLocaleString()} unit="GB" accent={accentRgb} />
+
+        <details className="mt-5 mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Data footprint (at horizon)</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Daily raw ingest at horizon" value={fmt(r.dataFootprint.dailyRawIngestAtHorizonGB)} unit="GB/day" />
+            <WorkingRow label="Rows/day at horizon" value={Math.round(r.dataFootprint.rowsPerDayAtHorizon).toLocaleString()} />
+            <WorkingRow label="Daily on-disk (compressed)" value={fmt(r.dataFootprint.dailyOnDiskCompressedGB)} unit="GB/day" />
+            <WorkingRow label="Hot local, incl. merge (1 copy)" value={fmt(r.dataFootprint.hotLocalStoredInclMergeGB)} unit="GB" />
+            <WorkingRow label="Cold local cache (1 copy)" value={fmt(r.dataFootprint.coldLocalCacheGB)} unit="GB" />
+            <WorkingRow label="Local NVMe per copy (provisioned)" value={fmt(r.dataFootprint.localNvmePerCopyProvisionedGB)} unit="GB" />
+            <WorkingRow label="Total NVMe incl. replicas" value={fmt(r.dataFootprint.totalNvmeInclReplicasGB)} unit="GB" />
+            <WorkingRow label="Storage saved vs raw" value={(r.dataFootprint.storageSavedVsRaw * 100).toFixed(0)} unit="%" />
+          </div>
+        </details>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Ingest, merge &amp; query compute</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Peak ingest rate" value={fmt(r.ingestMerge.peakIngestRateMBs)} unit="MB/s" />
+            <WorkingRow label="Peak insert rate" value={Math.round(r.ingestMerge.peakInsertRateRowsPerSec).toLocaleString()} unit="rows/s" />
+            <WorkingRow label="Ingest + merge cores" value={r.ingestMerge.ingestMergeCores} />
+            <WorkingRow label="Background merge allowance" value={r.ingestMerge.backgroundMergeAllowanceCores} />
+            <WorkingRow label="Query scan cores" value={r.queryCompute.queryScanCores} />
+            <WorkingRow label="Query working RAM" value={r.queryCompute.queryWorkingRamGB} unit="GB" />
+            <WorkingRow label="Total vCPU demand" value={r.queryCompute.totalVcpuDemand} />
+          </div>
+        </details>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Sharding rationale</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Shards by NVMe" value={r.sharding.shardsByNvme} />
+            <WorkingRow label="Shards by CPU" value={r.sharding.shardsByCpu} />
+            <WorkingRow label="Shards by RAM" value={r.sharding.shardsByRam} />
+            <WorkingRow label="Binding constraint" value={r.sharding.bindingConstraint} />
+          </div>
+        </details>
+
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-2">Recommended configuration</p>
+        <div className="rounded-lg border border-white/[0.07] p-3 mb-4">
+          <ConfRow k="table_engine" v={r.conf.tableEngine} />
+          <ConfRow k="ORDER BY" v={r.conf.orderBy} />
+          <ConfRow k="PARTITION BY" v={r.conf.partitionBy} />
+          <ConfRow k="index_granularity" v={r.conf.indexGranularity} />
+          <ConfRow k="TTL: move to cold at" v={`${r.conf.ttlMoveDays}d`} />
+          <ConfRow k="TTL: delete at" v={`${r.conf.ttlDeleteDays}d`} />
+          <ConfRow k="storage_policy" v={r.conf.storagePolicy} />
+          <ConfRow k="Timestamp codec" v={r.conf.timestampCodec} />
+          <ConfRow k="Default codec" v={r.conf.defaultCodec} />
+          <ConfRow k="Min insert batch" v={`${r.conf.minInsertBatchRows.toLocaleString()} rows`} />
+          <ConfRow k="parts_to_throw_insert" v={r.conf.partsToThrowInsert} />
+          <ConfRow k="max_concurrent_queries" v={r.conf.maxConcurrentQueries} />
+          <ConfRow k="background_pool_size" v={r.conf.backgroundPoolSize} />
+        </div>
+
+        <div className="rounded-lg border border-white/[0.07] p-3 text-[11px] text-white/35 leading-relaxed">
+          <strong className="text-white/50">Notes: </strong>
+          Compression ratio is the single biggest lever on this sheet — measure it on a real sample before
+          committing capacity. Replicas fetch merged parts over the network; they do not re-merge, so replication
+          multiplies local disk and network, not merge CPU. ClickHouse is CPU- and disk-bandwidth-bound, not heap-bound.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Modal wrapper ──────────────────────────────────────────────────────────────
 
-export function SizingSheet({ tool, onClose }: Props) {
+export function SizingSheet({ tool, inputs, onInputsChange, onClose }: Props) {
   const meta = TOOL_META[tool];
 
   return (
@@ -761,11 +1158,14 @@ export function SizingSheet({ tool, onClose }: Props) {
 
         {/* Form + Results (fills remaining height) */}
         <div className="flex flex-col flex-1 min-h-0" style={{ height: "calc(92vh - 72px)" }}>
-          {tool === "postgres" && <PGForm      accent={meta.accent} accentRgb={meta.accentRgb} />}
-          {tool === "qdrant"   && <QdrantForm  accent={meta.accent} accentRgb={meta.accentRgb} />}
-          {tool === "neo4j"    && <Neo4jForm   accent={meta.accent} accentRgb={meta.accentRgb} />}
-          {tool === "mongodb"  && <MongoDBForm accent={meta.accent} accentRgb={meta.accentRgb} />}
-          {tool === "elastic"  && <ElasticForm accent={meta.accent} accentRgb={meta.accentRgb} />}
+          {tool === "postgres" && <PGForm      accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as PGInputs}      onChange={onInputsChange} />}
+          {tool === "qdrant"   && <QdrantForm  accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as QdrantInputs}  onChange={onInputsChange} />}
+          {tool === "neo4j"    && <Neo4jForm   accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as Neo4jInputs}   onChange={onInputsChange} />}
+          {tool === "mongodb"  && <MongoDBForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as MongoDBInputs} onChange={onInputsChange} />}
+          {tool === "elastic"  && <ElasticForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as ElasticInputs} onChange={onInputsChange} />}
+          {tool === "pydantic-ai" && <PydanticAIForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as PydanticAIInputs} onChange={onInputsChange} />}
+          {tool === "logfire"     && <LogfireForm    accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as LogfireInputs}    onChange={onInputsChange} />}
+          {tool === "clickhouse"  && <ClickHouseForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as ClickHouseInputs} onChange={onInputsChange} />}
         </div>
       </div>
     </div>

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 EXCEL_COLUMNS: list[str] = [
     "Timestamp",
     "Platform",
+    "Serving_Engine",
     "Model",
     "TP",
     "Num_Deployments",
@@ -43,6 +44,7 @@ class BenchmarkRecordCreate(BaseModel):
 
     timestamp: str = Field(alias="Timestamp")
     platform: str = Field(alias="Platform")
+    serving_engine: str | None = Field(default=None, alias="Serving_Engine")
     model: str = Field(alias="Model")
     tp: int | None = Field(default=None, alias="TP")
     num_deployments: int | None = Field(default=None, alias="Num_Deployments")

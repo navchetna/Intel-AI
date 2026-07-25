@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { models, CATEGORY_ORDER, type Category, type Model } from "./data";
+import { useDismiss } from "@/hooks/useDismiss";
 
 // ── dark-theme category palette ───────────────────────────────────────────────
 
@@ -34,6 +35,72 @@ const GROUP_OPTIONS = [
 ] as const;
 type GroupKey = typeof GROUP_OPTIONS[number]["value"];
 
+const EMPTY_SELECTION: Set<string> = new Set();
+
+// ── column visibility ─────────────────────────────────────────────────────────
+// The table is dense (12–13 columns); let users hide the ones they don't need
+// instead of every column fighting for space via truncate+tooltip.
+
+const COLUMN_OPTIONS = [
+  { key: "size",        label: "Size" },
+  { key: "vram",         label: "VRAM" },
+  { key: "cpu",          label: "CPU support" },
+  { key: "commercial",   label: "Commercial" },
+  { key: "maintained",   label: "Actively maintained" },
+  { key: "finetuning",   label: "Fine-tunable" },
+  { key: "origin",       label: "Origin" },
+] as const;
+type ColumnKey = typeof COLUMN_OPTIONS[number]["key"];
+type ColumnVisibility = Record<ColumnKey, boolean>;
+const ALL_COLUMNS_VISIBLE: ColumnVisibility = { size: true, vram: true, cpu: true, commercial: true, maintained: true, finetuning: true, origin: true };
+
+function ColumnToggle({ visible, onChange }: { visible: ColumnVisibility; onChange: (v: ColumnVisibility) => void }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const ref = useDismiss<HTMLDivElement>(open, () => { setOpen(false); triggerRef.current?.focus(); });
+  const hiddenCount = COLUMN_OPTIONS.filter(c => !visible[c.key]).length;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
+        className="py-2 px-4 text-sm rounded-lg text-white/40 hover:text-white/70 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
+        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
+      >
+        Columns{hiddenCount > 0 ? ` (${COLUMN_OPTIONS.length - hiddenCount}/${COLUMN_OPTIONS.length})` : ""}
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-full mt-2 w-56 rounded-lg border py-2 z-20"
+          style={{ background: "var(--dm-card-bg)", borderColor: "var(--dm-card-border)", boxShadow: "var(--dm-card-depth)" }}
+        >
+          <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-muted)" }}>
+            Visible columns
+          </p>
+          {COLUMN_OPTIONS.map(({ key, label }) => (
+            <label
+              key={key}
+              className="nav-menu-item flex items-center gap-2.5 px-3 py-1.5 text-sm cursor-pointer"
+              style={{ color: "var(--dm-txt-secondary)" }}
+            >
+              <input
+                type="checkbox"
+                checked={visible[key]}
+                onChange={() => onChange({ ...visible, [key]: !visible[key] })}
+                className="w-3.5 h-3.5 cursor-pointer accent-[#22d3ee]"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function paramToNumber(p: string): number {
   const m = p.match(/([\d.]+)\s*(B|M|K)?/i);
   if (!m) return 0;
@@ -49,7 +116,7 @@ function paramToNumber(p: string): number {
 
 function BoolIcon({ val }: { val: boolean }) {
   return val
-    ? <span style={{ color: "#34d399" }} className="font-bold text-sm select-none">✓</span>
+    ? <span className="text-success font-bold text-sm select-none">✓</span>
     : <span className="text-white/20 text-sm select-none">—</span>;
 }
 
@@ -59,6 +126,29 @@ const SELECT_STYLE: React.CSSProperties = {
   color: "rgba(255,255,255,0.85)",
   colorScheme: "dark",
 };
+
+function SortableTh<K extends string>({ label, k, width, sortKey, sortDir, onSort }: {
+  label: string; k: K; width: string; sortKey: K; sortDir: "asc" | "desc"; onSort: (k: K) => void;
+}) {
+  const active = sortKey === k;
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+      className={`${width} px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider`}
+    >
+      <button
+        type="button" onClick={() => onSort(k)}
+        className="flex items-center select-none focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded"
+      >
+        {label}
+        {active
+          ? <span className="ml-1" style={{ color: "#22d3ee" }}>{sortDir === "asc" ? "↑" : "↓"}</span>
+          : <span className="text-white/20 ml-1">↕</span>}
+      </button>
+    </th>
+  );
+}
 
 function DarkSelect({ label, value, onChange, children }: {
   label: string; value: string;
@@ -71,7 +161,7 @@ function DarkSelect({ label, value, onChange, children }: {
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="py-2 px-3 text-sm rounded-lg focus:outline-none"
+        className="py-2 px-3 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
         style={SELECT_STYLE}
       >
         {children}
@@ -172,7 +262,17 @@ function hexToRgb(hex: string) {
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export function ModelsView() {
+interface ModelsViewProps {
+  selectionMode?: boolean;
+  selected?: Set<string>;
+  onToggleSelect?: (hfId: string) => void;
+}
+
+export function ModelsView({
+  selectionMode = false,
+  selected = EMPTY_SELECTION,
+  onToggleSelect = () => {},
+}: ModelsViewProps = {}) {
   const [search, setSearch]                 = useState("");
   const [categoryFilter, setCategoryFilter] = useState<Category | "All">("All");
   const [originFilter, setOriginFilter]     = useState<string>("All");
@@ -182,6 +282,7 @@ export function ModelsView() {
   const [sortDir, setSortDir]               = useState<"asc" | "desc">("asc");
   const [groupBy, setGroupBy]               = useState<GroupKey>("category");
   const [expandedId, setExpandedId]         = useState<string | null>(null);
+  const [visibleCols, setVisibleCols]       = useState<ColumnVisibility>(ALL_COLUMNS_VISIBLE);
 
   const origins = useMemo(() => {
     const raw = models.map(m => m.origin.split("(")[0].trim().split("—")[0].trim()).filter(Boolean);
@@ -237,12 +338,8 @@ export function ModelsView() {
     else { setSortKey(key); setSortDir("asc"); }
   }
 
-  function SortIcon({ k }: { k: SortKey }) {
-    if (sortKey !== k) return <span className="text-white/20 ml-1">↕</span>;
-    return <span className="ml-1" style={{ color: "#22d3ee" }}>{sortDir === "asc" ? "↑" : "↓"}</span>;
-  }
-
-  const COLS = 12;
+  const visibleColCount = COLUMN_OPTIONS.filter(c => visibleCols[c.key]).length;
+  const COLS = (selectionMode ? 1 : 0) + 1 /* chevron */ + 4 /* model, category, year, params */ + visibleColCount;
 
   const inputStyle = {
     background: "var(--dm-input-bg)",
@@ -251,23 +348,11 @@ export function ModelsView() {
   } as React.CSSProperties;
 
   return (
-    <main
-      className="min-h-screen"
-      style={{ background: "var(--dm-page-bg)" }}
-    >
-      <div className="mx-auto max-w-screen-2xl px-6 pt-10 pb-12">
+    <div className="mx-auto max-w-screen-2xl px-6 pb-12">
 
-        {/* ── header ── */}
-        <div className="mb-8">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 mb-4">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#22d3ee] animate-pulse" />
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-[#22d3ee]/80">Model Registry</span>
-          </div>
-          <h1 className="text-4xl font-black text-white tracking-tight">Model Catalog</h1>
-          <p className="mt-1 text-base text-white/40">
-            {filtered.length} of {models.length} models &middot; {CATEGORY_ORDER.length} categories
-          </p>
-        </div>
+        <p className="mb-4 text-sm text-white/40">
+          {filtered.length} of {models.length} models &middot; {CATEGORY_ORDER.length} categories
+        </p>
 
         {/* ── filter bar ── */}
         <div
@@ -297,7 +382,7 @@ export function ModelsView() {
               <select
                 value={categoryFilter}
                 onChange={e => setCategoryFilter(e.target.value as Category | "All")}
-                className="w-full py-2 px-3 text-sm rounded-lg focus:outline-none"
+                className="w-full py-2 px-3 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
                 style={SELECT_STYLE}
               >
                 <option value="All">All categories</option>
@@ -335,6 +420,9 @@ export function ModelsView() {
               {GROUP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </DarkSelect>
 
+            {/* Columns */}
+            <ColumnToggle visible={visibleCols} onChange={setVisibleCols} />
+
             {/* Reset */}
             <button
               onClick={() => {
@@ -342,7 +430,7 @@ export function ModelsView() {
                 setCpuFilter(null); setCommercialFilter(null);
                 setSortKey("category"); setSortDir("asc"); setGroupBy("category");
               }}
-              className="py-2 px-4 text-sm rounded-lg text-white/40 hover:text-white/70 transition-colors"
+              className="py-2 px-4 text-sm rounded-lg text-white/40 hover:text-white/70 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
             >
               Reset
@@ -384,30 +472,19 @@ export function ModelsView() {
             <table className="w-full text-sm border-collapse table-fixed">
               <thead>
                 <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
+                  {selectionMode && <th className="w-10 px-3 py-3" />}
                   <th className="w-10 px-3 py-3" />
-                  <th className="w-44 px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none text-xs uppercase tracking-wider"
-                      onClick={() => toggleSort("name")}>
-                    Model <SortIcon k="name" />
-                  </th>
-                  <th className="w-36 px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none text-xs uppercase tracking-wider"
-                      onClick={() => toggleSort("category")}>
-                    Category <SortIcon k="category" />
-                  </th>
-                  <th className="w-24 px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none text-xs uppercase tracking-wider"
-                      onClick={() => toggleSort("year")}>
-                    Year <SortIcon k="year" />
-                  </th>
-                  <th className="w-28 px-4 py-3 text-left font-semibold text-white/50 cursor-pointer select-none text-xs uppercase tracking-wider"
-                      onClick={() => toggleSort("params")}>
-                    Params <SortIcon k="params" />
-                  </th>
-                  <th className="w-28 px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Size</th>
-                  <th className="w-28 px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">VRAM</th>
-                  <th className="w-12 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">CPU</th>
-                  <th className="w-20 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Com.</th>
-                  <th className="w-14 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Act.</th>
-                  <th className="w-16 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Fine.</th>
-                  <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Origin</th>
+                  <SortableTh<SortKey> label="Model" k="name" width="w-44" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <SortableTh<SortKey> label="Category" k="category" width="w-36" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <SortableTh<SortKey> label="Year" k="year" width="w-24" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <SortableTh<SortKey> label="Params" k="params" width="w-28" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  {visibleCols.size && <th className="w-28 px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Size</th>}
+                  {visibleCols.vram && <th className="w-28 px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">VRAM</th>}
+                  {visibleCols.cpu && <th className="w-12 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">CPU</th>}
+                  {visibleCols.commercial && <th className="w-20 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Com.</th>}
+                  {visibleCols.maintained && <th className="w-14 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Act.</th>}
+                  {visibleCols.finetuning && <th className="w-16 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Fine.</th>}
+                  {visibleCols.origin && <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Origin</th>}
                 </tr>
               </thead>
               <tbody>
@@ -432,7 +509,16 @@ export function ModelsView() {
                           <tr
                             key={model.hfId}
                             onClick={() => setExpandedId(isExpanded ? null : model.hfId)}
-                            className="cursor-pointer transition-all"
+                            onKeyDown={e => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setExpandedId(isExpanded ? null : model.hfId);
+                              }
+                            }}
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={isExpanded}
+                            className="cursor-pointer transition-all focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/40"
                             style={{
                               background: bg,
                               borderBottom: "1px solid rgba(255,255,255,0.04)",
@@ -444,6 +530,18 @@ export function ModelsView() {
                               (e.currentTarget as HTMLElement).style.background = bg;
                             }}
                           >
+                            {/* select */}
+                            {selectionMode && (
+                              <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={selected.has(model.hfId)}
+                                  onChange={() => onToggleSelect(model.hfId)}
+                                  aria-label={`Select ${model.name} for deployment sizing`}
+                                  className="w-4 h-4 cursor-pointer accent-[#22d3ee]"
+                                />
+                              </td>
+                            )}
                             {/* chevron */}
                             <td className="px-3 py-3 text-center">
                               <span
@@ -472,23 +570,27 @@ export function ModelsView() {
                               <span className="font-mono text-xs font-semibold truncate block" style={{ color: col.accent }} title={model.params}>{model.params}</span>
                             </td>
                             {/* size */}
-                            <td className="px-4 py-3 overflow-hidden">
-                              <span className="text-white/50 text-xs truncate block" title={model.modelSize}>{model.modelSize}</span>
-                            </td>
+                            {visibleCols.size && (
+                              <td className="px-4 py-3 overflow-hidden">
+                                <span className="text-white/50 text-xs truncate block" title={model.modelSize}>{model.modelSize}</span>
+                              </td>
+                            )}
                             {/* vram */}
-                            <td className="px-4 py-3 overflow-hidden">
-                              <span className="text-white/50 text-xs truncate block" title={model.vram}>{model.vram}</span>
-                            </td>
+                            {visibleCols.vram && (
+                              <td className="px-4 py-3 overflow-hidden">
+                                <span className="text-white/50 text-xs truncate block" title={model.vram}>{model.vram}</span>
+                              </td>
+                            )}
                             {/* cpu */}
-                            <td className="px-2 py-3 text-center"><BoolIcon val={model.cpuSupport} /></td>
+                            {visibleCols.cpu && <td className="px-2 py-3 text-center"><BoolIcon val={model.cpuSupport} /></td>}
                             {/* commercial */}
-                            <td className="px-2 py-3 text-center"><BoolIcon val={model.commercial} /></td>
+                            {visibleCols.commercial && <td className="px-2 py-3 text-center"><BoolIcon val={model.commercial} /></td>}
                             {/* maintained */}
-                            <td className="px-2 py-3 text-center"><BoolIcon val={model.maintained} /></td>
+                            {visibleCols.maintained && <td className="px-2 py-3 text-center"><BoolIcon val={model.maintained} /></td>}
                             {/* finetune */}
-                            <td className="px-2 py-3 text-center"><BoolIcon val={model.finetuning} /></td>
+                            {visibleCols.finetuning && <td className="px-2 py-3 text-center"><BoolIcon val={model.finetuning} /></td>}
                             {/* origin */}
-                            <td className="px-4 py-3 text-white/40 text-xs">{model.origin}</td>
+                            {visibleCols.origin && <td className="px-4 py-3 text-white/40 text-xs">{model.origin}</td>}
                           </tr>
                           {isExpanded && (
                             <ExpandedRow key={`${model.hfId}-exp`} model={model} colSpan={COLS} />
@@ -507,7 +609,6 @@ export function ModelsView() {
         <p className="mt-3 text-xs text-white/25 text-right">
           {filtered.length} of {models.length} models displayed
         </p>
-      </div>
-    </main>
+    </div>
   );
 }

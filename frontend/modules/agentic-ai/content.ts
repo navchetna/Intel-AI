@@ -48,8 +48,5 @@ export interface AgenticNavItem {
  * `/agentic-ai/*` route via `app/(modules)/agentic-ai/layout.tsx`.
  */
 export const agenticNav: AgenticNavItem[] = [
-  { href: "/agentic-ai", label: "Overview" },
   { href: "/agentic-ai/agentic-stack", label: "Agentic Stack" },
-  { href: "/agentic-ai/benchmarks", label: "Benchmarks" },
-  { href: "/agentic-ai/cpu-gpu-ratio", label: "CPU-GPU Ratio" },
 ];

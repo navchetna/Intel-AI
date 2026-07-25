@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { bulkUpload, clearAuth, createUser, login, setAuth } from "./api";
 import { downloadTemplate, parseWorkbook } from "./excel";
+import { inputClass, labelClass } from "./ui";
 import type { BulkUploadResponse } from "./types";
 
 interface AdminPanelProps {
@@ -14,9 +15,6 @@ interface AdminPanelProps {
   onDataChanged: () => void;
 }
 
-const inputClass =
-  "mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-intel-blue focus:outline-none focus:ring-1 focus:ring-intel-blue";
-const labelClass = "block text-xs font-semibold uppercase tracking-wide text-gray-500";
 const primaryBtn =
   "rounded-md bg-intel-blue px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-intel-dark disabled:opacity-50";
 const secondaryBtn =
@@ -118,7 +116,7 @@ function LoginForm({ onAuthChange }: { onAuthChange: () => void }) {
           required
         />
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       <button type="submit" disabled={busy} className={primaryBtn}>
         {busy ? "Signing in…" : "Sign in"}
       </button>
@@ -160,9 +158,17 @@ function AdminBody({
   );
 }
 
+type UploadOutcome = "hard-error" | "all-failed" | "partial" | "success";
+
+const OUTCOME_BANNER: Record<UploadOutcome, { bg: string; border: string; text: string; icon: string; heading: (r: BulkUploadResponse | null) => string }> = {
+  "hard-error": { bg: "bg-red-50",     border: "border-red-200",     text: "text-red-700",    icon: "✕", heading: () => "Upload failed" },
+  "all-failed": { bg: "bg-red-50",     border: "border-red-200",     text: "text-red-700",    icon: "✕", heading: r => `All ${r?.failed ?? 0} row(s) failed` },
+  "partial":    { bg: "bg-amber-50",   border: "border-amber-200",   text: "text-amber-800",  icon: "⚠", heading: r => `Inserted ${r?.inserted ?? 0} row(s), ${r?.failed ?? 0} failed` },
+  "success":    { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-800", icon: "✓", heading: r => `Inserted ${r?.inserted ?? 0} row(s)` },
+};
+
 function UploadSection({ onDataChanged }: { onDataChanged: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [status, setStatus] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [result, setResult] = useState<BulkUploadResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -171,30 +177,31 @@ function UploadSection({ onDataChanged }: { onDataChanged: () => void }) {
     const file = e.target.files?.[0];
     if (!file) return;
     setBusy(true);
-    setStatus("Validating…");
     setErrors([]);
     setResult(null);
     try {
       const { rows, headerErrors } = await parseWorkbook(file);
       if (headerErrors.length > 0) {
         setErrors(headerErrors);
-        setStatus("Validation failed.");
         return;
       }
       const res = await bulkUpload(rows);
       setResult(res);
-      setStatus(
-        `Inserted ${res.inserted} row(s)${res.failed ? `, ${res.failed} failed` : ""}.`,
-      );
       if (res.inserted > 0) onDataChanged();
     } catch (err) {
       setErrors([err instanceof Error ? err.message : "Upload failed"]);
-      setStatus("Upload failed.");
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   }
+
+  const outcome: UploadOutcome | null =
+    errors.length > 0 ? "hard-error"
+    : result && result.inserted === 0 && result.failed > 0 ? "all-failed"
+    : result && result.failed > 0 ? "partial"
+    : result && result.inserted > 0 ? "success"
+    : null;
 
   return (
     <section className="space-y-3">
@@ -209,7 +216,7 @@ function UploadSection({ onDataChanged }: { onDataChanged: () => void }) {
           disabled={busy}
           className={primaryBtn}
         >
-          Upload Excel
+          {busy ? "Validating…" : "Upload Excel"}
         </button>
         <input
           ref={fileRef}
@@ -219,22 +226,28 @@ function UploadSection({ onDataChanged }: { onDataChanged: () => void }) {
           className="hidden"
         />
       </div>
-      {status && <p className="text-sm text-gray-600">{status}</p>}
-      {errors.length > 0 && (
-        <ul className="list-inside list-disc rounded-md bg-red-50 p-3 text-xs text-red-700">
-          {errors.map((err, i) => (
-            <li key={i}>{err}</li>
-          ))}
-        </ul>
-      )}
-      {result && result.errors.length > 0 && (
-        <ul className="max-h-32 list-inside list-disc overflow-y-auto rounded-md bg-amber-50 p-3 text-xs text-amber-800">
-          {result.errors.map((re) => (
-            <li key={re.row}>
-              Row {re.row}: {re.errors.join("; ")}
-            </li>
-          ))}
-        </ul>
+
+      {outcome && (
+        <div className={`rounded-md border p-3 ${OUTCOME_BANNER[outcome].bg} ${OUTCOME_BANNER[outcome].border}`}>
+          <p className={`flex items-center gap-1.5 text-sm font-semibold ${OUTCOME_BANNER[outcome].text}`}>
+            <span aria-hidden>{OUTCOME_BANNER[outcome].icon}</span>
+            {OUTCOME_BANNER[outcome].heading(result)}
+          </p>
+          {outcome === "hard-error" && errors.length > 0 && (
+            <ul className={`list-inside list-disc mt-1.5 text-xs ${OUTCOME_BANNER[outcome].text}`}>
+              {errors.map((err, i) => <li key={i}>{err}</li>)}
+            </ul>
+          )}
+          {(outcome === "partial" || outcome === "all-failed") && result && result.errors.length > 0 && (
+            <ul className={`list-inside list-disc mt-1.5 max-h-32 overflow-y-auto text-xs ${outcome === "partial" ? "text-amber-800" : "text-red-700"}`}>
+              {result.errors.map((re) => (
+                <li key={re.row}>
+                  Row {re.row}: {re.errors.join("; ")}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </section>
   );
@@ -297,8 +310,8 @@ function CreateUserSection() {
           Add
         </button>
       </form>
-      {status && <p className="text-sm text-emerald-600">{status}</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {status && <p className="text-sm text-success">{status}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </section>
   );
 }

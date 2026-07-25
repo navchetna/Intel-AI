@@ -34,6 +34,7 @@ def _filters(
     output_tokens: int | None = Query(default=None),
     batch_size: int | None = Query(default=None, description="Maps to concurrency"),
     platform: str | None = Query(default=None, description="Hardware platform"),
+    serving_engine: str | None = Query(default=None, description="e.g. vLLM, SGLang"),
 ) -> BenchmarkFilters:
     return BenchmarkFilters(
         model=model,
@@ -41,6 +42,7 @@ def _filters(
         output_tokens=output_tokens,
         batch_size=batch_size,
         platform=platform,
+        serving_engine=serving_engine,
     )
 
 
@@ -50,9 +52,10 @@ def _filters(
 @router.get("/records", response_model=BenchmarkRecordsResponse, summary="Filtered records")
 async def get_records(
     f: BenchmarkFilters = Depends(_filters),
+    limit: int = Query(default=25, ge=1, le=2000),
     db: AsyncSession = Depends(get_db),
 ) -> BenchmarkRecordsResponse:
-    total, rows = await service.query_records(db, f)
+    total, rows = await service.query_records(db, f, limit=limit)
     return BenchmarkRecordsResponse(
         total=total, rows=[BenchmarkRecord.model_validate(r) for r in rows]
     )

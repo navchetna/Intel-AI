@@ -32,6 +32,7 @@ class BenchmarkFilters:
     output_tokens: int | None = None
     batch_size: int | None = None  # maps to the `concurrency` column
     platform: str | None = None
+    serving_engine: str | None = None
 
 
 def _apply_filters(stmt, f: BenchmarkFilters):
@@ -45,6 +46,8 @@ def _apply_filters(stmt, f: BenchmarkFilters):
         stmt = stmt.where(InferenceBenchmark.concurrency == f.batch_size)
     if f.platform:
         stmt = stmt.where(InferenceBenchmark.platform.ilike(f"%{f.platform}%"))
+    if f.serving_engine:
+        stmt = stmt.where(InferenceBenchmark.serving_engine.ilike(f"%{f.serving_engine}%"))
     return stmt
 
 

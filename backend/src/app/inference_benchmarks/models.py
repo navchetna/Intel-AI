@@ -11,7 +11,7 @@ from app.core.database import Base
 class InferenceBenchmark(Base):
     """A single inference benchmark run.
 
-    Text columns: ``timestamp``, ``platform``, ``model``, ``dataset``.
+    Text columns: ``timestamp``, ``platform``, ``serving_engine``, ``model``, ``dataset``.
     Everything else is numeric (int for counts, float for measured metrics).
     """
 
@@ -22,6 +22,7 @@ class InferenceBenchmark(Base):
     # Text fields
     timestamp: Mapped[str] = mapped_column(String(64), nullable=False)
     platform: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    serving_engine: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     model: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
     dataset: Mapped[str | None] = mapped_column(String(256), nullable=True)
 

@@ -35,6 +35,15 @@ export interface Model {
   dockerSupport: boolean;
   architecture: string;
   maxTokens: string;
+  /**
+   * Decoder architecture specs for KV-cache/VRAM sizing (production-sizing tab only).
+   * Left undefined unless sourced from a published config — never a guess. `paramsB` is
+   * total resident params (MoE: all experts, not just active), used for weight VRAM.
+   */
+  paramsB?: number;
+  numLayers?: number;
+  numKvHeads?: number;
+  headDim?: number;
 }
 
 export const CATEGORY_ORDER: Category[] = [
@@ -163,6 +172,7 @@ export const models: Model[] = [
     hfAdoption: "HF likes: 103 · 77,954 downloads/month · 25 finetunes",
     cloudEdge: "Cloud/server preferred", finetuning: true, dockerSupport: true,
     architecture: "ViT-MLP-LLM: InternViT-300M + Qwen2.5-7B; V2PE; Mixed Preference Opt.", maxTokens: "16384",
+    paramsB: 8, numLayers: 28, numKvHeads: 4, headDim: 128, // Qwen2.5-7B backbone (published config)
   },
   {
     name: "InternVL3-2B", hfId: "OpenGVLab/InternVL3-2B", category: "Vision & Multimodal",
@@ -180,6 +190,7 @@ export const models: Model[] = [
     hfAdoption: "Active — part of InternVL3 family (84 likes, 33 models)",
     cloudEdge: "Both (Edge/CPU suitable)", finetuning: true, dockerSupport: true,
     architecture: "ViT-MLP-LLM: InternViT-300M + Qwen2.5-1.5B; V2PE; Native Multimodal Pre-Training", maxTokens: "16384",
+    paramsB: 2, numLayers: 28, numKvHeads: 2, headDim: 128, // Qwen2.5-1.5B backbone (published config)
   },
   // Speech & Audio
   {
@@ -541,6 +552,7 @@ export const models: Model[] = [
     hfAdoption: "Google backing; widely adopted in safety pipelines",
     cloudEdge: "Both", finetuning: true, dockerSupport: true,
     architecture: "Gemma 2B; instruction-tuned for content policy classification", maxTokens: "8192",
+    paramsB: 2, numLayers: 26, numKvHeads: 4, headDim: 256, // Gemma-2-2B (published config)
   },
   {
     name: "Llama-Guard-3-8B", hfId: "meta-llama/Llama-Guard-3-8B", category: "Safety & Guardrails",
@@ -558,6 +570,7 @@ export const models: Model[] = [
     hfAdoption: "Industry standard; millions of downloads",
     cloudEdge: "Cloud (primary)", finetuning: true, dockerSupport: true,
     architecture: "Llama 3.1 8B; fine-tuned for 13-category MLCommons safety taxonomy", maxTokens: "8192",
+    paramsB: 8, numLayers: 32, numKvHeads: 8, headDim: 128, // Llama-3.1-8B (published config)
   },
   {
     name: "Granite-Guardian-3.0-2B", hfId: "ibm-granite/granite-guardian-3.0-2b", category: "Safety & Guardrails",
@@ -610,6 +623,7 @@ export const models: Model[] = [
     hfAdoption: "Very high — part of Qwen3 family with large community",
     cloudEdge: "Cloud (primary)", finetuning: true, dockerSupport: true,
     architecture: "Mixture-of-Experts; 30.5B total; 3.3B activated per token; 64 experts", maxTokens: "32768",
+    paramsB: 30.5, numLayers: 48, numKvHeads: 4, headDim: 128, // Qwen3-30B-A3B (published config)
   },
   {
     name: "Gemma 4 26B-A4B-IT", hfId: "google/gemma-4-26B-A4B-it", category: "LLM",
