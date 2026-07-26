@@ -130,10 +130,8 @@ export function Navbar() {
                 <ul className="flex items-center gap-0.5">
                   {routes.map(route => {
                     const active = pathname === `/${route.slug}` || pathname.startsWith(`/${route.slug}/`);
-                    const cls = `rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors whitespace-nowrap ${
-                      active
-                        ? "bg-intel-haze text-intel-blue"
-                        : "text-gray-600 hover:bg-intel-haze/60 hover:text-intel-blue"
+                    const cls = `nav-link rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors whitespace-nowrap ${
+                      active ? "nav-link-active" : ""
                     }`;
                     // External routes need the full path including basePath prefix
                     const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "/intel-ai";

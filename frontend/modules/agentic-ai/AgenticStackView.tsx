@@ -312,7 +312,7 @@ function LayerRow({
       {shimmer}
       <div className="relative pl-2 flex-1 min-w-0">
         <p className="font-bold text-base leading-tight tracking-wide transition-colors duration-200"
-          style={{ color: active ? color : hovered ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.88)" }}>
+          style={{ color: active ? color : hovered ? "var(--dm-txt-primary)" : "var(--dm-txt-body)" }}>
           {layer.title}
         </p>
         <p className="text-blue-300/50 text-xs mt-1 font-medium">{layer.subtitle}</p>
@@ -499,14 +499,17 @@ export function AgenticStackView({
                 </div>
               </div>
             ) : (
-              <div className="flex-1 rounded-2xl border border-dashed border-gray-200 bg-white/40 flex flex-col items-center justify-center text-center">
+              <div
+                className="flex-1 rounded-2xl border border-dashed flex flex-col items-center justify-center text-center"
+                style={{ borderColor: "var(--dm-border-b)", background: "var(--dm-surface-b)" }}
+              >
                 <div className="flex items-center gap-1.5 mb-4 opacity-30">
                   <div className="h-1 w-6 rounded-full bg-intel-energy" />
                   <div className="h-1 w-3 rounded-full bg-intel-energy" />
                   <div className="h-1 w-1.5 rounded-full bg-intel-energy" />
                 </div>
-                <p className="text-gray-400 text-sm font-medium">Select a layer to explore</p>
-                <p className="text-gray-300 text-xs mt-1">Click any block in the diagram</p>
+                <p className="text-sm font-medium" style={{ color: "var(--dm-txt-muted)" }}>Select a layer to explore</p>
+                <p className="text-xs mt-1" style={{ color: "var(--dm-txt-faint)" }}>Click any block in the diagram</p>
               </div>
             )}
           </div>

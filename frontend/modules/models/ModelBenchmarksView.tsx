@@ -15,10 +15,10 @@ const TOKEN_PROFILES = [
 ];
 
 const selectStyle = {
-  background: "#0e1d38",
-  border: "1px solid rgba(255,255,255,0.12)",
-  color: "rgba(255,255,255,0.85)",
-  colorScheme: "dark",
+  background: "var(--dm-input-bg)",
+  border: "1px solid var(--dm-input-border)",
+  color: "var(--dm-input-color)",
+  colorScheme: "var(--dm-color-scheme)",
 } as React.CSSProperties;
 
 function Select({ label, value, onChange, children }: {

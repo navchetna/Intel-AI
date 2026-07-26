@@ -22,16 +22,16 @@ export interface FeatureContent {
 /** Reusable Intel-themed landing page for a feature route. */
 export function FeatureLanding({ content }: { content: FeatureContent }) {
   return (
-    <main>
-      <section className="bg-gradient-to-b from-intel-haze to-white">
+    <main className="min-h-screen" style={{ background: "var(--dm-page-bg)" }}>
+      <section>
         <div className="mx-auto max-w-6xl px-6 py-20">
           <p className="text-sm font-semibold uppercase tracking-wide text-intel-blue">
             {content.tagline}
           </p>
-          <h1 className="mt-3 text-4xl font-bold text-intel-dark sm:text-5xl">
+          <h1 className="mt-3 text-4xl font-bold sm:text-5xl" style={{ color: "var(--dm-txt-primary)" }}>
             {content.title}
           </h1>
-          <p className="mt-4 max-w-2xl text-lg text-gray-600">{content.description}</p>
+          <p className="mt-4 max-w-2xl text-lg" style={{ color: "var(--dm-txt-secondary)" }}>{content.description}</p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <a
               href={withBase("/")}
@@ -39,7 +39,10 @@ export function FeatureLanding({ content }: { content: FeatureContent }) {
             >
               Back home
             </a>
-            <code className="rounded-md bg-white px-3 py-2 text-sm text-gray-500 ring-1 ring-gray-200">
+            <code
+              className="rounded-md px-3 py-2 text-sm"
+              style={{ background: "var(--dm-surface-b)", color: "var(--dm-txt-muted)", boxShadow: "inset 0 0 0 1px var(--dm-border-b)" }}
+            >
               API prefix: {content.apiPrefix}
             </code>
           </div>
@@ -51,10 +54,11 @@ export function FeatureLanding({ content }: { content: FeatureContent }) {
           {content.highlights.map((highlight) => (
             <div
               key={highlight.title}
-              className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm"
+              className="rounded-xl border p-6 shadow-sm"
+              style={{ borderColor: "var(--dm-card-border)", background: "var(--dm-card-bg)" }}
             >
-              <h3 className="text-lg font-semibold text-intel-dark">{highlight.title}</h3>
-              <p className="mt-2 text-sm text-gray-600">{highlight.body}</p>
+              <h3 className="text-lg font-semibold" style={{ color: "var(--dm-txt-primary)" }}>{highlight.title}</h3>
+              <p className="mt-2 text-sm" style={{ color: "var(--dm-txt-secondary)" }}>{highlight.body}</p>
             </div>
           ))}
         </div>

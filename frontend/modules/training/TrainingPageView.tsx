@@ -49,7 +49,7 @@ export function TrainingPageView() {
               key={t} onClick={() => setTab(t)}
               className="px-4 py-2.5 text-sm font-semibold transition-colors -mb-px border-b-2"
               style={{
-                color: tab === t ? "#818cf8" : "rgba(255,255,255,0.4)",
+                color: tab === t ? "#818cf8" : "var(--dm-txt-muted)",
                 borderColor: tab === t ? "#818cf8" : "transparent",
               }}
             >

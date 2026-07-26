@@ -395,9 +395,12 @@ export function RackView() {
                 </div>
               </div>
             ) : (
-              <div className="flex-1 rounded-2xl border border-dashed border-gray-200 bg-white/40 flex flex-col items-center justify-center text-center py-16">
-                <p className="text-gray-400 text-sm font-medium">Select a device to explore</p>
-                <p className="text-gray-300 text-xs mt-1">Click any unit in the rack elevation</p>
+              <div
+                className="flex-1 rounded-2xl border border-dashed flex flex-col items-center justify-center text-center py-16"
+                style={{ borderColor: "var(--dm-border-b)", background: "var(--dm-surface-b)" }}
+              >
+                <p className="text-sm font-medium" style={{ color: "var(--dm-txt-muted)" }}>Select a device to explore</p>
+                <p className="text-xs mt-1" style={{ color: "var(--dm-txt-faint)" }}>Click any unit in the rack elevation</p>
               </div>
             )}
           </div>
