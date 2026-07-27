@@ -581,7 +581,7 @@ export function Xeon6SPDetailView({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="min-h-screen flex"
+    <div className="xeon6sp-detail min-h-screen flex"
       style={{ background: "linear-gradient(170deg, #020c1f 0%, #040d20 50%, #020c1f 100%)" }}>
 
       {/* ── Main content ── */}

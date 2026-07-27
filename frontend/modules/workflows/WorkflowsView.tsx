@@ -5,12 +5,33 @@ import {
   WORKFLOWS, CATEGORY_ORDER, CATEGORY_META,
   type WorkflowDef, type CategoryName, type ConfigField,
 } from "./data";
+import { useTheme } from "@/contexts/ThemeContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type ConfigValues = Record<string, string | number | boolean>;
 type ViewMode     = "cards" | "table";
 type ExportTab    = "json" | "docker" | "api";
+
+// CATEGORY_META's accents are tuned to sit on the dark navy canvas; used
+// directly as text on a light background they read too pale. Same hues,
+// darkened for light mode.
+const CATEGORY_ACCENT_LIGHT: Record<CategoryName, string> = {
+  "Working with Text":              "#4338ca",
+  "Handling Inputs":                "#b45309",
+  "Working with Language & Speech": "#0e7490",
+  "Establishing Knowledge":         "#047857",
+  "Safety & Privacy":               "#b91c1c",
+};
+
+function resolveAccentText(theme: "light" | "dark", cat: CategoryName): string {
+  return theme === "light" ? CATEGORY_ACCENT_LIGHT[cat] : CATEGORY_META[cat].accent;
+}
+
+function useAccentText(cat: CategoryName): string {
+  const { theme } = useTheme();
+  return resolveAccentText(theme, cat);
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -66,10 +87,10 @@ curl -X POST https://api.intel-ai.local/v1/workflows/run \\
 
 const FIELD_BASE = "w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 transition-colors";
 const FIELD_STYLE: React.CSSProperties = {
-  background: "#0e1d38",
-  border: "1px solid rgba(255,255,255,0.12)",
-  color: "rgba(255,255,255,0.85)",
-  colorScheme: "dark",
+  background: "var(--dm-input-bg)",
+  border: "1px solid var(--dm-input-border)",
+  color: "var(--dm-input-color)",
+  colorScheme: "var(--dm-color-scheme)",
 };
 
 function FieldRow({ field, value, onChange }: {
@@ -152,6 +173,7 @@ function FieldRow({ field, value, onChange }: {
 
 function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }) {
   const meta = CATEGORY_META[wf.category];
+  const accentText = useAccentText(wf.category);
   const [values, setValues]       = useState<ConfigValues>(() => initValues(wf.configFields));
   const [exportTab, setExportTab] = useState<ExportTab>("json");
   const [copied, setCopied]       = useState(false);
@@ -210,7 +232,7 @@ function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }
         >
           <div
             className="mt-0.5 w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-sm font-black"
-            style={{ background: `rgba(${meta.accentRgb},0.15)`, color: meta.accent, border: `1px solid rgba(${meta.accentRgb},0.3)` }}
+            style={{ background: `rgba(${meta.accentRgb},0.15)`, color: accentText, border: `1px solid rgba(${meta.accentRgb},0.3)` }}
           >
             {meta.icon}
           </div>
@@ -242,7 +264,7 @@ function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }
         {/* Export section */}
         <div
           className="flex-shrink-0 border-t border-white/[0.07]"
-          style={{ background: "rgba(255,255,255,0.02)" }}
+          style={{ background: "var(--dm-surface-a)" }}
         >
           {/* Tab strip */}
           <div className="flex items-center gap-0 px-5 pt-3 pb-0">
@@ -253,8 +275,8 @@ function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }
                 onClick={() => setExportTab(id)}
                 className="px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors"
                 style={exportTab === id
-                  ? { background: "#0e1d38", color: meta.accent, borderBottom: `2px solid ${meta.accent}` }
-                  : { color: "rgba(255,255,255,0.35)", borderBottom: "2px solid transparent" }}
+                  ? { background: "var(--dm-input-bg)", color: accentText, borderBottom: `2px solid ${accentText}` }
+                  : { color: "var(--dm-txt-faint)", borderBottom: "2px solid transparent" }}
               >
                 {label}
               </button>
@@ -262,7 +284,7 @@ function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }
           </div>
 
           {/* Code preview */}
-          <div className="mx-5 mb-3 rounded-b-lg rounded-tr-lg overflow-hidden" style={{ background: "#0e1d38", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="mx-5 mb-3 rounded-b-lg rounded-tr-lg overflow-hidden" style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)" }}>
             <pre className="p-3 text-[10px] leading-relaxed font-mono text-white/60 overflow-x-auto max-h-[160px] overflow-y-auto whitespace-pre">
               {exportContent}
             </pre>
@@ -273,14 +295,14 @@ function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }
             <button
               onClick={handleCopy}
               className="flex-1 py-2 text-xs font-semibold rounded-lg transition-colors"
-              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.65)" }}
+              style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-txt-secondary)" }}
             >
               {copied ? "✓ Copied" : "Copy"}
             </button>
             <button
               onClick={handleDownload}
               className="flex-1 py-2 text-xs font-bold rounded-lg transition-all hover:brightness-110"
-              style={{ background: `rgba(${meta.accentRgb},0.18)`, border: `1px solid rgba(${meta.accentRgb},0.30)`, color: meta.accent }}
+              style={{ background: `rgba(${meta.accentRgb},0.18)`, border: `1px solid rgba(${meta.accentRgb},0.30)`, color: accentText }}
             >
               ↓ Download
             </button>
@@ -325,11 +347,12 @@ function WorkflowCard({ wf, onConfigure }: { wf: WorkflowDef; onConfigure: () =>
 
 function CategoryHeader({ name, count }: { name: CategoryName; count: number }) {
   const meta = CATEGORY_META[name];
+  const accentText = useAccentText(name);
   return (
     <div className="flex items-center gap-3 mb-4">
       <div
         className="w-7 h-7 rounded-lg flex items-center justify-center text-sm font-black flex-shrink-0"
-        style={{ background: `rgba(${meta.accentRgb},0.15)`, color: meta.accent, border: `1px solid rgba(${meta.accentRgb},0.25)` }}
+        style={{ background: `rgba(${meta.accentRgb},0.15)`, color: accentText, border: `1px solid rgba(${meta.accentRgb},0.25)` }}
       >
         {meta.icon}
       </div>
@@ -343,6 +366,7 @@ function CategoryHeader({ name, count }: { name: CategoryName; count: number }) 
 // ── Table view ─────────────────────────────────────────────────────────────────
 
 function WorkflowTable({ workflows, onConfigure }: { workflows: WorkflowDef[]; onConfigure: (wf: WorkflowDef) => void }) {
+  const { theme } = useTheme();
   return (
     <div className="rounded-2xl overflow-hidden border border-white/[0.07]" style={{ background: "var(--dm-table-bg)" }}>
       <div className="overflow-x-auto">
@@ -358,6 +382,7 @@ function WorkflowTable({ workflows, onConfigure }: { workflows: WorkflowDef[]; o
           <tbody>
             {workflows.map((wf, idx) => {
               const meta = CATEGORY_META[wf.category];
+              const accentText = resolveAccentText(theme, wf.category);
               return (
                 <tr
                   key={wf.id}
@@ -376,7 +401,7 @@ function WorkflowTable({ workflows, onConfigure }: { workflows: WorkflowDef[]; o
                   <td className="px-4 py-3 overflow-hidden">
                     <span
                       className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                      style={{ background: `rgba(${meta.accentRgb},0.12)`, color: meta.accent }}
+                      style={{ background: `rgba(${meta.accentRgb},0.12)`, color: accentText }}
                     >
                       <span>{meta.icon}</span>
                       <span className="truncate">{wf.category}</span>
@@ -404,6 +429,7 @@ function WorkflowTable({ workflows, onConfigure }: { workflows: WorkflowDef[]; o
 // ── Main view ──────────────────────────────────────────────────────────────────
 
 export function WorkflowsView() {
+  const { theme } = useTheme();
   const [viewMode, setViewMode]         = useState<ViewMode>("cards");
   const [search, setSearch]             = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryName | "All">("All");
@@ -447,7 +473,7 @@ export function WorkflowsView() {
           </div>
 
           {/* View toggle */}
-          <div className="flex items-center gap-1 rounded-xl p-1" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="flex items-center gap-1 rounded-xl p-1" style={{ background: "var(--dm-surface-b)", border: "1px solid var(--dm-border-b)" }}>
             {(["cards", "table"] as const).map(mode => (
               <button
                 key={mode}
@@ -455,7 +481,7 @@ export function WorkflowsView() {
                 className="px-4 py-1.5 text-xs font-semibold rounded-lg capitalize transition-all"
                 style={viewMode === mode
                   ? { background: "#1262B5", color: "white" }
-                  : { color: "rgba(255,255,255,0.45)" }}
+                  : { color: "var(--dm-txt-muted)" }}
               >
                 {mode === "cards" ? "⊞ Cards" : "☰ Table"}
               </button>
@@ -489,7 +515,7 @@ export function WorkflowsView() {
                 value={toolFilter}
                 onChange={e => setToolFilter(e.target.value as "all" | "n8n" | "custom")}
                 className="py-2 px-3 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
-                style={{ background: "#0e1d38", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.85)", colorScheme: "dark" }}
+                style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)", colorScheme: "var(--dm-color-scheme)" }}
               >
                 <option value="all">All tools</option>
                 <option value="n8n">N8N</option>
@@ -513,9 +539,9 @@ export function WorkflowsView() {
               onClick={() => setCategoryFilter("All")}
               className="px-3 py-1 rounded-full text-xs font-medium transition-all"
               style={{
-                background: categoryFilter === "All" ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
-                color: categoryFilter === "All" ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.40)",
-                border: `1px solid ${categoryFilter === "All" ? "rgba(255,255,255,0.20)" : "rgba(255,255,255,0.08)"}`,
+                background: categoryFilter === "All" ? "var(--dm-surface-c)" : "var(--dm-surface-b)",
+                color: categoryFilter === "All" ? "var(--dm-txt-body)" : "var(--dm-txt-muted)",
+                border: `1px solid ${categoryFilter === "All" ? "var(--dm-border-b)" : "var(--dm-border-a)"}`,
               }}
             >
               All ({WORKFLOWS.length})
@@ -530,9 +556,9 @@ export function WorkflowsView() {
                   onClick={() => setCategoryFilter(active ? "All" : cat)}
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all"
                   style={{
-                    background: active ? `rgba(${meta.accentRgb},0.15)` : "rgba(255,255,255,0.04)",
-                    color:      active ? meta.accent : "rgba(255,255,255,0.45)",
-                    border:     `1px solid ${active ? `rgba(${meta.accentRgb},0.35)` : "rgba(255,255,255,0.08)"}`,
+                    background: active ? `rgba(${meta.accentRgb},0.15)` : "var(--dm-surface-b)",
+                    color:      active ? resolveAccentText(theme, cat) : "var(--dm-txt-muted)",
+                    border:     `1px solid ${active ? `rgba(${meta.accentRgb},0.35)` : "var(--dm-border-a)"}`,
                   }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.accent }} />

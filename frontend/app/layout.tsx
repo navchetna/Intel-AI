@@ -29,7 +29,7 @@ export default function RootLayout({
           <NavSettingsProvider>
             <ProjectProvider>
               <Navbar />
-              <div className="flex items-start">
+              <div className="flex items-stretch">
                 <ProjectSidebar />
                 <div className="flex-1 min-w-0">{children}</div>
               </div>

@@ -3,10 +3,16 @@
 import { useState, useMemo, useRef } from "react";
 import { models, CATEGORY_ORDER, type Category, type Model } from "./data";
 import { useDismiss } from "@/hooks/useDismiss";
+import { useTheme } from "@/contexts/ThemeContext";
 
-// ── dark-theme category palette ───────────────────────────────────────────────
+// ── category palette (per-theme) ────────────────────────────────────────────
+// Same accent hues in both themes; badge/badgeText/accent are tuned per
+// theme since a pastel-on-15%-tint pairing that reads fine on the dark
+// navy table background becomes near-invisible on the light one.
 
-const DARK_CAT: Record<Category, { accent: string; row: string; rowAlt: string; badge: string; badgeText: string }> = {
+type CatPalette = Record<Category, { accent: string; row: string; rowAlt: string; badge: string; badgeText: string }>;
+
+const DARK_CAT: CatPalette = {
   "OCR & Document":         { accent: "#22d3ee", row: "rgba(34,211,238,0.04)",  rowAlt: "rgba(34,211,238,0.07)",  badge: "rgba(34,211,238,0.15)",  badgeText: "#67e8f9" },
   "Vision & Multimodal":    { accent: "#a78bfa", row: "rgba(167,139,250,0.04)", rowAlt: "rgba(167,139,250,0.07)", badge: "rgba(167,139,250,0.15)", badgeText: "#c4b5fd" },
   "Speech & Audio":         { accent: "#34d399", row: "rgba(52,211,153,0.04)",  rowAlt: "rgba(52,211,153,0.07)",  badge: "rgba(52,211,153,0.15)",  badgeText: "#6ee7b7" },
@@ -16,6 +22,22 @@ const DARK_CAT: Record<Category, { accent: string; row: string; rowAlt: string; 
   "LLM":                    { accent: "#818cf8", row: "rgba(129,140,248,0.04)", rowAlt: "rgba(129,140,248,0.07)", badge: "rgba(129,140,248,0.15)", badgeText: "#a5b4fc" },
   "Code & Agents":          { accent: "#fb923c", row: "rgba(251,146,60,0.04)",  rowAlt: "rgba(251,146,60,0.07)",  badge: "rgba(251,146,60,0.15)",  badgeText: "#fdba74" },
 };
+
+const LIGHT_CAT: CatPalette = {
+  "OCR & Document":         { accent: "#0e7490", row: "rgba(14,116,144,0.04)",  rowAlt: "rgba(14,116,144,0.07)",  badge: "rgba(14,116,144,0.12)",  badgeText: "#0e7490" },
+  "Vision & Multimodal":    { accent: "#6d28d9", row: "rgba(109,40,217,0.04)",  rowAlt: "rgba(109,40,217,0.07)",  badge: "rgba(109,40,217,0.12)",  badgeText: "#6d28d9" },
+  "Speech & Audio":         { accent: "#047857", row: "rgba(4,120,87,0.04)",    rowAlt: "rgba(4,120,87,0.07)",    badge: "rgba(4,120,87,0.12)",    badgeText: "#047857" },
+  "Translation":            { accent: "#b45309", row: "rgba(180,83,9,0.04)",    rowAlt: "rgba(180,83,9,0.07)",    badge: "rgba(180,83,9,0.12)",    badgeText: "#b45309" },
+  "Embeddings & Retrieval": { accent: "#1d4ed8", row: "rgba(29,78,216,0.04)",   rowAlt: "rgba(29,78,216,0.07)",   badge: "rgba(29,78,216,0.12)",   badgeText: "#1d4ed8" },
+  "Safety & Guardrails":    { accent: "#b91c1c", row: "rgba(185,28,28,0.04)",   rowAlt: "rgba(185,28,28,0.07)",   badge: "rgba(185,28,28,0.12)",   badgeText: "#b91c1c" },
+  "LLM":                    { accent: "#4338ca", row: "rgba(67,56,202,0.04)",   rowAlt: "rgba(67,56,202,0.07)",   badge: "rgba(67,56,202,0.12)",   badgeText: "#4338ca" },
+  "Code & Agents":          { accent: "#c2410c", row: "rgba(194,65,12,0.04)",   rowAlt: "rgba(194,65,12,0.07)",   badge: "rgba(194,65,12,0.12)",   badgeText: "#c2410c" },
+};
+
+function useCatPalette(): CatPalette {
+  const { theme } = useTheme();
+  return theme === "light" ? LIGHT_CAT : DARK_CAT;
+}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -121,10 +143,10 @@ function BoolIcon({ val }: { val: boolean }) {
 }
 
 const SELECT_STYLE: React.CSSProperties = {
-  background: "#0e1d38",
-  border: "1px solid rgba(255,255,255,0.12)",
-  color: "rgba(255,255,255,0.85)",
-  colorScheme: "dark",
+  background: "var(--dm-input-bg)",
+  border: "1px solid var(--dm-input-border)",
+  color: "var(--dm-input-color)",
+  colorScheme: "var(--dm-color-scheme)",
 };
 
 function SortableTh<K extends string>({ label, k, width, sortKey, sortDir, onSort }: {
@@ -173,7 +195,7 @@ function DarkSelect({ label, value, onChange, children }: {
 // ── expanded detail panel ─────────────────────────────────────────────────────
 
 function ExpandedRow({ model, colSpan }: { model: Model; colSpan: number }) {
-  const c = DARK_CAT[model.category];
+  const c = useCatPalette()[model.category];
   return (
     <tr>
       <td colSpan={colSpan} style={{ background: `rgba(${hexToRgb(c.accent)},0.05)`, borderBottom: `1px solid rgba(${hexToRgb(c.accent)},0.12)` }}>
@@ -237,7 +259,7 @@ function ExpandedRow({ model, colSpan }: { model: Model; colSpan: number }) {
 
 function GroupHeader({ label, count, colSpan }: { label: string; count: number; colSpan: number }) {
   const cat = label as Category;
-  const accent = DARK_CAT[cat]?.accent ?? "#3399ff";
+  const accent = useCatPalette()[cat]?.accent ?? "#3399ff";
   return (
     <tr>
       <td colSpan={colSpan} style={{ background: "rgba(255,255,255,0.03)", borderTop: `2px solid ${accent}44`, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -283,6 +305,7 @@ export function ModelsView({
   const [groupBy, setGroupBy]               = useState<GroupKey>("category");
   const [expandedId, setExpandedId]         = useState<string | null>(null);
   const [visibleCols, setVisibleCols]       = useState<ColumnVisibility>(ALL_COLUMNS_VISIBLE);
+  const catPalette = useCatPalette();
 
   const origins = useMemo(() => {
     const raw = models.map(m => m.origin.split("(")[0].trim().split("—")[0].trim()).filter(Boolean);
@@ -440,7 +463,7 @@ export function ModelsView({
           {/* Category legend */}
           <div className="mt-4 pt-4 flex flex-wrap gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             {CATEGORY_ORDER.map(c => {
-              const col = DARK_CAT[c];
+              const col = catPalette[c];
               const count = models.filter(m => m.category === c).length;
               const active = categoryFilter === c;
               return (
@@ -449,9 +472,9 @@ export function ModelsView({
                   onClick={() => setCategoryFilter(active ? "All" : c)}
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all"
                   style={{
-                    background: active ? col.badge : "rgba(255,255,255,0.04)",
-                    color: active ? col.badgeText : "rgba(255,255,255,0.45)",
-                    border: `1px solid ${active ? col.accent + "55" : "rgba(255,255,255,0.08)"}`,
+                    background: active ? col.badge : "var(--dm-surface-b)",
+                    color: active ? col.badgeText : "var(--dm-txt-muted)",
+                    border: `1px solid ${active ? col.accent + "55" : "var(--dm-border-b)"}`,
                   }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: col.accent }} />
@@ -501,7 +524,7 @@ export function ModelsView({
                       <GroupHeader key={`group-${label}`} label={label} count={rows.length} colSpan={COLS} />
                     )}
                     {rows.map((model, idx) => {
-                      const col = DARK_CAT[model.category];
+                      const col = catPalette[model.category];
                       const isExpanded = expandedId === model.hfId;
                       const bg = idx % 2 === 0 ? col.row : col.rowAlt;
                       return (
