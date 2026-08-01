@@ -8,6 +8,7 @@ import { navRoutes, CLUSTER_LABELS, CLUSTER_ORDER } from "@/lib/navigation";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useNavSettings, type HideableCluster } from "@/contexts/NavSettingsContext";
 import { useDismiss } from "@/hooks/useDismiss";
+import { ProjectSelector } from "./ProjectSelector";
 
 const HIDEABLE_CLUSTERS: { key: HideableCluster; label: string }[] = [
   { key: "manufacturing", label: "Manufacturing" },
@@ -168,6 +169,7 @@ export function Navbar() {
               {mobileOpen ? <path d="M18 6L6 18M6 6l12 12" /> : <path d="M3 6h18M3 12h18M3 18h18" />}
             </svg>
           </button>
+          <ProjectSelector />
           <NavSettingsMenu />
           <button
             onClick={toggle}

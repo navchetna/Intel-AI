@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { createContext, useContext, useMemo } from "react";
 import Image from "next/image";
+import { useTheme } from "@/contexts/ThemeContext";
 import {
   calcPG, type PGInputs,
   calcQdrant, type QdrantInputs,
@@ -15,6 +16,19 @@ import {
 } from "./sizing-calcs";
 
 export type { SizingTool } from "./sizing-calcs";
+
+/** Darkens an "r,g,b" triplet toward black — only used in light mode, where a
+ *  tool's raw accent (e.g. ClickHouse's bright yellow) would be unreadable
+ *  directly on a light card. */
+function darkenRgb(rgb: string, amount = 0.4): string {
+  const [r, g, b] = rgb.split(",").map(Number);
+  return `rgb(${Math.round(r * (1 - amount))},${Math.round(g * (1 - amount))},${Math.round(b * (1 - amount))})`;
+}
+
+/** Lets ConfRow/WorkingRow (defined once, called ~180 times across the 8 tool
+ *  forms) pick up the active tool's accent without threading a prop through
+ *  every call site. */
+const AccentCtx = createContext<string>("129,140,248");
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -47,7 +61,8 @@ function NumField({ label, value, onChange, min, step = 1, note }: {
       <input
         type="number" value={value} min={min} step={step}
         onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange(v); }}
-        className="w-full rounded-lg px-3 py-2 text-sm text-white bg-white/5 border border-white/10 focus:outline-none focus:border-white/30 focus:bg-white/8 transition-colors"
+        className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none transition-colors"
+        style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)" }}
       />
       {note && <span className="text-[10px] text-white/30 leading-tight">{note}</span>}
     </label>
@@ -63,7 +78,8 @@ function SelField<T extends string>({ label, value, onChange, options, note }: {
       <select
         value={value}
         onChange={e => onChange(e.target.value as T)}
-        className="w-full rounded-lg px-3 py-2 text-sm text-white bg-[#0d1f3c] border border-white/10 focus:outline-none focus:border-white/30 transition-colors"
+        className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none transition-colors"
+        style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)" }}
       >
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
@@ -81,7 +97,8 @@ function BoolField({ label, value, onChange, note }: {
       <select
         value={value ? "Yes" : "No"}
         onChange={e => onChange(e.target.value === "Yes")}
-        className="w-full rounded-lg px-3 py-2 text-sm text-white bg-[#0d1f3c] border border-white/10 focus:outline-none focus:border-white/30 transition-colors"
+        className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none transition-colors"
+        style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)" }}
       >
         <option>Yes</option>
         <option>No</option>
@@ -98,12 +115,14 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 // ── Result display primitives ──────────────────────────────────────────────────
 
 function MetricCard({ label, value, unit, accent }: { label: string; value: string | number; unit: string; accent: string }) {
+  const { theme } = useTheme();
+  const valueColor = theme === "dark" ? `rgb(${accent})` : darkenRgb(accent);
   return (
     <div className="flex flex-col gap-0.5 rounded-xl p-4"
       style={{ background: `rgba(${accent},0.08)`, border: `1px solid rgba(${accent},0.2)` }}>
       <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">{label}</span>
       <div className="flex items-baseline gap-1.5 mt-0.5">
-        <span className="text-3xl font-extrabold leading-none" style={{ color: `rgb(${accent})` }}>{value}</span>
+        <span className="text-3xl font-extrabold leading-none" style={{ color: valueColor }}>{value}</span>
         <span className="text-sm font-medium text-white/50">{unit}</span>
       </div>
     </div>
@@ -111,19 +130,25 @@ function MetricCard({ label, value, unit, accent }: { label: string; value: stri
 }
 
 function ConfRow({ k, v }: { k: string; v: string | number }) {
+  const accentRgb = useContext(AccentCtx);
+  const { theme } = useTheme();
+  const valueColor = theme === "dark" ? `rgb(${accentRgb})` : darkenRgb(accentRgb);
   return (
     <div className="flex items-baseline gap-2 py-1.5 border-b border-white/[0.05] last:border-0">
       <span className="font-mono text-[11px] text-white/45 min-w-0 flex-1 truncate">{k}</span>
-      <span className="font-mono text-[12px] font-semibold text-white/80 flex-shrink-0">{v}</span>
+      <span className="font-mono text-[12px] font-semibold flex-shrink-0" style={{ color: valueColor }}>{v}</span>
     </div>
   );
 }
 
 function WorkingRow({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
+  const accentRgb = useContext(AccentCtx);
+  const { theme } = useTheme();
+  const valueColor = theme === "dark" ? `rgb(${accentRgb})` : darkenRgb(accentRgb);
   return (
     <div className="flex items-baseline justify-between gap-2 py-1 text-[11px]">
       <span className="text-white/35">{label}</span>
-      <span className="text-white/65 font-mono">{typeof value === "number" ? value.toFixed(2) : value}{unit ? ` ${unit}` : ""}</span>
+      <span className="font-mono" style={{ color: valueColor }}>{typeof value === "number" ? value.toFixed(2) : value}{unit ? ` ${unit}` : ""}</span>
     </div>
   );
 }
@@ -138,6 +163,7 @@ function PGForm({ accent, accentRgb, inputs, onChange }: {
   const set = <K extends keyof PGInputs>(k: K, v: PGInputs[K]) => onChange({ ...inp, [k]: v });
 
   return (
+    <AccentCtx.Provider value={accentRgb}>
     <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
       {/* Inputs */}
       <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
@@ -204,6 +230,7 @@ function PGForm({ accent, accentRgb, inputs, onChange }: {
         </div>
       </div>
     </div>
+    </AccentCtx.Provider>
   );
 }
 
@@ -218,6 +245,7 @@ function QdrantForm({ accent, accentRgb, inputs, onChange }: {
   const fmt = (n: number) => n < 1 ? n.toFixed(3) : n.toFixed(1);
 
   return (
+    <AccentCtx.Provider value={accentRgb}>
     <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
       {/* Inputs */}
       <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
@@ -301,6 +329,7 @@ function QdrantForm({ accent, accentRgb, inputs, onChange }: {
         </details>
       </div>
     </div>
+    </AccentCtx.Provider>
   );
 }
 
@@ -315,6 +344,7 @@ function Neo4jForm({ accent, accentRgb, inputs, onChange }: {
   const fmt2 = (n: number) => n.toFixed(2);
 
   return (
+    <AccentCtx.Provider value={accentRgb}>
     <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
       {/* Inputs */}
       <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
@@ -407,6 +437,7 @@ function Neo4jForm({ accent, accentRgb, inputs, onChange }: {
         </div>
       </div>
     </div>
+    </AccentCtx.Provider>
   );
 }
 
@@ -422,6 +453,7 @@ function ElasticForm({ accent, accentRgb, inputs, onChange }: {
   const isSearch = inp.workloadType === "Search";
 
   return (
+    <AccentCtx.Provider value={accentRgb}>
     <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
       {/* Inputs */}
       <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
@@ -597,6 +629,7 @@ function ElasticForm({ accent, accentRgb, inputs, onChange }: {
         </div>
       </div>
     </div>
+    </AccentCtx.Provider>
   );
 }
 
@@ -611,6 +644,7 @@ function MongoDBForm({ accent, accentRgb, inputs, onChange }: {
   const fmt = (n: number) => n.toFixed(2);
 
   return (
+    <AccentCtx.Provider value={accentRgb}>
     <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
       {/* Inputs */}
       <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
@@ -728,6 +762,7 @@ function MongoDBForm({ accent, accentRgb, inputs, onChange }: {
         </div>
       </div>
     </div>
+    </AccentCtx.Provider>
   );
 }
 
@@ -742,6 +777,7 @@ function PydanticAIForm({ accent, accentRgb, inputs, onChange }: {
   const fmt = (n: number) => n < 10 ? n.toFixed(2) : n.toFixed(1);
 
   return (
+    <AccentCtx.Provider value={accentRgb}>
     <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
       {/* Inputs */}
       <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
@@ -837,6 +873,7 @@ function PydanticAIForm({ accent, accentRgb, inputs, onChange }: {
         </div>
       </div>
     </div>
+    </AccentCtx.Provider>
   );
 }
 
@@ -851,6 +888,7 @@ function LogfireForm({ accent, accentRgb, inputs, onChange }: {
   const fmt = (n: number) => n < 10 ? n.toFixed(2) : n.toFixed(1);
 
   return (
+    <AccentCtx.Provider value={accentRgb}>
     <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
       {/* Inputs */}
       <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
@@ -969,6 +1007,7 @@ function LogfireForm({ accent, accentRgb, inputs, onChange }: {
         </div>
       </div>
     </div>
+    </AccentCtx.Provider>
   );
 }
 
@@ -983,6 +1022,7 @@ function ClickHouseForm({ accent, accentRgb, inputs, onChange }: {
   const fmt = (n: number) => n < 10 ? n.toFixed(2) : n.toFixed(1);
 
   return (
+    <AccentCtx.Provider value={accentRgb}>
     <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
       {/* Inputs */}
       <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
@@ -1103,6 +1143,7 @@ function ClickHouseForm({ accent, accentRgb, inputs, onChange }: {
         </div>
       </div>
     </div>
+    </AccentCtx.Provider>
   );
 }
 
@@ -1110,6 +1151,8 @@ function ClickHouseForm({ accent, accentRgb, inputs, onChange }: {
 
 export function SizingSheet({ tool, inputs, onInputsChange, onClose }: Props) {
   const meta = TOOL_META[tool];
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
 
   return (
     <div
@@ -1120,9 +1163,9 @@ export function SizingSheet({ tool, inputs, onInputsChange, onClose }: Props) {
       <div
         className="relative flex flex-col w-full max-w-[1100px] rounded-2xl overflow-hidden"
         style={{
-          background: "linear-gradient(150deg, #050f22 0%, #070d1e 100%)",
+          background: "var(--dm-card-bg)",
           border: `1px solid rgba(${meta.accentRgb},0.18)`,
-          boxShadow: `0 40px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(${meta.accentRgb},0.06), inset 0 1px 0 rgba(255,255,255,0.04)`,
+          boxShadow: `${isDark ? "0 40px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04)" : "var(--dm-card-depth)"}, 0 0 0 1px rgba(${meta.accentRgb},0.06)`,
           maxHeight: "92vh",
         }}
       >
@@ -1143,7 +1186,7 @@ export function SizingSheet({ tool, inputs, onInputsChange, onClose }: Props) {
           </div>
           <div
             className="flex-shrink-0 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full"
-            style={{ color: meta.accent, background: `rgba(${meta.accentRgb},0.12)`, border: `1px solid rgba(${meta.accentRgb},0.25)` }}
+            style={{ color: isDark ? meta.accent : darkenRgb(meta.accentRgb), background: `rgba(${meta.accentRgb},0.12)`, border: `1px solid rgba(${meta.accentRgb},0.25)` }}
           >
             Intel-AI Sizing Tool
           </div>

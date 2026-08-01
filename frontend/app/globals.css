@@ -140,13 +140,17 @@
    adding new opacity values) so new components don't silently reintroduce
    near-invisible text when the theme flips.                                    */
 [data-theme="light"] .text-white                            { color: #1e293b !important; }
+[data-theme="light"] .hover\:text-white:hover               { color: #1e293b !important; }
 [data-theme="light"] .text-white\/95, [data-theme="light"] .text-white\/90,
 [data-theme="light"] .text-white\/88, [data-theme="light"] .text-white\/85,
 [data-theme="light"] .text-white\/80                                        { color: rgba(30,41,59,0.90) !important; }
+[data-theme="light"] .hover\:text-white\/90:hover, [data-theme="light"] .hover\:text-white\/80:hover  { color: rgba(30,41,59,0.90) !important; }
 [data-theme="light"] .text-white\/75, [data-theme="light"] .text-white\/70,
-[data-theme="light"] .text-white\/65                                         { color: rgba(30,41,59,0.75) !important; }
+[data-theme="light"] .text-white\/65,
+[data-theme="light"] .hover\:text-white\/70:hover                            { color: rgba(30,41,59,0.75) !important; }
 [data-theme="light"] .text-white\/60, [data-theme="light"] .text-white\/55,
-[data-theme="light"] .text-white\/50                                         { color: rgba(30,41,59,0.60) !important; }
+[data-theme="light"] .text-white\/50,
+[data-theme="light"] .hover\:text-white\/60:hover                            { color: rgba(30,41,59,0.60) !important; }
 [data-theme="light"] .text-white\/45, [data-theme="light"] .text-white\/40  { color: rgba(30,41,59,0.50) !important; }
 [data-theme="light"] .text-white\/35, [data-theme="light"] .text-white\/30,
 [data-theme="light"] .text-white\/28, [data-theme="light"] .text-white\/25  { color: rgba(30,41,59,0.38) !important; }
@@ -162,6 +166,7 @@
 [data-theme="light"] .border-white\/\[0\.06\]  { border-color: rgba(0,113,197,0.08) !important; }
 [data-theme="light"] .border-white\/\[0\.05\]  { border-color: rgba(0,113,197,0.07) !important; }
 [data-theme="light"] .border-white\/30         { border-color: rgba(0,113,197,0.20) !important; }
+[data-theme="light"] .hover\:border-white\/30:hover { border-color: rgba(0,113,197,0.20) !important; }
 [data-theme="light"] .border-white\/15         { border-color: rgba(0,113,197,0.15) !important; }
 [data-theme="light"] .border-white\/10         { border-color: rgba(0,113,197,0.12) !important; }
 
@@ -174,6 +179,9 @@
 [data-theme="light"] .bg-white\/5          { background: rgba(0,113,197,0.05) !important; }
 [data-theme="light"] .bg-white\/8          { background: rgba(0,113,197,0.06) !important; }
 [data-theme="light"] .bg-white\/10         { background: rgba(0,113,197,0.08) !important; }
+[data-theme="light"] .hover\:bg-white\/5:hover   { background: rgba(0,113,197,0.05) !important; }
+[data-theme="light"] .focus\:bg-white\/8:focus   { background: rgba(0,113,197,0.06) !important; }
+[data-theme="light"] .hover\:bg-white\/10:hover  { background: rgba(0,113,197,0.08) !important; }
 
 /* Amber warning callouts (training/data-pipes cards) — the pale amber body
    text used against a near-transparent amber card is unreadable once the
@@ -213,15 +221,20 @@
 [data-theme="light"] .xeon6sp-detail .bg-white\/\[0\.07\]     { background: rgba(255,255,255,0.07) !important; }
 [data-theme="light"] .xeon6sp-detail .bg-white\/5             { background: rgba(255,255,255,0.05) !important; }
 
-/* ── Base ────────────────────────────────────────────────────────────────── */
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Native <select> dropdown listbox — Chromium respects option background/color
+   for the open popup, so this gives light mode a grey highlight instead of the
+   browser's default blue. No effect (harmless) on engines that ignore it. */
+[data-theme="light"] select option:checked,
+[data-theme="light"] select option:hover { background-color: #cbd5e1 !important; color: #0f172a !important; }
 
+/* ── Base ─────────────────────────────────────────────────────────────────
+   body's background follows the same --dm-page-bg every page's <main> uses,
+   so any gap around shorter/taller flex siblings (e.g. the collapsible
+   Projects sidebar next to a page of different height) is invisible instead
+   of showing a stray white patch in dark mode.                              */
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--dm-page-bg);
+  color: var(--dm-txt-primary);
   font-family: system-ui, -apple-system, sans-serif;
 }
 
@@ -249,3 +262,40 @@ body {
   .animate-fade-slide-in, .animate-pulse { animation: none; }
   * { transition-duration: 0.01ms !important; }
 }
+
+/* ── Markdown reference-doc rendering ────────────────────────────────────────
+   Styles the raw output of react-markdown (h1-h3, p, blockquote, lists, table,
+   code, links) using the app's existing theme variables — no Tailwind Typography
+   plugin dependency needed. */
+.md-reference h1 { font-size: 1.35rem; font-weight: 800; color: var(--dm-txt-primary); margin: 0 0 0.9rem; line-height: 1.3; }
+.md-reference h2 { font-size: 1.05rem; font-weight: 700; color: var(--dm-txt-primary); margin: 1.5rem 0 0.6rem; padding-top: 0.9rem; border-top: 1px solid var(--dm-border-a); }
+.md-reference h2:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+.md-reference h3 { font-size: 0.92rem; font-weight: 700; color: var(--dm-txt-primary); margin: 1.1rem 0 0.4rem; }
+.md-reference p { color: var(--dm-txt-secondary); line-height: 1.65; margin: 0 0 0.8rem; font-size: 0.84rem; }
+.md-reference strong { color: var(--dm-txt-primary); font-weight: 700; }
+.md-reference em { color: var(--dm-txt-secondary); }
+.md-reference blockquote {
+  border-left: 3px solid rgba(129,140,248,0.45);
+  padding: 0.55rem 0.5rem 0.55rem 1rem;
+  margin: 0.5rem 0 1.1rem;
+  color: var(--dm-txt-secondary);
+  font-style: italic;
+  background: rgba(129,140,248,0.06);
+  border-radius: 0 8px 8px 0;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+.md-reference blockquote p { margin-bottom: 0.4rem; }
+.md-reference blockquote p:last-child { margin-bottom: 0; }
+.md-reference ul, .md-reference ol { margin: 0 0 0.8rem; padding-left: 1.4rem; color: var(--dm-txt-secondary); font-size: 0.84rem; }
+.md-reference li { margin-bottom: 0.35rem; line-height: 1.6; }
+.md-reference hr { border: none; border-top: 1px solid var(--dm-border-a); margin: 1.5rem 0; }
+.md-reference table { width: 100%; border-collapse: collapse; margin: 0.75rem 0 1.3rem; font-size: 0.78rem; }
+.md-reference th {
+  text-align: left; padding: 0.5rem 0.6rem; background: var(--dm-table-head); color: var(--dm-txt-muted);
+  font-weight: 700; text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--dm-border-a);
+}
+.md-reference td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--dm-border-a); color: var(--dm-txt-secondary); vertical-align: top; }
+.md-reference code { background: rgba(255,255,255,0.08); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.82em; color: var(--dm-txt-primary); }
+.md-reference a { color: #22d3ee; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }

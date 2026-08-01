@@ -49,7 +49,12 @@ def _filters(
 # --- Public read endpoints ----------------------------------------------------
 
 
-@router.get("/records", response_model=BenchmarkRecordsResponse, summary="Filtered records")
+@router.get(
+    "/records",
+    response_model=BenchmarkRecordsResponse,
+    response_model_by_alias=False,
+    summary="Filtered records",
+)
 async def get_records(
     f: BenchmarkFilters = Depends(_filters),
     limit: int = Query(default=25, ge=1, le=2000),

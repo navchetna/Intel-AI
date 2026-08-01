@@ -457,16 +457,12 @@ export function WorkflowsView() {
 
   return (
     <main className="min-h-screen" style={{ background: "var(--dm-page-bg)" }}>
-      <div className="mx-auto max-w-screen-xl px-6 pt-10 pb-16">
+      <div className="mx-auto max-w-screen-xl px-6 pt-10">
 
         {/* ── Header ── */}
-        <div className="mb-8 flex items-end justify-between flex-wrap gap-4">
+        <div className="mb-6 flex items-end justify-between flex-wrap gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 mb-3">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#818cf8] animate-pulse" />
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-[#818cf8]/80">Workflow Catalog</span>
-            </div>
-            <h1 className="text-4xl font-black text-white tracking-tight">Workflows</h1>
+            <h1 className="text-4xl font-black text-white tracking-tight">Tasks</h1>
             <p className="mt-1 text-base text-white/40">
               {filtered.length} of {WORKFLOWS.length} workflows &middot; {CATEGORY_ORDER.length} categories
             </p>
@@ -488,7 +484,9 @@ export function WorkflowsView() {
             ))}
           </div>
         </div>
+      </div>
 
+      <div className="mx-auto max-w-screen-xl px-6 pb-16">
         {/* ── Filter bar ── */}
         <div
           className="rounded-2xl border border-white/[0.07] p-4 mb-8"

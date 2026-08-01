@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+backend/uploads/
 *.py[cod]
 .venv/
 .pytest_cache/
@@ -26,3 +27,10 @@ next-env.d.ts
 .DS_Store
 .idea/
 .vscode/
+
+# Source procurement documents staged locally for the Documents-feature upload flow — the
+# uploaded copies live in backend/uploads/ (already ignored above); these are leftover local
+# staging artifacts, not intentional public static assets.
+frontend/public/CAG.docx
+frontend/public/CAGEOISovereignAIPlatform_revalidated.pdf
+frontend/public/Corrigendum04.pdf

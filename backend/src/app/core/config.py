@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # Token lifetime in seconds (default 8h).
     auth_token_ttl: int = 28800
 
+    # --- File storage (project documents) ---
+    # Relative to the backend process's working directory (repo convention: run from backend/).
+    upload_dir: str = "uploads"
+    max_upload_size_bytes: int = 25 * 1024 * 1024
+
     # --- Database (PostgreSQL, async asyncpg driver) ---
     db_user: str = "intelai"
     db_password: str = "intelai"

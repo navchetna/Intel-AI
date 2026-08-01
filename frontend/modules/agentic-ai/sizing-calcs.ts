@@ -1453,3 +1453,15 @@ export function summarizeResources(tool: SizingTool, inputs: AnyInputs): Resourc
     }
   }
 }
+
+// Host CPU sizing for generic infra workloads: one socket is a 32-core 6730P; two sockets make one system.
+export const WORKLOAD_CORES_PER_SOCKET = 32;
+export const WORKLOAD_SOCKETS_PER_SYSTEM = 2;
+
+export function socketsNeeded(cores: number): number {
+  return Math.ceil(cores / WORKLOAD_CORES_PER_SOCKET);
+}
+
+export function systemsNeeded(sockets: number): number {
+  return Math.ceil(sockets / WORKLOAD_SOCKETS_PER_SYSTEM);
+}

@@ -204,7 +204,7 @@ export function ProjectSidebar() {
         </p>
       )}
 
-      <div className="flex-1 overflow-y-auto py-1.5 max-h-[70vh]">
+      <div className="flex-1 overflow-y-auto py-1.5">
         {projectsLoading && (
           <div className="px-3 py-1 space-y-1.5" aria-label="Loading projects">
             {[0, 1, 2, 3].map(i => (

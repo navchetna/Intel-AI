@@ -2,35 +2,27 @@
 
 import { useMemo, useState } from "react";
 import { ModelsView } from "./ModelsView";
-import { ProductionSizingView } from "./ProductionSizingView";
+import { RequestVolumeSizingView } from "./RequestVolumeSizingView";
 import { ModelBenchmarksView } from "./ModelBenchmarksView";
+import { ModelDefaultsView } from "./ModelDefaultsView";
 import { models, type Model } from "./data";
 import { useProject } from "@/contexts/ProjectContext";
-import type { ModelSizingConfig } from "@/modules/projects/types";
 
-type Tab = "catalog" | "sizing" | "benchmarks";
+type Tab = "catalog" | "sizing" | "benchmarks" | "defaults";
 
-/** Owns cross-tab UI state (active tab) for the Model Catalog / Production Sizing pair. Selections and sizing inputs live in the current Project. */
+/** Owns cross-tab UI state (active tab) for the Model Catalog / Sizing pair. Selections live in the current Project. */
 export function ModelsPageView() {
   const { data, updateModels } = useProject();
   const [activeTab, setActiveTab]         = useState<Tab>("catalog");
   const [selectionMode, setSelectionMode] = useState(false);
 
-  const { selectedModels: selectedModelIds, modelSizing } = data.models;
+  const { selectedModels: selectedModelIds } = data.models;
   const selected = useMemo(() => new Set(selectedModelIds), [selectedModelIds]);
 
   function toggleSelect(hfId: string) {
     const next = new Set(selectedModelIds);
     if (next.has(hfId)) next.delete(hfId); else next.add(hfId);
     updateModels({ selectedModels: Array.from(next) });
-  }
-
-  function remove(hfId: string) {
-    updateModels({ selectedModels: selectedModelIds.filter(m => m !== hfId) });
-  }
-
-  function updateSizingConfig(hfId: string, patch: Partial<ModelSizingConfig>) {
-    updateModels({ modelSizing: { ...modelSizing, [hfId]: { ...modelSizing[hfId], ...patch } } });
   }
 
   const selectedModels: Model[] = models.filter(m => selected.has(m.hfId));
@@ -41,10 +33,6 @@ export function ModelsPageView() {
         {/* ── header ── */}
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 mb-4">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#22d3ee] animate-pulse" />
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-[#22d3ee]/80">Model Registry</span>
-            </div>
             <h1 className="text-4xl font-black text-white tracking-tight">Model Catalog</h1>
           </div>
 
@@ -71,6 +59,7 @@ export function ModelsPageView() {
             { key: "catalog" as const, label: "Catalog" },
             { key: "sizing" as const, label: `Sizing${selected.size ? ` (${selected.size})` : ""}` },
             { key: "benchmarks" as const, label: "Benchmarks" },
+            { key: "defaults" as const, label: "Defaults" },
           ].map(t => (
             <button
               key={t.key}
@@ -91,15 +80,10 @@ export function ModelsPageView() {
         <ModelsView selectionMode={selectionMode} selected={selected} onToggleSelect={toggleSelect} />
       )}
       {activeTab === "sizing" && (
-        <ProductionSizingView
-          selectedModels={selectedModels}
-          modelSizing={modelSizing}
-          onSizingChange={updateSizingConfig}
-          onRemove={remove}
-          onBackToCatalog={() => setActiveTab("catalog")}
-        />
+        <RequestVolumeSizingView selectedModels={selectedModels} onBackToCatalog={() => setActiveTab("catalog")} />
       )}
       {activeTab === "benchmarks" && <ModelBenchmarksView />}
+      {activeTab === "defaults" && <ModelDefaultsView />}
     </main>
   );
 }

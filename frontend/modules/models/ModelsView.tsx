@@ -177,6 +177,7 @@ function DarkSelect({ label, value, onChange, children }: {
   onChange: (v: string) => void;
   children: React.ReactNode;
 }) {
+  const { theme } = useTheme();
   return (
     <div>
       <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-1">{label}</label>
@@ -295,6 +296,7 @@ export function ModelsView({
   selected = EMPTY_SELECTION,
   onToggleSelect = () => {},
 }: ModelsViewProps = {}) {
+  const { theme } = useTheme();
   const [search, setSearch]                 = useState("");
   const [categoryFilter, setCategoryFilter] = useState<Category | "All">("All");
   const [originFilter, setOriginFilter]     = useState<string>("All");

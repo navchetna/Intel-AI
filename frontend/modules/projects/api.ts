@@ -51,6 +51,16 @@ export async function updateProjectData(id: number, data: ProjectData): Promise<
   return res.json();
 }
 
+export async function renameProject(id: number, name: string): Promise<Project> {
+  const res = await fetch(apiUrl(`/${id}`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
 export async function deleteProject(id: number): Promise<void> {
   const res = await fetch(apiUrl(`/${id}`), { method: "DELETE" });
   if (!res.ok) throw new Error(await parseError(res));
