@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchRecords } from "@/modules/inference/benchmarks/api";
 import { SERVING_ENGINES, type BenchmarkRecord } from "@/modules/inference/benchmarks/types";
 import { models, type Model } from "./data";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const PLATFORMS = ["Xeon6", "B70"];
 
@@ -14,16 +15,16 @@ const TOKEN_PROFILES = [
   { label: "8k / 8k", input: 8192, output: 8192 },
 ];
 
-const selectStyle = {
-  background: "#0e1d38",
-  border: "1px solid rgba(255,255,255,0.12)",
-  color: "rgba(255,255,255,0.85)",
-  colorScheme: "dark",
-} as React.CSSProperties;
+function selectStyle(isDark: boolean): React.CSSProperties {
+  return isDark
+    ? { background: "#0e1d38", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.85)", colorScheme: "dark" }
+    : { background: "#e2e8f0", border: "1px solid rgba(15,23,42,0.15)", color: "#1e293b", colorScheme: "light" };
+}
 
 function Select({ label, value, onChange, children }: {
   label: string; value: string; onChange: (v: string) => void; children: React.ReactNode;
 }) {
+  const { theme } = useTheme();
   return (
     <div>
       <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-1">{label}</label>
@@ -31,7 +32,7 @@ function Select({ label, value, onChange, children }: {
         value={value}
         onChange={e => onChange(e.target.value)}
         className="py-2 px-3 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 min-w-[160px]"
-        style={selectStyle}
+        style={selectStyle(theme === "dark")}
       >
         {children}
       </select>

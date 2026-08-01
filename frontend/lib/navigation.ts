@@ -11,11 +11,12 @@
 /**
  * Cluster groups the route belongs to — drives the visual separators in the Navbar.
  * hardware       : Rack-scale and silicon routes
- * ai-stack       : Agent, workflow and model routes
+ * ai-stack       : AI-Inference — agents, tasks and model routes
+ * ai-training    : AI-Training — data curation and training routes
  * manufacturing  : IP blocks, packaging and fabrication tooling
  * tools          : Standalone tooling and external apps
  */
-export type NavCluster = "hardware" | "ai-stack" | "manufacturing" | "tools";
+export type NavCluster = "hardware" | "ai-stack" | "ai-training" | "manufacturing" | "tools";
 
 export interface NavRoute {
   /** URL segment, e.g. "silicon". Matches the route folder name. */
@@ -40,7 +41,8 @@ export interface NavRoute {
 
 export const CLUSTER_LABELS: Record<NavCluster, string> = {
   "hardware":      "Infrastructure",
-  "ai-stack":      "AI Stack",
+  "ai-stack":      "AI-Inference",
+  "ai-training":   "AI-Training",
   "manufacturing": "Manufacturing",
   "tools":         "Tools",
 };
@@ -49,6 +51,7 @@ export const CLUSTER_ORDER: NavCluster[] = [
   "manufacturing",
   "hardware",
   "ai-stack",
+  "ai-training",
   "tools",
 ];
 
@@ -58,12 +61,15 @@ export const navRoutes: NavRoute[] = [
   { slug: "silicon-ingredients", label: "System",  module: "silicon-ingredients", apiPrefix: "/silicon-ingredients", cluster: "hardware" },
   { slug: "rack",                label: "Rack",    module: "rack",                apiPrefix: "/rack",                cluster: "hardware" },
 
-  // ── Cluster 2: AI Stack ────────────────────────────────────────────────────
+  // ── Cluster 2: AI-Inference ────────────────────────────────────────────────
+  { slug: "agentic-ai", label: "Agents",  module: "agentic-ai", apiPrefix: "/agentic-ai", cluster: "ai-stack", href: "/agentic-ai/agentic-stack" },
+  { slug: "harness",    label: "Harness", module: "agentic-ai", apiPrefix: "/agentic-ai", cluster: "ai-stack", href: "/agentic-ai/harness" },
+  { slug: "workflows",  label: "Tasks",   module: "workflows",  apiPrefix: "/workflows",  cluster: "ai-stack" },
   { slug: "models",     label: "Models", module: "models",     apiPrefix: "/models",     cluster: "ai-stack" },
-  { slug: "workflows",  label: "Tasks",  module: "workflows",  apiPrefix: "/workflows",  cluster: "ai-stack" },
-  { slug: "agentic-ai", label: "Agents", module: "agentic-ai", apiPrefix: "/agentic-ai", cluster: "ai-stack", href: "/agentic-ai/agentic-stack" },
-  { slug: "data-pipes", label: "Data-Pipes", module: "data-pipes", apiPrefix: "/data-pipes", cluster: "ai-stack" },
-  { slug: "training",   label: "Training",   module: "training",   apiPrefix: "/training",   cluster: "ai-stack" },
+
+  // ── Cluster 2b: AI-Training ────────────────────────────────────────────────
+  { slug: "data-pipes", label: "Data Curation", module: "data-pipes", apiPrefix: "/data-pipes", cluster: "ai-training" },
+  { slug: "training",   label: "Training",      module: "training",   apiPrefix: "/training",   cluster: "ai-training" },
 
   // ── Cluster 3: Manufacturing ───────────────────────────────────────────────
   { slug: "mfg-tools", label: "Tools",     module: "mfg-tools", apiPrefix: "/mfg-tools", cluster: "manufacturing" },

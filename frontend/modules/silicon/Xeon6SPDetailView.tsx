@@ -621,9 +621,9 @@ export function Xeon6SPDetailView({ onBack }: { onBack: () => void }) {
             <button onClick={() => setTagFilter(null)}
               className="rounded-full px-3 py-1 text-xs font-medium transition-all"
               style={{
-                background: tagFilter === null ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
-                color: tagFilter === null ? "white" : "rgba(255,255,255,0.4)",
-                border: `1px solid ${tagFilter === null ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.08)"}`,
+                background: tagFilter === null ? "var(--dm-surface-c)" : "var(--dm-surface-a)",
+                color: tagFilter === null ? "var(--dm-txt-primary)" : "var(--dm-txt-faint)",
+                border: `1px solid ${tagFilter === null ? "var(--dm-border-b)" : "var(--dm-border-a)"}`,
               }}>
               All SKUs ({XEON6_SP_SKUS.length})
             </button>
@@ -635,9 +635,9 @@ export function Xeon6SPDetailView({ onBack }: { onBack: () => void }) {
                 <button key={tag} onClick={() => setTagFilter(active ? null : tag)}
                   className="rounded-full px-3 py-1 text-xs font-medium transition-all"
                   style={{
-                    background: active ? m.bg : "rgba(255,255,255,0.03)",
-                    color: active ? m.color : "rgba(255,255,255,0.35)",
-                    border: `1px solid ${active ? m.color + "55" : "rgba(255,255,255,0.07)"}`,
+                    background: active ? m.bg : "var(--dm-surface-a)",
+                    color: active ? m.color : "var(--dm-txt-faint)",
+                    border: `1px solid ${active ? m.color + "55" : "var(--dm-border-a)"}`,
                   }}>
                   {tag} <span style={{ opacity: 0.6 }}>({count})</span>
                 </button>
@@ -654,14 +654,14 @@ export function Xeon6SPDetailView({ onBack }: { onBack: () => void }) {
                     ? "rgba(56,189,248,0.10)"
                     : hasPending && activePending > 0
                       ? "rgba(251,191,36,0.10)"
-                      : "rgba(255,255,255,0.05)",
+                      : "var(--dm-surface-b)",
                 color: sidebarOpen
                   ? "#38bdf8"
                   : activeApplied > 0
                     ? "#38bdf8"
                     : hasPending && activePending > 0
                       ? "#fbbf24"
-                      : "rgba(255,255,255,0.40)",
+                      : "var(--dm-txt-faint)",
                 border: `1px solid ${
                   sidebarOpen
                     ? "rgba(56,189,248,0.35)"
@@ -669,7 +669,7 @@ export function Xeon6SPDetailView({ onBack }: { onBack: () => void }) {
                       ? "rgba(56,189,248,0.25)"
                       : hasPending && activePending > 0
                         ? "rgba(251,191,36,0.25)"
-                        : "rgba(255,255,255,0.09)"
+                        : "var(--dm-border-a)"
                 }`,
               }}>
               <svg viewBox="0 0 14 14" fill="none" className="w-3.5 h-3.5 shrink-0">

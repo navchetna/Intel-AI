@@ -33,15 +33,15 @@ export function AxisCard({ label, question, value, options, onChange, accent, co
               key={o.value} type="button" onClick={() => onChange(o.value)}
               className="text-left rounded-xl p-4 transition-all border flex flex-col"
               style={{
-                borderColor: selected ? `rgb(${accent})` : "rgba(255,255,255,0.1)",
-                background: selected ? `rgba(${accent},0.12)` : "rgba(255,255,255,0.02)",
+                borderColor: selected ? `rgb(${accent})` : "var(--dm-border-b)",
+                background: selected ? `rgba(${accent},0.12)` : "var(--dm-surface-a)",
               }}
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <span
                   className="w-3.5 h-3.5 rounded-full border-2 flex-shrink-0"
                   style={{
-                    borderColor: selected ? `rgb(${accent})` : "rgba(255,255,255,0.25)",
+                    borderColor: selected ? `rgb(${accent})` : "var(--dm-border-b)",
                     background: selected ? `rgb(${accent})` : "transparent",
                   }}
                 />
@@ -72,7 +72,7 @@ export function Field({ label, value, onChange, min, max, step = 1, unit, note, 
 }) {
   const dimmed = activeWhen === false;
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg p-3 transition-opacity" style={{ opacity: dimmed ? 0.5 : 1, background: "rgba(255,255,255,0.015)" }}>
+    <div className="flex flex-col gap-1.5 rounded-lg p-3 transition-opacity" style={{ opacity: dimmed ? 0.5 : 1, background: "var(--dm-surface-a)" }}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[12px] font-semibold text-white/75">{label}</span>
         {unit && <span className="text-[10px] text-white/30 uppercase tracking-wide flex-shrink-0">{unit}</span>}
@@ -80,7 +80,8 @@ export function Field({ label, value, onChange, min, max, step = 1, unit, note, 
       <input
         type="number" value={value} min={min} max={max} step={step}
         onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange(v); }}
-        className="w-full rounded-lg px-3 py-2 text-sm text-white bg-white/5 border border-white/10 focus:outline-none focus:border-[#818cf8]/50 focus:bg-white/8 transition-colors"
+        className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#818cf8]/50 transition-colors"
+        style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)" }}
       />
       {note && <p className="text-[11px] text-white/35 leading-snug">{note}</p>}
       {activeHint && <p className="text-[10.5px] font-semibold" style={{ color: dimmed ? "#fbbf24" : "#34d399" }}>{activeHint}</p>}
@@ -92,15 +93,50 @@ export function SelField<T extends string>({ label, value, onChange, options, no
   label: string; value: T; onChange: (v: T) => void; options: T[]; note?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg p-3" style={{ background: "rgba(255,255,255,0.015)" }}>
+    <div className="flex flex-col gap-1.5 rounded-lg p-3" style={{ background: "var(--dm-surface-a)" }}>
       <span className="text-[12px] font-semibold text-white/75">{label}</span>
       <select
         value={value}
         onChange={e => onChange(e.target.value as T)}
-        className="w-full rounded-lg px-3 py-2 text-sm text-white bg-[#0d1f3c] border border-white/10 focus:outline-none focus:border-[#818cf8]/50 transition-colors"
+        className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#818cf8]/50 transition-colors"
+        style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)" }}
       >
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
+      {note && <p className="text-[11px] text-white/35 leading-snug">{note}</p>}
+    </div>
+  );
+}
+
+export function TextField({ label, value, onChange, placeholder, note }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; note?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg p-3" style={{ background: "var(--dm-surface-a)" }}>
+      <span className="text-[12px] font-semibold text-white/75">{label}</span>
+      <input
+        type="text" value={value} placeholder={placeholder}
+        onChange={e => onChange(e.target.value)}
+        className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#818cf8]/50 focus-visible:ring-1 focus-visible:ring-white/40 transition-colors placeholder-white/25"
+        style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)" }}
+      />
+      {note && <p className="text-[11px] text-white/35 leading-snug">{note}</p>}
+    </div>
+  );
+}
+
+export function TextAreaField({ label, value, onChange, placeholder, rows = 3, note }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; rows?: number; note?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg p-3" style={{ background: "var(--dm-surface-a)" }}>
+      <span className="text-[12px] font-semibold text-white/75">{label}</span>
+      <textarea
+        value={value} placeholder={placeholder} rows={rows}
+        onChange={e => onChange(e.target.value)}
+        className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#818cf8]/50 focus-visible:ring-1 focus-visible:ring-white/40 transition-colors placeholder-white/25 resize-y"
+        style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)" }}
+      />
       {note && <p className="text-[11px] text-white/35 leading-snug">{note}</p>}
     </div>
   );

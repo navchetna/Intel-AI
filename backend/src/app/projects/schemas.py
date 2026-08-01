@@ -13,7 +13,8 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectDataUpdate(BaseModel):
-    data: dict
+    data: dict | None = None
+    name: str | None = None
 
 
 class ProjectSummary(BaseModel):
@@ -36,3 +37,17 @@ class Project(BaseModel):
     data: dict
     created_at: datetime
     updated_at: datetime
+
+
+class ProjectDocumentRead(BaseModel):
+    """A document reference — the file itself lives on local disk; this is the DB record."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: int
+    title: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    created_at: datetime

@@ -5,6 +5,7 @@ import {
   WORKFLOWS, CATEGORY_ORDER, CATEGORY_META,
   type WorkflowDef, type CategoryName, type ConfigField,
 } from "./data";
+import { useTheme } from "@/contexts/ThemeContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -254,7 +255,7 @@ function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }
                 className="px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors"
                 style={exportTab === id
                   ? { background: "#0e1d38", color: meta.accent, borderBottom: `2px solid ${meta.accent}` }
-                  : { color: "rgba(255,255,255,0.35)", borderBottom: "2px solid transparent" }}
+                  : { color: "var(--dm-txt-faint)", borderBottom: "2px solid transparent" }}
               >
                 {label}
               </button>
@@ -273,7 +274,7 @@ function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }
             <button
               onClick={handleCopy}
               className="flex-1 py-2 text-xs font-semibold rounded-lg transition-colors"
-              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.65)" }}
+              style={{ background: "var(--dm-surface-c)", border: "1px solid var(--dm-border-b)", color: "var(--dm-txt-secondary)" }}
             >
               {copied ? "✓ Copied" : "Copy"}
             </button>
@@ -404,6 +405,8 @@ function WorkflowTable({ workflows, onConfigure }: { workflows: WorkflowDef[]; o
 // ── Main view ──────────────────────────────────────────────────────────────────
 
 export function WorkflowsView() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [viewMode, setViewMode]         = useState<ViewMode>("cards");
   const [search, setSearch]             = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryName | "All">("All");
@@ -431,16 +434,12 @@ export function WorkflowsView() {
 
   return (
     <main className="min-h-screen" style={{ background: "var(--dm-page-bg)" }}>
-      <div className="mx-auto max-w-screen-xl px-6 pt-10 pb-16">
+      <div className="mx-auto max-w-screen-xl px-6 pt-10">
 
         {/* ── Header ── */}
-        <div className="mb-8 flex items-end justify-between flex-wrap gap-4">
+        <div className="mb-6 flex items-end justify-between flex-wrap gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 mb-3">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#818cf8] animate-pulse" />
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-[#818cf8]/80">Workflow Catalog</span>
-            </div>
-            <h1 className="text-4xl font-black text-white tracking-tight">Workflows</h1>
+            <h1 className="text-4xl font-black text-white tracking-tight">Tasks</h1>
             <p className="mt-1 text-base text-white/40">
               {filtered.length} of {WORKFLOWS.length} workflows &middot; {CATEGORY_ORDER.length} categories
             </p>
@@ -462,7 +461,9 @@ export function WorkflowsView() {
             ))}
           </div>
         </div>
+      </div>
 
+      <div className="mx-auto max-w-screen-xl px-6 pb-16">
         {/* ── Filter bar ── */}
         <div
           className="rounded-2xl border border-white/[0.07] p-4 mb-8"
@@ -489,7 +490,9 @@ export function WorkflowsView() {
                 value={toolFilter}
                 onChange={e => setToolFilter(e.target.value as "all" | "n8n" | "custom")}
                 className="py-2 px-3 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
-                style={{ background: "#0e1d38", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.85)", colorScheme: "dark" }}
+                style={isDark
+                  ? { background: "#0e1d38", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.85)", colorScheme: "dark" }
+                  : { background: "#e2e8f0", border: "1px solid rgba(15,23,42,0.15)", color: "#1e293b", colorScheme: "light" }}
               >
                 <option value="all">All tools</option>
                 <option value="n8n">N8N</option>
@@ -513,9 +516,9 @@ export function WorkflowsView() {
               onClick={() => setCategoryFilter("All")}
               className="px-3 py-1 rounded-full text-xs font-medium transition-all"
               style={{
-                background: categoryFilter === "All" ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
-                color: categoryFilter === "All" ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.40)",
-                border: `1px solid ${categoryFilter === "All" ? "rgba(255,255,255,0.20)" : "rgba(255,255,255,0.08)"}`,
+                background: categoryFilter === "All" ? "var(--dm-surface-c)" : "var(--dm-surface-a)",
+                color: categoryFilter === "All" ? "var(--dm-txt-body)" : "var(--dm-txt-faint)",
+                border: `1px solid ${categoryFilter === "All" ? "var(--dm-border-b)" : "var(--dm-border-a)"}`,
               }}
             >
               All ({WORKFLOWS.length})
@@ -530,9 +533,9 @@ export function WorkflowsView() {
                   onClick={() => setCategoryFilter(active ? "All" : cat)}
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all"
                   style={{
-                    background: active ? `rgba(${meta.accentRgb},0.15)` : "rgba(255,255,255,0.04)",
-                    color:      active ? meta.accent : "rgba(255,255,255,0.45)",
-                    border:     `1px solid ${active ? `rgba(${meta.accentRgb},0.35)` : "rgba(255,255,255,0.08)"}`,
+                    background: active ? `rgba(${meta.accentRgb},0.15)` : "var(--dm-surface-a)",
+                    color:      active ? meta.accent : "var(--dm-txt-faint)",
+                    border:     `1px solid ${active ? `rgba(${meta.accentRgb},0.35)` : "var(--dm-border-a)"}`,
                   }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.accent }} />

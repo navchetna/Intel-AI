@@ -3,6 +3,7 @@
 import { useState, useMemo, useRef } from "react";
 import { models, CATEGORY_ORDER, type Category, type Model } from "./data";
 import { useDismiss } from "@/hooks/useDismiss";
+import { useTheme } from "@/contexts/ThemeContext";
 
 // ── dark-theme category palette ───────────────────────────────────────────────
 
@@ -120,12 +121,18 @@ function BoolIcon({ val }: { val: boolean }) {
     : <span className="text-white/20 text-sm select-none">—</span>;
 }
 
-const SELECT_STYLE: React.CSSProperties = {
-  background: "#0e1d38",
-  border: "1px solid rgba(255,255,255,0.12)",
-  color: "rgba(255,255,255,0.85)",
-  colorScheme: "dark",
-};
+function selectStyle(isDark: boolean): React.CSSProperties {
+  return isDark
+    ? { background: "#0e1d38", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.85)", colorScheme: "dark" }
+    : { background: "#e2e8f0", border: "1px solid rgba(15,23,42,0.15)", color: "#1e293b", colorScheme: "light" };
+}
+
+/** Category-accent badge text needs to stay legible against its low-opacity accent
+ *  background: pale accent-on-pale-accent (fine on the dark canvas) collapses to
+ *  near-invisible in light mode, so light mode always uses a dark neutral instead. */
+function badgeTextColor(isDark: boolean, darkColor: string): string {
+  return isDark ? darkColor : "#1e293b";
+}
 
 function SortableTh<K extends string>({ label, k, width, sortKey, sortDir, onSort }: {
   label: string; k: K; width: string; sortKey: K; sortDir: "asc" | "desc"; onSort: (k: K) => void;
@@ -155,6 +162,7 @@ function DarkSelect({ label, value, onChange, children }: {
   onChange: (v: string) => void;
   children: React.ReactNode;
 }) {
+  const { theme } = useTheme();
   return (
     <div>
       <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-1">{label}</label>
@@ -162,7 +170,7 @@ function DarkSelect({ label, value, onChange, children }: {
         value={value}
         onChange={e => onChange(e.target.value)}
         className="py-2 px-3 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
-        style={SELECT_STYLE}
+        style={selectStyle(theme === "dark")}
       >
         {children}
       </select>
@@ -172,7 +180,7 @@ function DarkSelect({ label, value, onChange, children }: {
 
 // ── expanded detail panel ─────────────────────────────────────────────────────
 
-function ExpandedRow({ model, colSpan }: { model: Model; colSpan: number }) {
+function ExpandedRow({ model, colSpan, isDark }: { model: Model; colSpan: number; isDark: boolean }) {
   const c = DARK_CAT[model.category];
   return (
     <tr>
@@ -209,7 +217,7 @@ function ExpandedRow({ model, colSpan }: { model: Model; colSpan: number }) {
               <div className="flex flex-wrap gap-1">
                 {model.quantization.map(q => (
                   <span key={q} className="rounded px-1.5 py-0.5 text-[11px] font-semibold"
-                    style={{ background: c.badge, color: c.badgeText, border: `1px solid ${c.accent}33` }}>
+                    style={{ background: c.badge, color: badgeTextColor(isDark, c.badgeText), border: `1px solid ${c.accent}33` }}>
                     {q}
                   </span>
                 ))}
@@ -273,6 +281,8 @@ export function ModelsView({
   selected = EMPTY_SELECTION,
   onToggleSelect = () => {},
 }: ModelsViewProps = {}) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [search, setSearch]                 = useState("");
   const [categoryFilter, setCategoryFilter] = useState<Category | "All">("All");
   const [originFilter, setOriginFilter]     = useState<string>("All");
@@ -383,7 +393,7 @@ export function ModelsView({
                 value={categoryFilter}
                 onChange={e => setCategoryFilter(e.target.value as Category | "All")}
                 className="w-full py-2 px-3 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
-                style={SELECT_STYLE}
+                style={selectStyle(isDark)}
               >
                 <option value="All">All categories</option>
                 {CATEGORY_ORDER.map(c => (
@@ -449,9 +459,9 @@ export function ModelsView({
                   onClick={() => setCategoryFilter(active ? "All" : c)}
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all"
                   style={{
-                    background: active ? col.badge : "rgba(255,255,255,0.04)",
-                    color: active ? col.badgeText : "rgba(255,255,255,0.45)",
-                    border: `1px solid ${active ? col.accent + "55" : "rgba(255,255,255,0.08)"}`,
+                    background: active ? col.badge : "var(--dm-surface-a)",
+                    color: active ? badgeTextColor(isDark, col.badgeText) : "var(--dm-txt-faint)",
+                    border: `1px solid ${active ? col.accent + "55" : "var(--dm-border-a)"}`,
                   }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: col.accent }} />
@@ -558,7 +568,7 @@ export function ModelsView({
                             <td className="px-4 py-3 overflow-hidden">
                               <span
                                 className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none truncate max-w-full"
-                                style={{ background: col.badge, color: col.badgeText }}
+                                style={{ background: col.badge, color: badgeTextColor(isDark, col.badgeText) }}
                               >
                                 {model.category}
                               </span>
@@ -593,7 +603,7 @@ export function ModelsView({
                             {visibleCols.origin && <td className="px-4 py-3 text-white/40 text-xs">{model.origin}</td>}
                           </tr>
                           {isExpanded && (
-                            <ExpandedRow key={`${model.hfId}-exp`} model={model} colSpan={COLS} />
+                            <ExpandedRow key={`${model.hfId}-exp`} model={model} colSpan={COLS} isDark={isDark} />
                           )}
                         </>
                       );

@@ -3,20 +3,22 @@
 import Image from "next/image";
 import { allWorkloadIcons } from "./layers";
 import { SIZING_MAP, defaultInputsFor } from "./sizing-wiring";
-import { summarizeResources, type AnyInputs } from "./sizing-calcs";
+import { summarizeResources, socketsNeeded, systemsNeeded, type AnyInputs } from "./sizing-calcs";
 
 function fmt(n: number): string {
   return n < 10 ? n.toFixed(1) : Math.round(n).toLocaleString();
 }
 
 export function AgenticSizingView({
-  selectedWorkloads, sizingInputs, onRemove, onOpenSizing, onBackToStack,
+  selectedWorkloads, sizingInputs, onRemove, onOpenSizing, onBackToStack, showRemove = true,
 }: {
   selectedWorkloads: Set<string>;
   sizingInputs: Partial<Record<string, AnyInputs>>;
   onRemove: (workloadId: string) => void;
   onOpenSizing: (workloadId: string) => void;
   onBackToStack: () => void;
+  /** Whether the trailing "Remove" column is shown — off on read-only summaries like the Project view. */
+  showRemove?: boolean;
 }) {
   const rows = allWorkloadIcons.filter(w => selectedWorkloads.has(w.icon.alt));
 
@@ -50,8 +52,11 @@ export function AgenticSizingView({
                 <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Layer</th>
                 <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">CPU Cores</th>
                 <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">RAM (GB)</th>
-                <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">GPU</th>
-                <th className="px-3 py-3" />
+                <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Systems</th>
+                <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Sockets (32c·6730P)</th>
+                <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">B70</th>
+                <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">CRI</th>
+                {showRemove && <th className="px-3 py-3" />}
               </tr>
             </thead>
             <tbody>
@@ -88,23 +93,32 @@ export function AgenticSizingView({
                     <td className="px-3 py-3 text-xs text-white/50">
                       {layer.title}{subLayer && <span className="text-white/30"> · {subLayer.title}</span>}
                     </td>
-                    {summary ? (
-                      <>
-                        <td className="px-3 py-3 font-mono text-sm text-white/85">{fmt(summary.cores)}</td>
-                        <td className="px-3 py-3 font-mono text-sm text-white/85">{fmt(summary.ramGB)}</td>
-                        <td className="px-3 py-3 font-mono text-sm text-white/85">{summary.gpuCount > 0 ? fmt(summary.gpuCount) : "—"}</td>
-                      </>
-                    ) : (
-                      <td className="px-3 py-3 text-xs text-white/25" colSpan={3}>Sizing not available yet</td>
+                    {summary ? (() => {
+                      const sockets = socketsNeeded(summary.cores);
+                      const systems = systemsNeeded(sockets);
+                      return (
+                        <>
+                          <td className="px-3 py-3 font-mono text-sm text-white/85">{fmt(summary.cores)}</td>
+                          <td className="px-3 py-3 font-mono text-sm text-white/85">{fmt(summary.ramGB)}</td>
+                          <td className="px-3 py-3 font-mono text-sm font-semibold" style={{ color: "#22d3ee" }}>{systems}</td>
+                          <td className="px-3 py-3 font-mono text-sm text-white/85">{sockets}</td>
+                          <td className="px-3 py-3 font-mono text-sm text-white/25">—</td>
+                          <td className="px-3 py-3 font-mono text-sm text-white/25">—</td>
+                        </>
+                      );
+                    })() : (
+                      <td className="px-3 py-3 text-xs text-white/25" colSpan={6}>Sizing not available yet</td>
                     )}
-                    <td className="px-3 py-3 text-right">
-                      <button
-                        onClick={() => onRemove(icon.alt)}
-                        className="text-white/30 hover:text-danger transition-colors text-xs"
-                      >
-                        Remove
-                      </button>
-                    </td>
+                    {showRemove && (
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          onClick={() => onRemove(icon.alt)}
+                          className="text-white/30 hover:text-danger transition-colors text-xs"
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

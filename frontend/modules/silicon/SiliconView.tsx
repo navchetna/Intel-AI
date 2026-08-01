@@ -379,10 +379,6 @@ export function SiliconView() {
     <main style={{ background: "var(--dm-page-bg)", minHeight: "100vh" }}>
       <div className="mx-auto max-w-screen-2xl px-6 pt-10 pb-12">
         <div className="mb-8">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 mb-4">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#a78bfa] animate-pulse" />
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-[#a78bfa]/80">Hardware Platform</span>
-          </div>
           <h1 className="text-4xl font-black text-white tracking-tight">Silicon</h1>
           <p className="mt-2 text-base text-white/45 max-w-2xl">
             The compute substrate powering Intel-AI — from CPU inference engines to purpose-built AI accelerators and partner silicon.

@@ -218,10 +218,6 @@ export function RackView() {
         {/* ── header ── */}
         <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 mb-4">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#60a5fa] animate-pulse" />
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-[#60a5fa]/80">Rack Scale Designs</span>
-            </div>
             <h1 className="text-4xl font-black text-white tracking-tight">Rack View</h1>
             <p className="mt-1 text-base text-white/40">
               CPU-Rack and CRI-GPU-Rack on a shared switch, with in-chassis storage unified via Hammerspace.

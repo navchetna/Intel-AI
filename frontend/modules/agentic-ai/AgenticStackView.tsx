@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { mainLayers, sidePanels, type ClickableItem, type SubLayer } from "./layers";
 import { SIZING_MAP } from "./sizing-wiring";
+import { useTheme } from "@/contexts/ThemeContext";
 
 // Two visual families matching the image's blue / warm distinction
 // Blue family (platform layers): cyan → azure → royal blue
@@ -36,7 +37,7 @@ function hexToRgb(hex: string) {
 // ── Cross-cutting panel (left column, horizontal text) ────────────────────────
 
 function CrossCuttingPanel({
-  item, active, onToggle, className = "", onSizingClick = () => {}, selectionMode, selectedWorkloads, onToggleWorkload,
+  item, active, onToggle, className = "", onSizingClick = () => {}, selectionMode, selectedWorkloads, onToggleWorkload, isDark,
 }: {
   item: ClickableItem;
   active: boolean;
@@ -46,9 +47,11 @@ function CrossCuttingPanel({
   selectionMode?: boolean;
   selectedWorkloads?: Set<string>;
   onToggleWorkload?: (workloadId: string) => void;
+  isDark: boolean;
 }) {
   const accentColor = "#818cf8";
   const accentRgb   = "129,140,248";
+  const activeTextColor = isDark ? accentColor : "#0f172a";
   return (
     <button
       onClick={() => onToggle(item)}
@@ -71,14 +74,14 @@ function CrossCuttingPanel({
       />
       <span
         className="relative text-[13px] font-bold leading-tight transition-colors duration-200"
-        style={{ color: active ? accentColor : "var(--dm-txt-secondary)" }}
+        style={{ color: active ? activeTextColor : "var(--dm-txt-secondary)" }}
       >
         {item.title}
       </span>
       {item.subtitle && (
         <span
           className="relative text-[11px] font-medium leading-tight transition-colors duration-200"
-          style={{ color: active ? `rgba(${accentRgb},0.6)` : "var(--dm-txt-faint)" }}
+          style={{ color: active ? (isDark ? `rgba(${accentRgb},0.6)` : "rgba(15,23,42,0.65)") : "var(--dm-txt-faint)" }}
         >
           {item.subtitle}
         </span>
@@ -95,6 +98,7 @@ function CrossCuttingPanel({
               selectionMode={selectionMode}
               selectedWorkloads={selectedWorkloads}
               onToggleWorkload={onToggleWorkload}
+              isDark={isDark}
             />
           ))}
         </div>
@@ -106,7 +110,7 @@ function CrossCuttingPanel({
 // ── Selectable icon (with optional sizing badge) ───────────────────────────────
 
 function SizableIcon({
-  icon, rgb, size = 44, onSizingClick, selectionMode = false, selectedWorkloads = EMPTY_SELECTION, onToggleWorkload = () => {},
+  icon, rgb, size = 44, onSizingClick, selectionMode = false, selectedWorkloads = EMPTY_SELECTION, onToggleWorkload = () => {}, isDark,
 }: {
   icon: { src: string; alt: string };
   rgb: string;
@@ -115,6 +119,7 @@ function SizableIcon({
   selectionMode?: boolean;
   selectedWorkloads?: Set<string>;
   onToggleWorkload?: (workloadId: string) => void;
+  isDark: boolean;
 }) {
   const [hov, setHov] = useState(false);
   const tool = SIZING_MAP[icon.alt];
@@ -138,9 +143,9 @@ function SizableIcon({
             onClick={e => { e.stopPropagation(); onToggleWorkload(icon.alt); }}
             className="absolute -top-2 -left-2 z-10 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer transition-colors duration-150"
             style={{
-              background: isSelected ? "#22d3ee" : "rgba(8,15,32,0.9)",
-              border: isSelected ? "2px solid rgba(255,255,255,0.9)" : "2px solid rgba(255,255,255,0.65)",
-              boxShadow: isSelected ? "0 0 8px rgba(34,211,238,0.7)" : "0 1px 3px rgba(0,0,0,0.5)",
+              background: isSelected ? "#22d3ee" : "transparent",
+              border: isSelected ? "2px solid rgba(255,255,255,0.9)" : `2px solid ${isDark ? "rgba(255,255,255,0.65)" : "rgba(15,23,42,0.55)"}`,
+              boxShadow: isSelected ? "0 0 8px rgba(34,211,238,0.7)" : "none",
             }}
           >
             {isSelected && (
@@ -151,18 +156,21 @@ function SizableIcon({
           </div>
         )}
         <div
-          className="w-full h-full rounded-lg overflow-hidden flex items-center justify-center transition-all duration-200"
+          className="w-full h-full rounded-xl overflow-hidden flex items-center justify-center transition-all duration-200"
           style={{
-            border: `1px solid rgba(${rgb},${tool && hov ? 0.55 : 0.2})`,
+            border: `1px solid rgba(${rgb},${tool && hov ? 0.55 : 0.25})`,
             background: `rgba(${rgb},${tool && hov ? 0.15 : 0.07})`,
-            boxShadow: tool && hov ? `0 0 14px rgba(${rgb},0.35)` : undefined,
+            boxShadow: tool && hov ? `0 4px 18px rgba(${rgb},0.35)` : "0 1px 3px rgba(0,0,0,0.12)",
+            transform: tool && hov ? "translateY(-1px)" : undefined,
           }}
         >
-          <Image
-            src={icon.src} alt={icon.alt}
-            width={size} height={size}
-            className="w-full h-full object-contain"
-          />
+          <div className="w-[78%] h-[78%] rounded-lg overflow-hidden flex items-center justify-center" style={{ background: "rgba(255,255,255,0.92)" }}>
+            <Image
+              src={icon.src} alt={icon.alt}
+              width={size} height={size}
+              className="w-full h-full object-contain p-0.5"
+            />
+          </div>
 
           {/* Hover overlay for sizeable icons */}
           {tool && (
@@ -186,7 +194,7 @@ function SizableIcon({
       </div>
       <span
         className="text-[10px] font-medium leading-none transition-colors duration-150"
-        style={{ color: tool && hov ? `rgba(${rgb},0.9)` : "rgba(147,197,253,0.45)" }}
+        style={{ color: tool && hov ? `rgba(${rgb},0.9)` : isDark ? "rgba(147,197,253,0.45)" : "#0f172a" }}
       >
         {icon.alt}
       </span>
@@ -197,7 +205,7 @@ function SizableIcon({
 // ── Layer row (right column) ──────────────────────────────────────────────────
 
 function LayerRow({
-  layer, active, onToggle, color, onSizingClick, selectionMode, selectedWorkloads, onToggleWorkload,
+  layer, active, onToggle, color, onSizingClick, selectionMode, selectedWorkloads, onToggleWorkload, isDark,
 }: {
   layer: ClickableItem;
   active: boolean;
@@ -207,6 +215,7 @@ function LayerRow({
   selectionMode?: boolean;
   selectedWorkloads?: Set<string>;
   onToggleWorkload?: (workloadId: string) => void;
+  isDark: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const rgb = hexToRgb(color);
@@ -276,7 +285,7 @@ function LayerRow({
           {(layer.subLayers as SubLayer[]).map(sub => (
             <div key={sub.id} className="flex flex-col gap-3 pt-5">
               <span className="text-[11px] font-semibold uppercase tracking-widest"
-                style={{ color: `rgba(${rgb},0.65)` }}>
+                style={{ color: isDark ? `rgba(${rgb},0.65)` : "#0f172a" }}>
                 {sub.title}
               </span>
               <div className="flex items-center gap-3">
@@ -290,6 +299,7 @@ function LayerRow({
                     selectionMode={selectionMode}
                     selectedWorkloads={selectedWorkloads}
                     onToggleWorkload={onToggleWorkload}
+                    isDark={isDark}
                   />
                 ))}
               </div>
@@ -312,7 +322,7 @@ function LayerRow({
       {shimmer}
       <div className="relative pl-2 flex-1 min-w-0">
         <p className="font-bold text-base leading-tight tracking-wide transition-colors duration-200"
-          style={{ color: active ? color : hovered ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.88)" }}>
+          style={{ color: active ? color : hovered ? "var(--dm-txt-primary)" : "var(--dm-txt-body)" }}>
           {layer.title}
         </p>
         <p className="text-blue-300/50 text-xs mt-1 font-medium">{layer.subtitle}</p>
@@ -330,6 +340,7 @@ function LayerRow({
               selectionMode={selectionMode}
               selectedWorkloads={selectedWorkloads}
               onToggleWorkload={onToggleWorkload}
+              isDark={isDark}
             />
           ))}
         </div>
@@ -354,6 +365,8 @@ export function AgenticStackView({
   onToggleWorkload = () => {},
   onSizingClick = () => {},
 }: AgenticStackViewProps = {}) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [selected, setSelected]       = useState<ClickableItem | null>(null);
 
   const toggle = (item: ClickableItem) =>
@@ -408,7 +421,7 @@ export function AgenticStackView({
                   {/* Column header */}
                   <div className="px-3 py-3 border-b border-white/[0.06] text-center">
                     <span className="text-[11px] font-bold uppercase tracking-widest"
-                      style={{ color: "#818cf8cc" }}>
+                      style={{ color: isDark ? "#818cf8cc" : "#0f172a" }}>
                       Cross-cutting planes
                     </span>
                   </div>
@@ -426,6 +439,7 @@ export function AgenticStackView({
                         selectionMode={selectionMode}
                         selectedWorkloads={selectedWorkloads}
                         onToggleWorkload={onToggleWorkload}
+                        isDark={isDark}
                       />
                     ))}
                   </div>
@@ -444,6 +458,7 @@ export function AgenticStackView({
                       selectionMode={selectionMode}
                       selectedWorkloads={selectedWorkloads}
                       onToggleWorkload={onToggleWorkload}
+                      isDark={isDark}
                     />
                   ))}
                 </div>

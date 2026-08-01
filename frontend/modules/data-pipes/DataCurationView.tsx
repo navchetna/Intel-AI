@@ -138,10 +138,6 @@ export function DataCurationView() {
         {/* ── header ── */}
         <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 mb-4">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#2dd4bf] animate-pulse" />
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-[#2dd4bf]/80">Data Curation Sizing</span>
-            </div>
             <h1 className="text-4xl font-black text-white tracking-tight mb-3">Multimodal Data Curation Pipeline</h1>
             <p className="text-[14px] text-white/45 max-w-2xl leading-relaxed">
               Modeled on the ingestion → dedup → quality filtering → modality processing → safety/PII → packaging

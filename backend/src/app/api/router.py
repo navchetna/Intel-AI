@@ -19,6 +19,7 @@ DOMAINS: list[tuple[str, str, str]] = [
     ("app.inference_benchmarks", "/inference-benchmarks", "inference-benchmarks"),
     ("app.intel_bluelens", "/intel-bluelens", "intel-bluelens"),
     ("app.llm_bench", "/llm-bench", "llm-bench"),
+    ("app.model_defaults", "/model-defaults", "model-defaults"),
     ("app.projects", "/projects", "projects"),
     ("app.serving_engines", "/serving-engines", "serving-engines"),
     ("app.silicon", "/silicon", "silicon"),

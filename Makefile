@@ -25,7 +25,7 @@ install-frontend: ## Install frontend deps (npm)
 
 ## ---- Dev ----
 BACKEND_PORT  ?= 8040
-FRONTEND_PORT ?= 3008
+FRONTEND_PORT ?= 3009
 DB_PORT       ?= 5436
 
 .PHONY: dev-db
