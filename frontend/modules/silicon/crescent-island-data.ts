@@ -1,0 +1,73 @@
+import type { AcceleratorDetail } from "./accelerator-data";
+
+// Sourced from Intel_Crescent_Island_Xe3P_Technical_Reference_v1.0.pdf (compiled 9 Aug 2026).
+// Intel has published NO compute-throughput figures for this part — every TFLOPS value
+// here is a transparent scenario model (CI-B "central" case), not a specification.
+export const CRESCENT_ISLAND: AcceleratorDetail = {
+  id: "crescent-island",
+  name: "Intel Crescent Island",
+  codeName: "Xe3P — data-centre inference GPU",
+  tagline: "Memory capacity per dollar and per watt, built for agentic AI",
+  accent: "#f472b6",
+  accentRgb: "244,114,182",
+  statusBadge: "Pre-launch — sampling H2 2026, volume 2027",
+  overview: [
+    "Intel's re-entry into discrete data-centre AI silicon after the Gaudi line was wound down. The design thesis is deliberately narrow: rather than chase training FLOPS, it optimises for memory capacity per dollar and per watt in an air-cooled PCIe form factor, targeting steady-state inference and agentic serving where model residency and context length gate throughput more than peak matrix rate.",
+    "Intel confirmed at Computex 2026 that it is not disclosing raw throughput specifications at this stage of development. Every TFLOPS/TOPS figure below is architecturally derived from the Xe2 Arc Pro B70's published per-core rates applied to an assumed Xe-core count and clock — treat it as a ±40% band, not a point value, until Intel publishes.",
+  ],
+  hwSpecs: [
+    { label: "Architecture", value: "Xe3P (performance-optimised Xe3 derivative, \"Celestial\" lineage)" },
+    { label: "Primary workload", value: "AI inference — explicitly positioned as \"built for agentic AI\"" },
+    { label: "Secondary workload", value: "Scientific / numeric compute via FP64 datapath" },
+    { label: "Board power (TDP)", value: "350 W reference and partner-ceiling class" },
+    { label: "Cooling", value: "Air-cooled (no liquid loop required)" },
+    { label: "Form factor", value: "PCIe add-in card, full-height" },
+    { label: "Host interface", value: "PCIe Gen5 x16 (assumed, consistent with 16-pin power precedent)" },
+    { label: "Power connector", value: "Single 16-pin 12V-2×6 (leaked)" },
+    { label: "Announced / sampling", value: "14 Oct 2025 (OCP) · customer sampling H2 2026 · volume 2027" },
+  ],
+  memorySpecs: [
+    { label: "Memory type", value: "LPDDR5X — no HBM, no GDDR" },
+    { label: "Capacity (reference design)", value: "160 GB" },
+    { label: "Capacity (partner ceiling)", value: "480 GB" },
+    { label: "Memory bandwidth", value: "Disputed: 1.54 TB/s (Intel OCP 2025 slide, leak-aligned) vs 684 GB/s (independent estimate) — not yet confirmed by Intel" },
+    { label: "Memory sites on PCB", value: "20 LPDDR5X packages (12 front, 8 rear) — leaked" },
+    { label: "Packaging", value: "No silicon interposer / CoWoS — decoupled from HBM supply constraints" },
+    { label: "8-card node memory", value: "Up to 3,840 GB (8 × 480 GB)" },
+    { label: "8-card node bandwidth", value: "~12.3 TB/s aggregate (sum of independent cards, not achievable within one tensor-parallel model)" },
+  ],
+  tflops: [
+    { dataType: "FP64 (XVE, 1:8 est.)", value: "~6.1 TFLOPS" },
+    { dataType: "FP32 (XVE vector)", value: "~49.2 TFLOPS" },
+    { dataType: "TF32 (XMX)", value: "~197 TFLOPS" },
+    { dataType: "BF16 / FP16 (XMX)", value: "~393 TFLOPS" },
+    { dataType: "FP8 / INT8 (XMX)", value: "~786 TFLOPS" },
+    { dataType: "FP4 / MXFP4 / INT4 (XMX)", value: "~1,573 TFLOPS" },
+  ],
+  tflopsCaveat: "Derived estimate — not an Intel specification. Intel has disclosed neither Xe-core count nor clock. These values are the \"CI-B central\" scenario (96 Xe-cores assumed @ 2.0 GHz) from a transparent model calibrated exactly against Intel's published Arc Pro B70 rates (32 Xe-cores @ 2.8 GHz → 22.94 TFLOPS FP32, 367 TOPS INT8, both reproduced exactly). Expect a ±40% band spanning a conservative (64C@2.0) to aggressive (128C@2.2) case.",
+  swStack: [
+    { layer: "Kernel / driver", component: "Linux xe DRM driver", role: "Device enumeration, memory management, scheduling — upstream in mainline" },
+    { layer: "Runtime", component: "Intel Compute Runtime (Level Zero, OpenCL)", role: "Low-level device API, command submission — mature on Battlemage" },
+    { layer: "Programming model", component: "oneAPI / SYCL (DPC++)", role: "Cross-vendor C++ heterogeneous model, open spec" },
+    { layer: "Compiler", component: "Intel Graphics Compiler (IGC) + icpx", role: "SPIR-V / GPU codegen" },
+    { layer: "Kernel DSL", component: "intel-xpu-backend-for-triton", role: "Triton kernels on XPU — critical path for new attention kernels" },
+    { layer: "Primitives", component: "oneDNN, oneMKL", role: "GEMM, conv, attention primitives" },
+    { layer: "Collectives", component: "oneCCL", role: "Multi-GPU all-reduce / all-gather — PCIe P2P dependent" },
+    { layer: "Framework", component: "PyTorch xpu device (torch.xpu)", role: "Native upstream backend, no out-of-tree fork required" },
+    { layer: "Framework", component: "IPEX (Intel Extension for PyTorch)", role: "Ahead-of-upstream optimisations, being folded upstream" },
+    { layer: "Graph runtime", component: "OpenVINO", role: "Most mature Intel inference path; NNCF quantisation" },
+    { layer: "LLM serving", component: "vLLM XPU backend", role: "Paged attention, continuous batching, TP — upstream collaboration active since 2025" },
+    { layer: "LLM serving", component: "intel/llm-scaler", role: "Containerised vLLM distribution + multi-GPU; vllm-0.14.0-b8.2 added B70 support Apr 2026" },
+    { layer: "Agentic", component: "LangChain / Hugging Face / OPEA", role: "Unmodified-code agentic orchestration — Intel's stated \"just works\" target" },
+    { layer: "Orchestration", component: "Kubernetes + Intel Device Plugins", role: "Scheduling, allocation, node feature discovery" },
+    { layer: "Manageability", component: "ECC, SR-IOV, telemetry, remote FW update", role: "Enterprise reliability and multi-tenancy — delivered in Battlematrix" },
+  ],
+  caveats: [
+    "Dec 2025 Battlematrix testing (the direct software ancestor of this stack) showed only MXFP4 models loading successfully — INT4, FP8 and AWQ quantisations failed outright, and only tensor parallelism worked (expert/pipeline parallelism were non-functional). This has improved through 2026 but remains the primary adoption risk — bring your own model, quantisation and parallelism strategy to acceptance-test on sampling silicon.",
+    "No announced proprietary scale-up fabric — PCIe P2P is the multi-card interconnect, so host CPU lane count is a first-order sizing constraint (8 cards × x16 = 128 PCIe Gen5 lanes before NIC/storage).",
+    "Workload fit: strong for sparse MoE serving, long-context agentic sessions with prefix reuse, high-concurrency batch inference, many co-resident small models, and embedding/reranker serving. Weak for dense 200B+ low-latency decode and latency-critical single-stream chat — the card is bandwidth-bound at batch 1.",
+    "Recommended Xeon 6 host tier for an 8-card node: 6767P (64c/350W) as the baseline, or 6776P for best perf/W if power-constrained (per the Xeon 6 SKU workbook's GPU-host-CPU rows).",
+    "Pricing, die size/node, and ECC support are all unconfirmed as of Aug 2026.",
+  ],
+  sourceNote: "Compiled from Intel Crescent Island (Xe3P) Technical Reference v1.0 (9 Aug 2026). Confirmed specs (350 W, LPDDR5X, 160/480 GB) are Intel-published; all throughput figures are derived estimates pending Intel's launch specification — do not use in a bid or business case without the accompanying uncertainty band.",
+};

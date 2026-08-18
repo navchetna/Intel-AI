@@ -107,5 +107,17 @@
     "additionalDirectories": [
       "\\tmp"
     ]
-  }
+  },
+
+ "env": {
+    "no_proxy": "localhost,0.0.0.0,127.0.0.1",
+    "NO_PROXY": "localhost,0.0.0.0,127.0.0.1",
+    "http_proxy": "http://proxy-dmz.intel.com:912",
+    "https_proxy": "http://proxy-dmz.intel.com:912",
+    "HTTP_PROXY": "http://proxy-dmz.intel.com:912",
+    "HTTPS_PROXY": "http://proxy-dmz.intel.com:912",
+    "CLAUDE_CODE_CERT_STORE": "system",
+    "CLAUDE_CODE_DISABLE_MOUSE_CLICKS": "1"
+  },
+  "editorMode": "vim"
 }

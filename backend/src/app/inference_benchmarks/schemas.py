@@ -11,6 +11,7 @@ EXCEL_COLUMNS: list[str] = [
     "Platform",
     "Serving_Engine",
     "Model",
+    "Category",
     "TP",
     "Num_Deployments",
     "Dataset",
@@ -46,6 +47,7 @@ class BenchmarkRecordCreate(BaseModel):
     platform: str = Field(alias="Platform")
     serving_engine: str | None = Field(default=None, alias="Serving_Engine")
     model: str = Field(alias="Model")
+    category: str | None = Field(default=None, alias="Category")
     tp: int | None = Field(default=None, alias="TP")
     num_deployments: int | None = Field(default=None, alias="Num_Deployments")
     dataset: str | None = Field(default=None, alias="Dataset")

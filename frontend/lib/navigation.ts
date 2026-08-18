@@ -62,7 +62,7 @@ export const navRoutes: NavRoute[] = [
   { slug: "rack",                label: "Rack",    module: "rack",                apiPrefix: "/rack",                cluster: "hardware" },
 
   // ── Cluster 2: AI-Inference ────────────────────────────────────────────────
-  { slug: "agentic-ai", label: "Agents",  module: "agentic-ai", apiPrefix: "/agentic-ai", cluster: "ai-stack", href: "/agentic-ai/agentic-stack" },
+  { slug: "agentic-ai", label: "Agents",  module: "agentic-ai", apiPrefix: "/agentic-ai", cluster: "ai-stack" },
   { slug: "harness",    label: "Harness", module: "agentic-ai", apiPrefix: "/agentic-ai", cluster: "ai-stack", href: "/agentic-ai/harness" },
   { slug: "workflows",  label: "Tasks",   module: "workflows",  apiPrefix: "/workflows",  cluster: "ai-stack" },
   { slug: "models",     label: "Models", module: "models",     apiPrefix: "/models",     cluster: "ai-stack" },

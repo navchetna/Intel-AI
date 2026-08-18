@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProject } from "@/contexts/ProjectContext";
+import { useRegisterExport } from "@/contexts/ExportContext";
 import { exportProjectToExcel } from "./export";
 import {
   buildAgenticStackSummary, buildAgentModelServingSummary, buildGpuCpuSummary,
@@ -86,8 +87,6 @@ export function ProjectSummaryView() {
   const { currentProject, data, renameProject, updateAgenticStack, updateAgents } = useProject();
   const router = useRouter();
   const [taskDefaults, setTaskDefaults] = useState<TaskModelDefault[] | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportErr, setExportErr] = useState<string | null>(null);
   const [openSizingId, setOpenSizingId] = useState<string | null>(null);
 
   const agenticRows = useMemo(() => buildAgenticStackSummary(data), [data]);
@@ -141,17 +140,14 @@ export function ProjectSummaryView() {
     return bySiliconKw + harnessKw;
   }, [gpuCpuSummary.bySilicon, harnessSizingSummary.systems]);
 
-  async function handleExport() {
+  const exportHandler = useCallback(async () => {
     if (!currentProject) return;
-    setExporting(true); setExportErr(null);
-    try {
-      await exportProjectToExcel(currentProject.name, data);
-    } catch (e) {
-      setExportErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setExporting(false);
-    }
-  }
+    await exportProjectToExcel(
+      currentProject.name, data, taskDefaults ?? [], requestVolumeDefaults,
+      harnessSizingSummary, gpuCpuSummary, totalTdpKw,
+    );
+  }, [currentProject, data, taskDefaults, requestVolumeDefaults, harnessSizingSummary, gpuCpuSummary, totalTdpKw]);
+  useRegisterExport(currentProject ? exportHandler : null, "Export Project Sizing");
 
   if (!currentProject) return null;
 
@@ -160,21 +156,12 @@ export function ProjectSummaryView() {
       <div className="mx-auto max-w-screen-2xl px-6 pt-10 pb-20">
 
         {/* ── header ── */}
-        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <EditableTitle name={currentProject.name} onRename={renameProject} />
-            <p className="text-[13px] text-white/40">
-              Last updated {new Date(currentProject.updated_at).toLocaleString()}
-            </p>
-          </div>
-          <button
-            type="button" onClick={handleExport} disabled={exporting}
-            className="flex-shrink-0 rounded-lg bg-intel-blue px-4 py-2.5 text-sm font-semibold text-white hover:bg-intel-dark transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
-          >
-            {exporting ? "Exporting…" : "⬇ Export to Excel"}
-          </button>
+        <div className="mb-8">
+          <EditableTitle name={currentProject.name} onRename={renameProject} />
+          <p className="text-[13px] text-white/40">
+            Last updated {new Date(currentProject.updated_at).toLocaleString()}
+          </p>
         </div>
-        {exportErr && <p className="text-xs text-danger -mt-6 mb-6">{exportErr}</p>}
 
         <ProjectSummaryEditor />
         <ProjectDocumentsPanel />

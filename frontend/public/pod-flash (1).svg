@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="44" viewBox="0 0 72 44" color="#1A1A19" role="img" aria-label="Pod-Flash">
+  <title>Pod-Flash</title>
+    <rect x="6" y="4" width="60" height="36" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="11" y="9" width="44" height="5" rx="1.5" fill="currentColor" opacity=".32"/>
+    <rect x="11" y="17" width="44" height="5" rx="1.5" fill="currentColor" opacity=".32"/>
+    <rect x="11" y="25" width="44" height="5" rx="1.5" fill="currentColor" opacity=".32"/>
+    <rect x="11" y="33" width="44" height="5" rx="1.5" fill="currentColor" opacity=".32"/>
+    <circle cx="60" cy="11.5" r="1.6" fill="currentColor"/>
+    <circle cx="60" cy="19.5" r="1.6" fill="currentColor"/>
+    <circle cx="60" cy="27.5" r="1.6" fill="currentColor"/>
+    <circle cx="60" cy="35.5" r="1.6" fill="currentColor"/>
+</svg>

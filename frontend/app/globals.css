@@ -54,7 +54,6 @@
   --dm-input-border: rgba(255,255,255,0.10);
   --dm-input-color:  rgba(255,255,255,0.80);
   --dm-filterbar-bg: rgba(255,255,255,0.03);
-  --dm-color-scheme: dark;
 
   /* Stack diagram */
   --diag-bg:          #0a1428;
@@ -109,7 +108,6 @@
   --dm-input-border: rgba(0,113,197,0.15);
   --dm-input-color:  #1e293b;
   --dm-filterbar-bg: rgba(255,255,255,0.80);
-  --dm-color-scheme: light;
 
   /* Stack diagram */
   --diag-bg:          #ffffff;
@@ -134,16 +132,11 @@
 
 /* ── Tailwind text-white/* class overrides for light mode ────────────────────
    Dark pages use Tailwind opacity-modifier classes for most of their text.
-   These overrides make that text readable on a light background. The list is
-   kept exhaustive over every text-white/N value used in the codebase (see
-   `grep -rhoE 'text-white/[0-9]+' app modules components` to re-check after
-   adding new opacity values) so new components don't silently reintroduce
-   near-invisible text when the theme flips.                                    */
-[data-theme="light"] .text-white                            { color: #1e293b !important; }
-[data-theme="light"] .hover\:text-white:hover               { color: #1e293b !important; }
+   These overrides make that text readable on a light background.               */
+[data-theme="light"] .text-white, [data-theme="light"] .hover\:text-white:hover  { color: #1e293b !important; }
 [data-theme="light"] .text-white\/95, [data-theme="light"] .text-white\/90,
 [data-theme="light"] .text-white\/88, [data-theme="light"] .text-white\/85,
-[data-theme="light"] .text-white\/80                                        { color: rgba(30,41,59,0.90) !important; }
+[data-theme="light"] .text-white\/80,
 [data-theme="light"] .hover\:text-white\/90:hover, [data-theme="light"] .hover\:text-white\/80:hover  { color: rgba(30,41,59,0.90) !important; }
 [data-theme="light"] .text-white\/75, [data-theme="light"] .text-white\/70,
 [data-theme="light"] .text-white\/65,
@@ -153,10 +146,10 @@
 [data-theme="light"] .hover\:text-white\/60:hover                            { color: rgba(30,41,59,0.60) !important; }
 [data-theme="light"] .text-white\/45, [data-theme="light"] .text-white\/40  { color: rgba(30,41,59,0.50) !important; }
 [data-theme="light"] .text-white\/35, [data-theme="light"] .text-white\/30,
-[data-theme="light"] .text-white\/28, [data-theme="light"] .text-white\/25  { color: rgba(30,41,59,0.38) !important; }
-[data-theme="light"] .text-white\/20, [data-theme="light"] .text-white\/18,
-[data-theme="light"] .text-white\/15                                         { color: rgba(30,41,59,0.28) !important; }
-[data-theme="light"] .text-white\/10                                         { color: rgba(30,41,59,0.20) !important; }
+[data-theme="light"] .text-white\/25                                         { color: rgba(30,41,59,0.38) !important; }
+[data-theme="light"] .text-white\/20, [data-theme="light"] .text-white\/15,
+[data-theme="light"] .text-white\/10, [data-theme="light"] .text-white\/18   { color: rgba(30,41,59,0.28) !important; }
+[data-theme="light"] .text-white\/28                                         { color: rgba(30,41,59,0.38) !important; }
 [data-theme="light"] .text-blue-300\/50, [data-theme="light"] .text-blue-300\/45,
 [data-theme="light"] .text-blue-400\/40                                      { color: rgba(30,41,59,0.45) !important; }
 [data-theme="light"] .placeholder-white\/20::placeholder                    { color: rgba(30,41,59,0.30) !important; }
@@ -165,61 +158,19 @@
 [data-theme="light"] .border-white\/\[0\.07\]  { border-color: rgba(0,113,197,0.10) !important; }
 [data-theme="light"] .border-white\/\[0\.06\]  { border-color: rgba(0,113,197,0.08) !important; }
 [data-theme="light"] .border-white\/\[0\.05\]  { border-color: rgba(0,113,197,0.07) !important; }
-[data-theme="light"] .border-white\/30         { border-color: rgba(0,113,197,0.20) !important; }
-[data-theme="light"] .hover\:border-white\/30:hover { border-color: rgba(0,113,197,0.20) !important; }
-[data-theme="light"] .border-white\/15         { border-color: rgba(0,113,197,0.15) !important; }
+[data-theme="light"] .border-white\/15         { border-color: rgba(0,113,197,0.10) !important; }
 [data-theme="light"] .border-white\/10         { border-color: rgba(0,113,197,0.12) !important; }
+[data-theme="light"] .border-white\/30, [data-theme="light"] .hover\:border-white\/30:hover  { border-color: rgba(0,113,197,0.20) !important; }
 
 /* Semi-transparent white backgrounds used as inner card surfaces */
 [data-theme="light"] .bg-white\/\[0\.02\]  { background: rgba(0,113,197,0.02) !important; }
 [data-theme="light"] .bg-white\/\[0\.03\]  { background: rgba(0,113,197,0.03) !important; }
 [data-theme="light"] .bg-white\/\[0\.04\]  { background: rgba(0,113,197,0.04) !important; }
 [data-theme="light"] .bg-white\/\[0\.05\]  { background: rgba(0,113,197,0.04) !important; }
-[data-theme="light"] .bg-white\/\[0\.07\]  { background: rgba(0,113,197,0.07) !important; }
-[data-theme="light"] .bg-white\/5          { background: rgba(0,113,197,0.05) !important; }
-[data-theme="light"] .bg-white\/8          { background: rgba(0,113,197,0.06) !important; }
-[data-theme="light"] .bg-white\/10         { background: rgba(0,113,197,0.08) !important; }
-[data-theme="light"] .hover\:bg-white\/5:hover   { background: rgba(0,113,197,0.05) !important; }
-[data-theme="light"] .focus\:bg-white\/8:focus   { background: rgba(0,113,197,0.06) !important; }
-[data-theme="light"] .hover\:bg-white\/10:hover  { background: rgba(0,113,197,0.08) !important; }
-
-/* Amber warning callouts (training/data-pipes cards) — the pale amber body
-   text used against a near-transparent amber card is unreadable once the
-   card sits on a light background. */
-[data-theme="light"] .text-amber-100\/70  { color: rgba(146,64,14,0.85) !important; }
-
-/* IntelStackDiagram silicon-stack chips: these sit on fixed, hand-picked
-   brand-blue swatches (not the theme gradient), so their white label text
-   must stay white in both themes — opt out of the generic .text-white
-   light-mode remap above (higher selector specificity wins the tie). */
-[data-theme="light"] .intel-stack-diagram .text-white { color: #fff !important; }
-
-/* Xeon6SPDetailView (SKU catalog drill-down): built entirely on a fixed dark
-   navy canvas — never wired up to the --dm-* theme vars — so unlike the rest
-   of the app its surfaces don't lighten in light mode. Remapping its text to
-   dark navy (as the generic rule above does) would put dark text on a
-   background that never lightened. Opt this subtree out and keep it dark. */
-[data-theme="light"] .xeon6sp-detail .text-white             { color: #fff !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/90          { color: rgba(255,255,255,0.90) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/80          { color: rgba(255,255,255,0.80) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/75          { color: rgba(255,255,255,0.75) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/70          { color: rgba(255,255,255,0.70) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/60          { color: rgba(255,255,255,0.60) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/55          { color: rgba(255,255,255,0.55) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/40          { color: rgba(255,255,255,0.40) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/35          { color: rgba(255,255,255,0.35) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/30          { color: rgba(255,255,255,0.30) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/28          { color: rgba(255,255,255,0.28) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/25          { color: rgba(255,255,255,0.25) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/20          { color: rgba(255,255,255,0.20) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/18          { color: rgba(255,255,255,0.18) !important; }
-[data-theme="light"] .xeon6sp-detail .text-white\/15          { color: rgba(255,255,255,0.15) !important; }
-[data-theme="light"] .xeon6sp-detail .border-white\/\[0\.07\] { border-color: rgba(255,255,255,0.07) !important; }
-[data-theme="light"] .xeon6sp-detail .border-white\/10        { border-color: rgba(255,255,255,0.10) !important; }
-[data-theme="light"] .xeon6sp-detail .bg-white\/\[0\.02\]     { background: rgba(255,255,255,0.02) !important; }
-[data-theme="light"] .xeon6sp-detail .bg-white\/\[0\.04\]     { background: rgba(255,255,255,0.04) !important; }
-[data-theme="light"] .xeon6sp-detail .bg-white\/\[0\.07\]     { background: rgba(255,255,255,0.07) !important; }
-[data-theme="light"] .xeon6sp-detail .bg-white\/5             { background: rgba(255,255,255,0.05) !important; }
+[data-theme="light"] .bg-white\/5, [data-theme="light"] .hover\:bg-white\/5:hover   { background: rgba(0,113,197,0.05) !important; }
+[data-theme="light"] .bg-white\/8, [data-theme="light"] .focus\:bg-white\/8:focus   { background: rgba(0,113,197,0.06) !important; }
+[data-theme="light"] .bg-white\/10, [data-theme="light"] .hover\:bg-white\/10:hover { background: rgba(0,113,197,0.08) !important; }
+[data-theme="light"] .bg-white\/\[0\.07\]  { background: rgba(0,113,197,0.06) !important; }
 
 /* Native <select> dropdown listbox — Chromium respects option background/color
    for the open popup, so this gives light mode a grey highlight instead of the
@@ -299,3 +250,35 @@ body {
 .md-reference td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--dm-border-a); color: var(--dm-txt-secondary); vertical-align: top; }
 .md-reference code { background: rgba(255,255,255,0.08); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.82em; color: var(--dm-txt-primary); }
 .md-reference a { color: #22d3ee; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
+
+/* ── Dual-handle range slider (two overlaid <input type="range">) ───────────
+   Both inputs stack on the same track; the track itself is pointer-events:none
+   so only each thumb is interactive, letting either handle be dragged independently. */
+.dual-range-input {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+}
+.dual-range-input::-webkit-slider-runnable-track { -webkit-appearance: none; background: transparent; }
+.dual-range-input::-moz-range-track { background: transparent; }
+.dual-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 14px; height: 14px;
+  border-radius: 9999px;
+  background: #38bdf8;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  cursor: pointer;
+  margin-top: 0;
+}
+.dual-range-input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 14px; height: 14px;
+  border-radius: 9999px;
+  background: #38bdf8;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  cursor: pointer;
+}

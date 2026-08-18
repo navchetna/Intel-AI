@@ -2,13 +2,20 @@
 
 import React, { useState } from "react";
 import { Xeon6SPDetailView } from "./Xeon6SPDetailView";
+import { AcceleratorDetailView } from "./AcceleratorDetailView";
+import { SAMBANOVA_SN40L } from "./sambanova-data";
+import { CRESCENT_ISLAND } from "./crescent-island-data";
+import { ARC_PRO_B60 } from "./arc-b60-data";
+import { StorageView } from "./StorageView";
+
+const DETAIL_PAGE_IDS = new Set(["xeon6-sp", "sambanova", "crescent-island", "arc-b60", "storage"]);
 
 interface SpecRow { label: string; value: string }
 interface Chip {
   id: string;
   name: string;
   codeName: string;
-  category: "CPU" | "Accelerator" | "Partner";
+  category: "CPU" | "GPU" | "Accelerator";
   tagline: string;
   description: string;
   accent: string;
@@ -144,12 +151,12 @@ const CHIPS: Chip[] = [
   },
   {
     id: "b70",
-    name: "Intel® Gaudi® 3 B70",
-    codeName: "Rialto Bridge",
-    category: "Accelerator",
-    tagline: "Open AI training & serving accelerator",
+    name: "Intel® Arc™ Pro B70",
+    codeName: "Xe2 \"Battlemage\" (BMG-G31)",
+    category: "GPU",
+    tagline: "VRAM-dense workstation & batch-inference GPU",
     description:
-      "Purpose-built AI accelerator with 128 Tensor Processing Cores and 96 GB HBM2e. Open software stack (SynapseAI + vLLM backend) delivers leading perf-per-dollar for LLM training and inference.",
+      "Xe2 \"Battlemage\" workstation GPU with 32 GB ECC GDDR6 — the play is VRAM capacity per dollar, not peak compute. Four cards pool 128 GB for roughly $3,800 list, and vLLM (via Intel's LLM-Scaler) serves Llama, Qwen, DeepSeek and Mistral at competitive batch-32 throughput.",
     accent: "#a78bfa",
     glow: "rgba(167,139,250,0.14)",
     badge: { bg: "rgba(167,139,250,0.15)", text: "#c4b5fd" },
@@ -162,34 +169,75 @@ const CHIPS: Chip[] = [
         <path d="M14.1 14.1l2.8 2.8M27.1 27.1l2.8 2.8M14.1 29.9l2.8-2.8M27.1 16.9l2.8-2.8" stroke="#a78bfa" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
-    peakFigure: { value: "1835", unit: "TFLOPS", label: "peak BF16 compute" },
+    peakFigure: { value: "367", unit: "TOPS", label: "INT8 peak (XMX, published)" },
     specs: [
-      { label: "Tensor cores", value: "128 (MME + TPC)" },
-      { label: "HBM2e memory", value: "96 GB" },
-      { label: "Memory bandwidth", value: "3.7 TB/s" },
-      { label: "BF16 peak", value: "1835 TFLOPS" },
-      { label: "Interconnect", value: "24 × 100 Gb/s RDMA" },
-      { label: "Form factor", value: "OAM / PCIe" },
-      { label: "TDP", value: "600 W (OAM)" },
-      { label: "SW stack", value: "SynapseAI / vLLM" },
+      { label: "Architecture", value: "Xe2-HPG \"Battlemage\", TSMC N5" },
+      { label: "XMX matrix engines", value: "256 (8 per Xe core)" },
+      { label: "Memory", value: "32 GB GDDR6, ECC, 256-bit" },
+      { label: "Memory bandwidth", value: "608 GB/s" },
+      { label: "INT8 peak (XMX)", value: "367 TOPS" },
+      { label: "BF16 / FP16 peak (XMX)", value: "~183.5 TFLOPS (derived)" },
+      { label: "Host interface", value: "PCIe 5.0 x16" },
+      { label: "Board power", value: "230 W ref. (160–290 W range)" },
     ],
-    useCases: ["LLM training", "Large-scale inference", "LoRA / QLoRA fine-tuning", "Multi-node distributed", "Vision-language models"],
+    useCases: ["Batch LLM inference (vLLM)", "Multi-user agentic serving", "VRAM-dense capacity scaling", "AI workstation + graphics", "OpenVINO / IPEX inference"],
     highlights: [
-      "24-port 100G RDMA removes NVLink vendor lock-in for scale-out",
-      "vLLM 0.6+ supports Gaudi 3 as a first-class backend",
-      "SynapseAI is open-source; PyTorch Eager + torch.compile both supported",
-      "~40% better perf-per-dollar vs H100 on LLM inference (MLPerf 4.0)",
+      "4 cards = 128 GB pooled ECC VRAM for ~$3,800 list — capacity-per-dollar, not raw compute, is the case",
+      "Intel LLM-Scaler (vLLM fork) serves Llama, Qwen, DeepSeek & Mistral; BF16 and FP8/FP4 are not yet servable (FP16/INT8 only today)",
+      "No NVLink-class fabric — every card needs a full PCIe 5.0 x16 link, so lane count is a first-order host-SKU filter",
+      "Competitive at batch 32 (~85% of RTX PRO 6000 on Llama 3.1 8B); unremarkable at batch 1 — built for concurrency, not single-user latency",
+    ],
+    tier: "Production",
+  },
+  {
+    id: "arc-b60",
+    name: "Intel® Arc™ Pro B60",
+    codeName: "Xe2 \"Battlemage\" — BMG-G21",
+    category: "GPU",
+    tagline: "Cost-effective AI inference with 24 GB VRAM",
+    description:
+      "The Arc Pro B60 is the full-die Battlemage professional part: 20 Xe2-HPG cores, 160 XMX matrix engines, 24 GB GDDR6 on a 192-bit bus, and PCIe 5.0 x8 electrical host link. Intel positions it explicitly as an inference product — capacity per dollar, not FLOPS per dollar.",
+    accent: "#a78bfa",
+    glow: "rgba(167,139,250,0.14)",
+    badge: { bg: "rgba(167,139,250,0.15)", text: "#c4b5fd" },
+    icon: (
+      <svg viewBox="0 0 44 44" fill="none" className="w-10 h-10">
+        <rect width="44" height="44" rx="10" fill="#a78bfa" fillOpacity="0.12" />
+        <circle cx="22" cy="22" r="12" stroke="#a78bfa" strokeWidth="2" />
+        <circle cx="22" cy="22" r="6" fill="#a78bfa" fillOpacity="0.25" />
+        <path d="M22 10v4M22 30v4M10 22h4M30 22h4" stroke="#a78bfa" strokeWidth="2" strokeLinecap="round" />
+        <path d="M14.1 14.1l2.8 2.8M27.1 27.1l2.8 2.8M14.1 29.9l2.8-2.8M27.1 16.9l2.8-2.8" stroke="#a78bfa" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    peakFigure: { value: "197", unit: "TOPS", label: "INT8 peak (XMX, dense)" },
+    specs: [
+      { label: "Architecture", value: "Xe2-HPG \"Battlemage\", TSMC N5" },
+      { label: "XMX matrix engines", value: "160 (8 per Xe core)" },
+      { label: "Memory", value: "24 GB GDDR6, 192-bit" },
+      { label: "Memory bandwidth", value: "456 GB/s" },
+      { label: "INT8 peak (XMX)", value: "197 TOPS" },
+      { label: "FP16 peak (XMX)", value: "98.3 TFLOPS (derived)" },
+      { label: "FP32 peak (XVE)", value: "12.28 TFLOPS" },
+      { label: "Host interface", value: "PCIe 5.0 x8 electrical" },
+      { label: "Board power", value: "120–200 W" },
+    ],
+    useCases: ["Single-card 8B–14B serving", "Multi-card 32B–70B INT4/FP8", "Project Battlematrix (8-card, 192 GB)", "High-concurrency batch inference", "AI workstation"],
+    highlights: [
+      "Capacity per dollar: 24 GB at $599–$800 street price — one-quarter the bandwidth of HBM at a fraction of the cost",
+      "Memory-bound decode: 215.6 FLOP/byte FP16 machine balance means batching is not an optimization, it is the design",
+      "No scale-up fabric: PCIe 5.0 x8 only (31.5 GB/s per direction) — prefer replication over tensor parallelism",
+      "llm-scaler-vllm serving path supports Llama, Qwen, DeepSeek, Mistral with FP16/INT4/FP8 quantization",
     ],
     tier: "Production",
   },
   {
     id: "crescent-island",
-    name: "Crescent Island",
-    codeName: "Intel Next-Gen AI Accelerator",
-    category: "Accelerator",
-    tagline: "The next horizon of Intel AI silicon",
+    name: "Intel Crescent Island",
+    codeName: "Xe3P — data-centre inference GPU",
+    category: "GPU",
+    tagline: "Memory capacity per dollar and per watt, built for agentic AI",
     description:
-      "Intel’s next-generation AI accelerator — chiplet-disaggregated architecture with tightly integrated HBM3e, a re-architected FP8 dataflow engine, and UCIe die-to-die fabric for transformer workloads at datacenter scale.",
+      "Pre-launch Xe3P inference GPU that trades peak FLOPS for memory capacity — 160 GB reference / 480 GB partner-ceiling LPDDR5X in a 350 W air-cooled PCIe card. Intel has disclosed no throughput figures at this stage; every TFLOPS number below is a derived estimate, not a spec.",
     accent: "#f472b6",
     glow: "rgba(244,114,182,0.14)",
     badge: { bg: "rgba(244,114,182,0.15)", text: "#f9a8d4" },
@@ -200,34 +248,34 @@ const CHIPS: Chip[] = [
         <circle cx="22" cy="22" r="3" fill="#f472b6" />
       </svg>
     ),
-    peakFigure: { value: "~4×", unit: "uplift", label: "vs Gaudi 3 (projected)" },
+    peakFigure: { value: "480", unit: "GB", label: "LPDDR5X partner ceiling (160 GB ref.)" },
     specs: [
-      { label: "Architecture", value: "Chiplet disaggregated" },
-      { label: "Memory", value: "HBM3e (on-die)" },
-      { label: "Interconnect", value: "UCIe + enhanced RDMA" },
-      { label: "Precisions", value: "FP8 / BF16 / INT4" },
-      { label: "Process node", value: "Intel 18A (target)" },
-      { label: "SW stack", value: "SynapseAI next-gen" },
-      { label: "Status", value: "Pre-production" },
-      { label: "Segment", value: "Hyperscale AI clusters" },
+      { label: "Architecture", value: "Xe3P (\"Celestial\" lineage)" },
+      { label: "Memory type", value: "LPDDR5X — no HBM, no GDDR" },
+      { label: "Memory capacity", value: "160 GB ref. / 480 GB ceiling" },
+      { label: "Memory bandwidth", value: "684 GB/s – 1.54 TB/s (disputed)" },
+      { label: "Board power", value: "350 W, air-cooled" },
+      { label: "Host interface", value: "PCIe Gen5 x16 (assumed)" },
+      { label: "BF16 (derived, CI-B)", value: "~393 TFLOPS" },
+      { label: "Status", value: "Sampling H2 2026 · Volume 2027" },
     ],
-    useCases: ["Frontier model training", "Dense MoE serving", "Multi-modal AI", "Agentic workloads", "Sovereign AI infra"],
+    useCases: ["Sparse MoE serving", "Long-context agentic sessions", "High-concurrency batch inference", "Many co-resident small models", "Embedding / reranker serving"],
     highlights: [
-      "Chiplet tiling allows compute and memory tiles to scale independently",
-      "Native FP8 dataflow engine for maximum throughput on modern LLMs",
-      "UCIe die-to-die fabric pushes bandwidth beyond what HBM alone can deliver",
-      "Intel 18A node targets industry-leading performance per watt",
+      "160–480 GB LPDDR5X trades ~3–5× bandwidth for 1.7–3.3× capacity vs. HBM — a capacity-bound, not bandwidth-bound, bet",
+      "Intel confirms zero throughput specs pre-launch — every TFLOPS figure in circulation (including here) is derived, not published",
+      "Dec 2025 Battlematrix testing: only MXFP4 models loaded successfully; INT4/FP8/AWQ failed — treat software maturity as the primary adoption risk",
+      "No proprietary scale-up fabric — PCIe P2P makes host lane count (Xeon 6 6767P+) a first-order sizing constraint",
     ],
     tier: "Next-Gen",
   },
   {
     id: "sambanova",
     name: "SambaNova SN40L",
-    codeName: "Reconfigurable Dataflow Unit",
-    category: "Partner",
-    tagline: "Spatial dataflow for trillion-param models",
+    codeName: "Reconfigurable Dataflow Unit — Cerulean",
+    category: "Accelerator",
+    tagline: "Dataflow-native alternative to GPUs for agentic inference",
     description:
-      "SambaNova’s Reconfigurable Dataflow Architecture (RDA) maps neural graphs directly onto a spatial array of processing elements — eliminating the von Neumann memory wall that limits GPU accelerators on extreme-scale LLMs.",
+      "SambaNova's RDU maps dataflow graphs directly onto an array of Pattern Compute/Memory Units — no SIMT kernel dispatch. Current-gen SN40L (5nm, 102B transistors) pairs 64 GiB HBM3 with up to 1.5 TiB DDR per chip, natively serving Composition-of-Experts models up to 1.3T aggregate params.",
     accent: "#fb923c",
     glow: "rgba(251,146,60,0.12)",
     badge: { bg: "rgba(251,146,60,0.15)", text: "#fdba74" },
@@ -242,23 +290,23 @@ const CHIPS: Chip[] = [
         <path d="M15.5 22h3M25.5 22h3M22 15.5v3M22 25.5v3" stroke="#fb923c" strokeWidth="2" strokeLinecap="round" />
       </svg>
     ),
-    peakFigure: { value: "1.5T", unit: "params", label: "MoE models served natively" },
+    peakFigure: { value: "640", unit: "TFLOPS", label: "BF16 native, per socket" },
     specs: [
-      { label: "Architecture", value: "Reconfigurable Dataflow" },
-      { label: "On-chip SRAM", value: "520 MB per chip" },
-      { label: "DDR5 capacity", value: "1.5 TB per node" },
-      { label: "Largest model", value: "1.5T-param MoE" },
-      { label: "TTFT", value: "Industry-leading long-ctx" },
-      { label: "API surface", value: "OpenAI-compatible" },
-      { label: "Deployment", value: "SambaNova Cloud" },
-      { label: "Quantisation req.", value: "None (full-precision)" },
+      { label: "Architecture", value: "Reconfigurable Dataflow Unit" },
+      { label: "Process", value: "5nm TSMC, CoWoS-S dual die" },
+      { label: "On-chip SRAM", value: "520 MiB" },
+      { label: "HBM", value: "64 GiB HBM3" },
+      { label: "DDR (attached)", value: "up to 1.5 TiB, pluggable" },
+      { label: "BF16 peak", value: "638–640 TFLOPS / socket" },
+      { label: "Rack aggregate", value: "10.2 PFLOPS BF16 (16-socket)" },
+      { label: "API surface", value: "OpenAI-compatible (SambaCloud)" },
     ],
-    useCases: ["Trillion-param MoE", "Ultra-long context", "Low-latency enterprise API", "Full-precision inference", "Research at scale"],
+    useCases: ["Composition-of-Experts (CoE) serving", "Trillion-param MoE", "Ultra-long context / KV residency", "OpenAI-compatible hosted inference", "Xeon 6 heterogeneous prefill/decode"],
     highlights: [
-      "Dataflow execution streams weights through on-chip SRAM — no DRAM bottleneck",
-      "Serves 1.5T-param MoE with zero quantisation loss",
-      "Sub-ms TTFT on context lengths where GPUs stall on HBM bandwidth",
-      "OpenAI-compatible API — zero application-level changes to adopt",
+      "Three-tier memory (SRAM → HBM3 → DDR) keeps weights chip-resident — no PCIe round-trip to host DRAM during inference",
+      "Samba-1: 56 component models, 1.3T aggregate params, on just 8 RDU sockets via Composition of Experts",
+      "2026 Intel partnership: Xeon 6 as host/action CPU + RDU for decode, H200 GPUs for prefill — SoftBank is the first deployment",
+      "SN50 successor (H2 2026) is estimated at ~2.5× BF16 / native FP8 — press-derived, not yet an official spec",
     ],
     tier: "Partner",
   },
@@ -368,42 +416,227 @@ function ChipCard({ chip, onClick }: { chip: Chip; onClick?: () => void }) {
   );
 }
 
+type SiliconCategory = "Compute" | "Memory" | "Networking" | "Storage" | "Cables" | "PDU";
+
+const SILICON_CATEGORIES: SiliconCategory[] = ["Compute", "Memory", "Networking", "Storage", "Cables", "PDU"];
+
+function ComingSoon({ category }: { category: SiliconCategory }) {
+  return (
+    <div className="rounded-2xl border border-dashed flex flex-col items-center justify-center text-center py-24"
+      style={{ borderColor: "var(--dm-border-b)" }}>
+      <p className="text-sm font-semibold" style={{ color: "var(--dm-txt-secondary)" }}>{category} catalog coming soon</p>
+      <p className="mt-1 text-xs" style={{ color: "var(--dm-txt-faint)" }}>This tab is reserved for {category.toLowerCase()} SKUs and specs.</p>
+    </div>
+  );
+}
+
+interface ComputeGroup {
+  category: Chip["category"];
+  label: string;
+  description: string;
+  accent: string;
+  accentRgb: string;
+}
+
+const COMPUTE_GROUPS: ComputeGroup[] = [
+  {
+    category: "CPU",
+    label: "CPU",
+    description: "General-purpose Xeon 6 processors — the default compute for SLM inference, embeddings, RAG and mixed workloads that don't need a discrete accelerator.",
+    accent: "#38bdf8",
+    accentRgb: "56,189,248",
+  },
+  {
+    category: "GPU",
+    label: "GPU",
+    description: "Discrete GPUs for batch inference, AI workstations and next-gen datacenter serving — from shipping Arc Pro cards to pre-production Crescent Island.",
+    accent: "#a78bfa",
+    accentRgb: "167,139,250",
+  },
+  {
+    category: "Accelerator",
+    label: "Accelerators",
+    description: "Purpose-built and partner AI accelerator silicon for large-scale, high-throughput training and inference beyond what CPUs and GPUs alone deliver.",
+    accent: "#fb923c",
+    accentRgb: "251,146,60",
+  },
+];
+
+function ComputeAccordion({ group, chips, expanded, onToggle, onChipClick }: {
+  group: ComputeGroup; chips: Chip[]; expanded: boolean; onToggle: () => void; onChipClick: (id: string) => void;
+}) {
+  if (chips.length === 0) return null;
+  return (
+    <div className="mb-4 rounded-2xl border overflow-hidden" style={{ borderColor: "var(--dm-card-border)", background: "var(--dm-card-bg)" }}>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-4 px-6 py-5 text-left transition-colors"
+        style={{ background: expanded ? `rgba(${group.accentRgb},0.06)` : "transparent" }}
+      >
+        <div
+          className="flex-shrink-0 transition-transform duration-200"
+          style={{ color: group.accent, transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }}
+        >
+          <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4">
+            <path d="M6 3l6 5-6 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-base font-bold" style={{ color: "var(--dm-txt-primary)" }}>{group.label}</h2>
+            <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+              style={{ background: `rgba(${group.accentRgb},0.15)`, color: group.accent }}>
+              {chips.length}
+            </span>
+          </div>
+          <p className="mt-1 text-xs leading-relaxed max-w-3xl" style={{ color: "var(--dm-txt-faint)" }}>{group.description}</p>
+        </div>
+        <div className="flex-shrink-0 flex flex-wrap justify-end gap-1.5 max-w-[280px]">
+          {chips.map(c => (
+            <span key={c.id} className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+              style={{ background: `rgba(${group.accentRgb},0.10)`, color: group.accent }}>
+              {c.name.replace(/Intel[®™]*\s*/g, "").replace(/[®™]/g, "")}
+            </span>
+          ))}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-6 pb-6 pt-1">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {chips.map(c => (
+              <ChipCard key={c.id} chip={c}
+                onClick={DETAIL_PAGE_IDS.has(c.id) ? () => onChipClick(c.id) : undefined} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SiliconView() {
   const [drillDown, setDrillDown] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<SiliconCategory>("Compute");
+  const [expanded, setExpanded] = useState<Set<Chip["category"]>>(new Set());
+
+  function toggleGroup(category: Chip["category"]) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category); else next.add(category);
+      return next;
+    });
+  }
 
   if (drillDown === "xeon6-sp") {
     return <Xeon6SPDetailView onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "sambanova") {
+    return <AcceleratorDetailView detail={SAMBANOVA_SN40L} onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "crescent-island") {
+    return <AcceleratorDetailView detail={CRESCENT_ISLAND} onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "arc-b60") {
+    return <AcceleratorDetailView detail={ARC_PRO_B60} onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "storage") {
+    return <StorageView onBack={() => setDrillDown(null)} />;
   }
 
   return (
     <main style={{ background: "var(--dm-page-bg)", minHeight: "100vh" }}>
       <div className="mx-auto max-w-screen-2xl px-6 pt-10 pb-12">
-        <div className="mb-8">
+        <div className="mb-6">
           <h1 className="text-4xl font-black text-white tracking-tight">Silicon</h1>
-          <p className="mt-2 text-base text-white/45 max-w-2xl">
-            The compute substrate powering Intel-AI — from CPU inference engines to purpose-built AI accelerators and partner silicon.
-          </p>
         </div>
 
-        <div className="flex flex-wrap gap-3 mb-8">
-          {Object.entries(TIER_STYLES).map(([tier, style]) => (
-            <div key={tier} className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
-              style={{ background: style.bg, color: style.text }}>
-              <div className="w-1.5 h-1.5 rounded-full" style={{ background: style.text }} />
-              {tier}
+        <div className="flex gap-1 mb-8 border-b border-white/[0.07]">
+          {SILICON_CATEGORIES.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setActiveTab(cat)}
+              className="px-4 py-2.5 text-sm font-semibold transition-colors -mb-px border-b-2"
+              style={{
+                color: activeTab === cat ? "#38bdf8" : "var(--dm-txt-faint)",
+                borderColor: activeTab === cat ? "#38bdf8" : "transparent",
+              }}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "Compute" ? (
+          <>
+            {COMPUTE_GROUPS.map(g => (
+              <ComputeAccordion key={g.category} group={g}
+                chips={CHIPS.filter(c => c.category === g.category)}
+                expanded={expanded.has(g.category)}
+                onToggle={() => toggleGroup(g.category)}
+                onChipClick={setDrillDown} />
+            ))}
+          </>
+        ) : activeTab === "Storage" ? (
+          <div
+            className="relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] cursor-pointer group"
+            style={{
+              background: "var(--dm-card-bg)",
+              boxShadow: "0 0 0 1px var(--dm-card-ring), var(--dm-card-depth), 0 0 60px rgba(251,191,36,0.12)",
+              borderColor: "var(--dm-card-border)",
+            }}
+            onClick={() => setDrillDown("storage")}
+          >
+            <div className="h-[3px] w-full" style={{ background: "linear-gradient(90deg, #fbbf24 0%, #fbbf2444 60%, transparent 100%)" }} />
+            <div className="pointer-events-none absolute right-0 top-0 h-48 w-48"
+              style={{ background: "radial-gradient(ellipse at 100% 0%, rgba(251,191,36,0.12), transparent 70%)" }} />
+
+            <div className="relative flex flex-col flex-1 p-8 gap-5">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0">
+                  <svg viewBox="0 0 44 44" fill="none" className="w-12 h-12">
+                    <rect width="44" height="44" rx="10" fill="#fbbf24" fillOpacity="0.12" />
+                    <rect x="10" y="14" width="24" height="4" rx="1" fill="#fbbf24" fillOpacity="0.4" />
+                    <rect x="10" y="20" width="24" height="4" rx="1" fill="#fbbf24" fillOpacity="0.6" />
+                    <rect x="10" y="26" width="24" height="4" rx="1" fill="#fbbf24" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-2xl font-bold text-white leading-tight">Storage Technologies</h2>
+                  <p className="mt-2 text-sm text-white/50 leading-relaxed">
+                    Intel instruction sets, accelerators, CXL memory expansion, IPU packet processing, and software projects for agentic AI storage —
+                    mapped to storage classes with commercial and open-source vendor adoption.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 mt-4">
+                <div className="p-3 rounded-lg" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
+                  <div className="text-xs font-bold mb-1" style={{ color: "#fbbf24" }}>Instruction Sets</div>
+                  <div className="text-xs text-white/40">AVX-512, AES-NI, SHA, CLMUL</div>
+                </div>
+                <div className="p-3 rounded-lg" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
+                  <div className="text-xs font-bold mb-1" style={{ color: "#fbbf24" }}>Accelerators</div>
+                  <div className="text-xs text-white/40">QAT, IAA, DSA, DLB</div>
+                </div>
+                <div className="p-3 rounded-lg" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
+                  <div className="text-xs font-bold mb-1" style={{ color: "#fbbf24" }}>Software</div>
+                  <div className="text-xs text-white/40">isa-l, SPDK, DPDK, QATzip</div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-end gap-1.5 text-sm font-semibold transition-colors"
+                style={{ color: "#fbbf24" }}>
+                <span className="opacity-70 group-hover:opacity-100">View storage catalog</span>
+                <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-transform">
+                  <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
             </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
-          {CHIPS.slice(0, 3).map(c => (
-            <ChipCard key={c.id} chip={c}
-              onClick={c.id === "xeon6-sp" ? () => setDrillDown("xeon6-sp") : undefined} />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {CHIPS.slice(3).map(c => <ChipCard key={c.id} chip={c} />)}
-        </div>
+          </div>
+        ) : (
+          <ComingSoon category={activeTab} />
+        )}
       </div>
     </main>
   );

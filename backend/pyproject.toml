@@ -16,6 +16,8 @@ dependencies = [
     "pydantic>=2.6.0",
     "pydantic-settings>=2.1.0",
     "python-dotenv>=1.0.0",
+    # Outbound HTTP (GROQ, ...)
+    "httpx>=0.26.0",
     # Database (PostgreSQL, async)
     "sqlalchemy[asyncio]>=2.0.25",
     "asyncpg>=0.29.0",

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="44" viewBox="0 0 72 44" color="#1A1A19" role="img" aria-label="DRAM">
+  <title>DRAM</title>
+    <rect x="4" y="8" width="64" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="9" y="13" width="11" height="12" rx="1" fill="currentColor" opacity=".32"/>
+    <rect x="25" y="13" width="11" height="12" rx="1" fill="currentColor" opacity=".32"/>
+    <rect x="41" y="13" width="11" height="12" rx="1" fill="currentColor" opacity=".32"/>
+    <rect x="57" y="13" width="11" height="12" rx="1" fill="currentColor" opacity=".32"/>
+    <rect x="4" y="30" width="26" height="4" rx="1" fill="currentColor"/>
+    <rect x="36" y="30" width="32" height="4" rx="1" fill="currentColor"/>
+</svg>

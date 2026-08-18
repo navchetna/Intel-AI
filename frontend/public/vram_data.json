@@ -1,0 +1,1115 @@
+[
+  {
+    "model": "dots.mocr",
+    "category": "OCR & Document",
+    "kvCacheType": "Decoder",
+    "totalLayers": 36,
+    "denseSelfattnLayers": 36,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 256,
+    "weightVramGiB": 7,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 193536,
+    "kvPerSeqMiB": 756,
+    "kvTotalAtConcurrencyGiB": 12.99375,
+    "totalVramGiB": 19.99375,
+    "kvFormula": "IF(C14=\"None\",\"no KV cache (single-pass encoder)\",IF(C14=\"Enc-Dec\",\"2 x \"&E14&\" dec-L x \"&H14&\" kv x \"&I14&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J14&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E14&\"+\"&F14&\"w) L x \"&H14&\" kv x \"&I14&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J14&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "VLM; Qwen3-VL-4B backbone (arch inferred from base)",
+    "smallestSingleCard": {
+      "formula": "IF(P14>Cards!$D$9,\"multi-GPU / shard\",IF(P14<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P14,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "GLM-OCR",
+    "category": "OCR & Document",
+    "kvCacheType": "Enc-Dec",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 24,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 1.8,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 24576,
+    "kvPerSeqMiB": 96,
+    "kvTotalAtConcurrencyGiB": 1.65,
+    "totalVramGiB": 3.45,
+    "kvFormula": "IF(C15=\"None\",\"no KV cache (single-pass encoder)\",IF(C15=\"Enc-Dec\",\"2 x \"&E15&\" dec-L x \"&H15&\" kv x \"&I15&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J15&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E15&\"+\"&F15&\"w) L x \"&H15&\" kv x \"&I15&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J15&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "Encoder-decoder; decoder-side KV only, output-length. Layers est.",
+    "smallestSingleCard": {
+      "formula": "IF(P15>Cards!$D$9,\"multi-GPU / shard\",IF(P15<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P15,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "LightOnOCR-2-1B",
+    "category": "OCR & Document",
+    "kvCacheType": "Decoder",
+    "totalLayers": 24,
+    "denseSelfattnLayers": 24,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 256,
+    "weightVramGiB": 2,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 129024,
+    "kvPerSeqMiB": 504,
+    "kvTotalAtConcurrencyGiB": 8.6625,
+    "totalVramGiB": 10.6625,
+    "kvFormula": "IF(C16=\"None\",\"no KV cache (single-pass encoder)\",IF(C16=\"Enc-Dec\",\"2 x \"&E16&\" dec-L x \"&H16&\" kv x \"&I16&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J16&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E16&\"+\"&F16&\"w) L x \"&H16&\" kv x \"&I16&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J16&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "Mistral-based VLM decoder; layer/head est.",
+    "smallestSingleCard": {
+      "formula": "IF(P16>Cards!$D$9,\"multi-GPU / shard\",IF(P16<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P16,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "InternVL3-8B",
+    "category": "Vision & Multimodal",
+    "kvCacheType": "Decoder",
+    "totalLayers": 28,
+    "denseSelfattnLayers": 28,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 4,
+    "headDim": 128,
+    "imageTokens": 256,
+    "weightVramGiB": 16,
+    "kvBytesPerTokPerLayer": 2048,
+    "cachedTokenLayersPerSeq": 150528,
+    "kvPerSeqMiB": 294,
+    "kvTotalAtConcurrencyGiB": 5.053125,
+    "totalVramGiB": 21.053125,
+    "kvFormula": "IF(C17=\"None\",\"no KV cache (single-pass encoder)\",IF(C17=\"Enc-Dec\",\"2 x \"&E17&\" dec-L x \"&H17&\" kv x \"&I17&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J17&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E17&\"+\"&F17&\"w) L x \"&H17&\" kv x \"&I17&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J17&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "LLM = Qwen2.5-7B (28L, 4KV, hd128). +256 image tokens/tile",
+    "smallestSingleCard": {
+      "formula": "IF(P17>Cards!$D$9,\"multi-GPU / shard\",IF(P17<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P17,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Llama-3.2-11B-Vision-Instruct",
+    "category": "Vision & Multimodal",
+    "kvCacheType": "Decoder",
+    "totalLayers": 40,
+    "denseSelfattnLayers": 40,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 22,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 204800,
+    "kvPerSeqMiB": 800,
+    "kvTotalAtConcurrencyGiB": 13.75,
+    "totalVramGiB": 35.75,
+    "kvFormula": "IF(C18=\"None\",\"no KV cache (single-pass encoder)\",IF(C18=\"Enc-Dec\",\"2 x \"&E18&\" dec-L x \"&H18&\" kv x \"&I18&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J18&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E18&\"+\"&F18&\"w) L x \"&H18&\" kv x \"&I18&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J18&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "Cross-attn vision: image KV is separate & fixed, NOT in text self-attn cache. img_tok=0 here",
+    "smallestSingleCard": {
+      "formula": "IF(P18>Cards!$D$9,\"multi-GPU / shard\",IF(P18<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P18,Cards!$D$3:$D$9,1)+1)))",
+      "result": "NVIDIA L40S 48GB"
+    }
+  },
+  {
+    "model": "Qwen3-VL-4B-Instruct",
+    "category": "Vision & Multimodal",
+    "kvCacheType": "Decoder",
+    "totalLayers": 36,
+    "denseSelfattnLayers": 36,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 256,
+    "weightVramGiB": 8,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 193536,
+    "kvPerSeqMiB": 756,
+    "kvTotalAtConcurrencyGiB": 12.99375,
+    "totalVramGiB": 20.99375,
+    "kvFormula": "IF(C19=\"None\",\"no KV cache (single-pass encoder)\",IF(C19=\"Enc-Dec\",\"2 x \"&E19&\" dec-L x \"&H19&\" kv x \"&I19&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J19&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E19&\"+\"&F19&\"w) L x \"&H19&\" kv x \"&I19&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J19&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "Backbone Qwen3-4B (36L, 8KV, hd128)",
+    "smallestSingleCard": {
+      "formula": "IF(P19>Cards!$D$9,\"multi-GPU / shard\",IF(P19<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P19,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Cohere Transcribe 03-2026",
+    "category": "Speech & Audio",
+    "kvCacheType": "Enc-Dec",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 12,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 64,
+    "imageTokens": 0,
+    "weightVramGiB": 4,
+    "kvBytesPerTokPerLayer": 2048,
+    "cachedTokenLayersPerSeq": 12288,
+    "kvPerSeqMiB": 24,
+    "kvTotalAtConcurrencyGiB": 0.4125,
+    "totalVramGiB": 4.4125,
+    "kvFormula": "IF(C20=\"None\",\"no KV cache (single-pass encoder)\",IF(C20=\"Enc-Dec\",\"2 x \"&E20&\" dec-L x \"&H20&\" kv x \"&I20&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J20&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E20&\"+\"&F20&\"w) L x \"&H20&\" kv x \"&I20&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J20&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "2026-dated ASR; architecture unverified. Enc-dec, small decoder KV",
+    "smallestSingleCard": {
+      "formula": "IF(P20>Cards!$D$9,\"multi-GPU / shard\",IF(P20<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P20,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Distil-Whisper large-v3",
+    "category": "Speech & Audio",
+    "kvCacheType": "Enc-Dec",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 2,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 20,
+    "headDim": 64,
+    "imageTokens": 0,
+    "weightVramGiB": 1.5,
+    "kvBytesPerTokPerLayer": 5120,
+    "cachedTokenLayersPerSeq": 2048,
+    "kvPerSeqMiB": 10,
+    "kvTotalAtConcurrencyGiB": 0.171875,
+    "totalVramGiB": 1.671875,
+    "kvFormula": "IF(C21=\"None\",\"no KV cache (single-pass encoder)\",IF(C21=\"Enc-Dec\",\"2 x \"&E21&\" dec-L x \"&H21&\" kv x \"&I21&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J21&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E21&\"+\"&F21&\"w) L x \"&H21&\" kv x \"&I21&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J21&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "Distilled: only 2 decoder layers. Decoder KV tiny; encoder is single-pass",
+    "smallestSingleCard": {
+      "formula": "IF(P21>Cards!$D$9,\"multi-GPU / shard\",IF(P21<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P21,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "IndicConformer-600M-Multilingual",
+    "category": "Speech & Audio",
+    "kvCacheType": "None",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 0,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 0,
+    "headDim": 0,
+    "imageTokens": 0,
+    "weightVramGiB": 2.4,
+    "kvBytesPerTokPerLayer": {
+      "formula": "IF(C22=\"None\",0,2*H22*I22*$C$9)"
+    },
+    "cachedTokenLayersPerSeq": {
+      "formula": "IF(C22=\"None\",0,IF(C22=\"Enc-Dec\",E22*($C$7+J22),E22*($C$8+J22)+F22*MIN($C$8+J22,G22)))"
+    },
+    "kvPerSeqMiB": {
+      "formula": "L22*M22/1048576"
+    },
+    "kvTotalAtConcurrencyGiB": {
+      "formula": "L22*M22*$C$5*(1+$C$10)/1073741824"
+    },
+    "totalVramGiB": 2.4,
+    "kvFormula": "IF(C22=\"None\",\"no KV cache (single-pass encoder)\",IF(C22=\"Enc-Dec\",\"2 x \"&E22&\" dec-L x \"&H22&\" kv x \"&I22&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J22&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E22&\"+\"&F22&\"w) L x \"&H22&\" kv x \"&I22&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J22&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "Conformer CTC/RNN-T: non-autoregressive encoder. NO KV cache",
+    "smallestSingleCard": {
+      "formula": "IF(P22>Cards!$D$9,\"multi-GPU / shard\",IF(P22<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P22,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Orpheus-3B-0.1-ft",
+    "category": "Speech & Audio",
+    "kvCacheType": "Decoder",
+    "totalLayers": 28,
+    "denseSelfattnLayers": 28,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 6,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 143360,
+    "kvPerSeqMiB": 560,
+    "kvTotalAtConcurrencyGiB": 9.625,
+    "totalVramGiB": 15.625,
+    "kvFormula": "IF(C23=\"None\",\"no KV cache (single-pass encoder)\",IF(C23=\"Enc-Dec\",\"2 x \"&E23&\" dec-L x \"&H23&\" kv x \"&I23&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J23&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E23&\"+\"&F23&\"w) L x \"&H23&\" kv x \"&I23&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J23&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "TTS: autoregressive Llama-3.2-3B backbone. seq = AUDIO tokens (can be long); text-token assumption is a proxy",
+    "smallestSingleCard": {
+      "formula": "IF(P23>Cards!$D$9,\"multi-GPU / shard\",IF(P23<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P23,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "pyannote speaker-diarization",
+    "category": "Speech & Audio",
+    "kvCacheType": "None",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 0,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 0,
+    "headDim": 0,
+    "imageTokens": 0,
+    "weightVramGiB": 0.15,
+    "kvBytesPerTokPerLayer": {
+      "formula": "IF(C24=\"None\",0,2*H24*I24*$C$9)"
+    },
+    "cachedTokenLayersPerSeq": {
+      "formula": "IF(C24=\"None\",0,IF(C24=\"Enc-Dec\",E24*($C$7+J24),E24*($C$8+J24)+F24*MIN($C$8+J24,G24)))"
+    },
+    "kvPerSeqMiB": {
+      "formula": "L24*M24/1048576"
+    },
+    "kvTotalAtConcurrencyGiB": {
+      "formula": "L24*M24*$C$5*(1+$C$10)/1073741824"
+    },
+    "totalVramGiB": 0.15,
+    "kvFormula": "IF(C24=\"None\",\"no KV cache (single-pass encoder)\",IF(C24=\"Enc-Dec\",\"2 x \"&E24&\" dec-L x \"&H24&\" kv x \"&I24&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J24&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E24&\"+\"&F24&\"w) L x \"&H24&\" kv x \"&I24&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J24&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "Segmentation + embedding + clustering pipeline. NO KV cache",
+    "smallestSingleCard": {
+      "formula": "IF(P24>Cards!$D$9,\"multi-GPU / shard\",IF(P24<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P24,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Silero VAD v5",
+    "category": "Speech & Audio",
+    "kvCacheType": "None",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 0,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 0,
+    "headDim": 0,
+    "imageTokens": 0,
+    "weightVramGiB": 0.01,
+    "kvBytesPerTokPerLayer": {
+      "formula": "IF(C25=\"None\",0,2*H25*I25*$C$9)"
+    },
+    "cachedTokenLayersPerSeq": {
+      "formula": "IF(C25=\"None\",0,IF(C25=\"Enc-Dec\",E25*($C$7+J25),E25*($C$8+J25)+F25*MIN($C$8+J25,G25)))"
+    },
+    "kvPerSeqMiB": {
+      "formula": "L25*M25/1048576"
+    },
+    "kvTotalAtConcurrencyGiB": {
+      "formula": "L25*M25*$C$5*(1+$C$10)/1073741824"
+    },
+    "totalVramGiB": 0.01,
+    "kvFormula": "IF(C25=\"None\",\"no KV cache (single-pass encoder)\",IF(C25=\"Enc-Dec\",\"2 x \"&E25&\" dec-L x \"&H25&\" kv x \"&I25&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J25&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E25&\"+\"&F25&\"w) L x \"&H25&\" kv x \"&I25&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J25&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "LSTM VAD. NO KV cache",
+    "smallestSingleCard": {
+      "formula": "IF(P25>Cards!$D$9,\"multi-GPU / shard\",IF(P25<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P25,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "TEN VAD",
+    "category": "Speech & Audio",
+    "kvCacheType": "None",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 0,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 0,
+    "headDim": 0,
+    "imageTokens": 0,
+    "weightVramGiB": 0.01,
+    "kvBytesPerTokPerLayer": {
+      "formula": "IF(C26=\"None\",0,2*H26*I26*$C$9)"
+    },
+    "cachedTokenLayersPerSeq": {
+      "formula": "IF(C26=\"None\",0,IF(C26=\"Enc-Dec\",E26*($C$7+J26),E26*($C$8+J26)+F26*MIN($C$8+J26,G26)))"
+    },
+    "kvPerSeqMiB": {
+      "formula": "L26*M26/1048576"
+    },
+    "kvTotalAtConcurrencyGiB": {
+      "formula": "L26*M26*$C$5*(1+$C$10)/1073741824"
+    },
+    "totalVramGiB": 0.01,
+    "kvFormula": "IF(C26=\"None\",\"no KV cache (single-pass encoder)\",IF(C26=\"Enc-Dec\",\"2 x \"&E26&\" dec-L x \"&H26&\" kv x \"&I26&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J26&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E26&\"+\"&F26&\"w) L x \"&H26&\" kv x \"&I26&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J26&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "Tiny streaming NN VAD (ONNX/C). NO KV cache",
+    "smallestSingleCard": {
+      "formula": "IF(P26>Cards!$D$9,\"multi-GPU / shard\",IF(P26<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P26,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "IndicTrans2 En->Indic 1B",
+    "category": "Translation",
+    "kvCacheType": "Enc-Dec",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 18,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 16,
+    "headDim": 64,
+    "imageTokens": 0,
+    "weightVramGiB": 4,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 18432,
+    "kvPerSeqMiB": 72,
+    "kvTotalAtConcurrencyGiB": 1.2375,
+    "totalVramGiB": 5.2375,
+    "kvFormula": "IF(C27=\"None\",\"no KV cache (single-pass encoder)\",IF(C27=\"Enc-Dec\",\"2 x \"&E27&\" dec-L x \"&H27&\" kv x \"&I27&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J27&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E27&\"+\"&F27&\"w) L x \"&H27&\" kv x \"&I27&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J27&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "18enc/18dec Transformer, MHA. Decoder KV over output tokens; +encoder cross-attn (fixed)",
+    "smallestSingleCard": {
+      "formula": "IF(P27>Cards!$D$9,\"multi-GPU / shard\",IF(P27<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P27,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "IndicTrans2 Indic->En 1B",
+    "category": "Translation",
+    "kvCacheType": "Enc-Dec",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 18,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 16,
+    "headDim": 64,
+    "imageTokens": 0,
+    "weightVramGiB": 4,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 18432,
+    "kvPerSeqMiB": 72,
+    "kvTotalAtConcurrencyGiB": 1.2375,
+    "totalVramGiB": 5.2375,
+    "kvFormula": "IF(C28=\"None\",\"no KV cache (single-pass encoder)\",IF(C28=\"Enc-Dec\",\"2 x \"&E28&\" dec-L x \"&H28&\" kv x \"&I28&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J28&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E28&\"+\"&F28&\"w) L x \"&H28&\" kv x \"&I28&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J28&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "18enc/18dec Transformer, MHA. Decoder KV over output tokens",
+    "smallestSingleCard": {
+      "formula": "IF(P28>Cards!$D$9,\"multi-GPU / shard\",IF(P28<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P28,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "IndicTrans2 Indic->Indic 1B",
+    "category": "Translation",
+    "kvCacheType": "Enc-Dec",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 18,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 16,
+    "headDim": 64,
+    "imageTokens": 0,
+    "weightVramGiB": 4,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 18432,
+    "kvPerSeqMiB": 72,
+    "kvTotalAtConcurrencyGiB": 1.2375,
+    "totalVramGiB": 5.2375,
+    "kvFormula": "IF(C29=\"None\",\"no KV cache (single-pass encoder)\",IF(C29=\"Enc-Dec\",\"2 x \"&E29&\" dec-L x \"&H29&\" kv x \"&I29&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J29&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E29&\"+\"&F29&\"w) L x \"&H29&\" kv x \"&I29&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J29&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "18enc/18dec Transformer, MHA. Decoder KV over output tokens",
+    "smallestSingleCard": {
+      "formula": "IF(P29>Cards!$D$9,\"multi-GPU / shard\",IF(P29<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P29,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Sarvam Translate",
+    "category": "Translation",
+    "kvCacheType": "Decoder",
+    "totalLayers": 34,
+    "denseSelfattnLayers": 34,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 4,
+    "headDim": 256,
+    "imageTokens": 0,
+    "weightVramGiB": 8,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 174080,
+    "kvPerSeqMiB": 680,
+    "kvTotalAtConcurrencyGiB": 11.6875,
+    "totalVramGiB": 19.6875,
+    "kvFormula": "IF(C30=\"None\",\"no KV cache (single-pass encoder)\",IF(C30=\"Enc-Dec\",\"2 x \"&E30&\" dec-L x \"&H30&\" kv x \"&I30&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J30&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E30&\"+\"&F30&\"w) L x \"&H30&\" kv x \"&I30&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J30&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "Gemma-based (arch assumed Gemma-3-4B-like). Verify",
+    "smallestSingleCard": {
+      "formula": "IF(P30>Cards!$D$9,\"multi-GPU / shard\",IF(P30<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P30,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "BGE-large-en-v1.5",
+    "category": "Embeddings & Retrieval",
+    "kvCacheType": "None",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 0,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 0,
+    "headDim": 0,
+    "imageTokens": 0,
+    "weightVramGiB": 1.3,
+    "kvBytesPerTokPerLayer": {
+      "formula": "IF(C31=\"None\",0,2*H31*I31*$C$9)"
+    },
+    "cachedTokenLayersPerSeq": {
+      "formula": "IF(C31=\"None\",0,IF(C31=\"Enc-Dec\",E31*($C$7+J31),E31*($C$8+J31)+F31*MIN($C$8+J31,G31)))"
+    },
+    "kvPerSeqMiB": {
+      "formula": "L31*M31/1048576"
+    },
+    "kvTotalAtConcurrencyGiB": {
+      "formula": "L31*M31*$C$5*(1+$C$10)/1073741824"
+    },
+    "totalVramGiB": 1.3,
+    "kvFormula": "IF(C31=\"None\",\"no KV cache (single-pass encoder)\",IF(C31=\"Enc-Dec\",\"2 x \"&E31&\" dec-L x \"&H31&\" kv x \"&I31&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J31&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E31&\"+\"&F31&\"w) L x \"&H31&\" kv x \"&I31&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J31&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "BERT bi-encoder. Single forward pass. NO KV cache",
+    "smallestSingleCard": {
+      "formula": "IF(P31>Cards!$D$9,\"multi-GPU / shard\",IF(P31<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P31,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "BGE-M3",
+    "category": "Embeddings & Retrieval",
+    "kvCacheType": "None",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 0,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 0,
+    "headDim": 0,
+    "imageTokens": 0,
+    "weightVramGiB": 2.3,
+    "kvBytesPerTokPerLayer": {
+      "formula": "IF(C32=\"None\",0,2*H32*I32*$C$9)"
+    },
+    "cachedTokenLayersPerSeq": {
+      "formula": "IF(C32=\"None\",0,IF(C32=\"Enc-Dec\",E32*($C$7+J32),E32*($C$8+J32)+F32*MIN($C$8+J32,G32)))"
+    },
+    "kvPerSeqMiB": {
+      "formula": "L32*M32/1048576"
+    },
+    "kvTotalAtConcurrencyGiB": {
+      "formula": "L32*M32*$C$5*(1+$C$10)/1073741824"
+    },
+    "totalVramGiB": 2.3,
+    "kvFormula": "IF(C32=\"None\",\"no KV cache (single-pass encoder)\",IF(C32=\"Enc-Dec\",\"2 x \"&E32&\" dec-L x \"&H32&\" kv x \"&I32&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J32&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E32&\"+\"&F32&\"w) L x \"&H32&\" kv x \"&I32&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J32&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "XLM-R encoder. NO KV cache",
+    "smallestSingleCard": {
+      "formula": "IF(P32>Cards!$D$9,\"multi-GPU / shard\",IF(P32<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P32,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "BGE-reranker-v2-m3",
+    "category": "Embeddings & Retrieval",
+    "kvCacheType": "None",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 0,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 0,
+    "headDim": 0,
+    "imageTokens": 0,
+    "weightVramGiB": 2.3,
+    "kvBytesPerTokPerLayer": {
+      "formula": "IF(C33=\"None\",0,2*H33*I33*$C$9)"
+    },
+    "cachedTokenLayersPerSeq": {
+      "formula": "IF(C33=\"None\",0,IF(C33=\"Enc-Dec\",E33*($C$7+J33),E33*($C$8+J33)+F33*MIN($C$8+J33,G33)))"
+    },
+    "kvPerSeqMiB": {
+      "formula": "L33*M33/1048576"
+    },
+    "kvTotalAtConcurrencyGiB": {
+      "formula": "L33*M33*$C$5*(1+$C$10)/1073741824"
+    },
+    "totalVramGiB": 2.3,
+    "kvFormula": "IF(C33=\"None\",\"no KV cache (single-pass encoder)\",IF(C33=\"Enc-Dec\",\"2 x \"&E33&\" dec-L x \"&H33&\" kv x \"&I33&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J33&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E33&\"+\"&F33&\"w) L x \"&H33&\" kv x \"&I33&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J33&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "XLM-R cross-encoder. Single pass over pair. NO KV cache",
+    "smallestSingleCard": {
+      "formula": "IF(P33>Cards!$D$9,\"multi-GPU / shard\",IF(P33<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P33,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "ColPali / ColVision Family",
+    "category": "Embeddings & Retrieval",
+    "kvCacheType": "None",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 0,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 0,
+    "headDim": 0,
+    "imageTokens": 0,
+    "weightVramGiB": 6,
+    "kvBytesPerTokPerLayer": {
+      "formula": "IF(C34=\"None\",0,2*H34*I34*$C$9)"
+    },
+    "cachedTokenLayersPerSeq": {
+      "formula": "IF(C34=\"None\",0,IF(C34=\"Enc-Dec\",E34*($C$7+J34),E34*($C$8+J34)+F34*MIN($C$8+J34,G34)))"
+    },
+    "kvPerSeqMiB": {
+      "formula": "L34*M34/1048576"
+    },
+    "kvTotalAtConcurrencyGiB": {
+      "formula": "L34*M34*$C$5*(1+$C$10)/1073741824"
+    },
+    "totalVramGiB": 6,
+    "kvFormula": "IF(C34=\"None\",\"no KV cache (single-pass encoder)\",IF(C34=\"Enc-Dec\",\"2 x \"&E34&\" dec-L x \"&H34&\" kv x \"&I34&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J34&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E34&\"+\"&F34&\"w) L x \"&H34&\" kv x \"&I34&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J34&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "Multi-vector late-interaction retriever. No autoregressive decode. NO KV cache",
+    "smallestSingleCard": {
+      "formula": "IF(P34>Cards!$D$9,\"multi-GPU / shard\",IF(P34<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P34,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "jina-reranker-v2-base-multilingual",
+    "category": "Embeddings & Retrieval",
+    "kvCacheType": "None",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 0,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 0,
+    "headDim": 0,
+    "imageTokens": 0,
+    "weightVramGiB": 1.1,
+    "kvBytesPerTokPerLayer": {
+      "formula": "IF(C35=\"None\",0,2*H35*I35*$C$9)"
+    },
+    "cachedTokenLayersPerSeq": {
+      "formula": "IF(C35=\"None\",0,IF(C35=\"Enc-Dec\",E35*($C$7+J35),E35*($C$8+J35)+F35*MIN($C$8+J35,G35)))"
+    },
+    "kvPerSeqMiB": {
+      "formula": "L35*M35/1048576"
+    },
+    "kvTotalAtConcurrencyGiB": {
+      "formula": "L35*M35*$C$5*(1+$C$10)/1073741824"
+    },
+    "totalVramGiB": 1.1,
+    "kvFormula": "IF(C35=\"None\",\"no KV cache (single-pass encoder)\",IF(C35=\"Enc-Dec\",\"2 x \"&E35&\" dec-L x \"&H35&\" kv x \"&I35&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J35&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E35&\"+\"&F35&\"w) L x \"&H35&\" kv x \"&I35&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J35&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "XLM-R cross-encoder. NO KV cache",
+    "smallestSingleCard": {
+      "formula": "IF(P35>Cards!$D$9,\"multi-GPU / shard\",IF(P35<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P35,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Semantic Router",
+    "category": "Embeddings & Retrieval",
+    "kvCacheType": "None",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 0,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 0,
+    "headDim": 0,
+    "imageTokens": 0,
+    "weightVramGiB": 0.1,
+    "kvBytesPerTokPerLayer": {
+      "formula": "IF(C36=\"None\",0,2*H36*I36*$C$9)"
+    },
+    "cachedTokenLayersPerSeq": {
+      "formula": "IF(C36=\"None\",0,IF(C36=\"Enc-Dec\",E36*($C$7+J36),E36*($C$8+J36)+F36*MIN($C$8+J36,G36)))"
+    },
+    "kvPerSeqMiB": {
+      "formula": "L36*M36/1048576"
+    },
+    "kvTotalAtConcurrencyGiB": {
+      "formula": "L36*M36*$C$5*(1+$C$10)/1073741824"
+    },
+    "totalVramGiB": 0.1,
+    "kvFormula": "IF(C36=\"None\",\"no KV cache (single-pass encoder)\",IF(C36=\"Enc-Dec\",\"2 x \"&E36&\" dec-L x \"&H36&\" kv x \"&I36&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J36&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E36&\"+\"&F36&\"w) L x \"&H36&\" kv x \"&I36&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J36&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "MiniLM encoder + similarity routing. NO KV cache",
+    "smallestSingleCard": {
+      "formula": "IF(P36>Cards!$D$9,\"multi-GPU / shard\",IF(P36<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P36,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Granite-Guardian-3.0-2B",
+    "category": "Safety & Guardrails",
+    "kvCacheType": "Decoder",
+    "totalLayers": 40,
+    "denseSelfattnLayers": 40,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 64,
+    "imageTokens": 0,
+    "weightVramGiB": 4,
+    "kvBytesPerTokPerLayer": 2048,
+    "cachedTokenLayersPerSeq": 204800,
+    "kvPerSeqMiB": 400,
+    "kvTotalAtConcurrencyGiB": 6.875,
+    "totalVramGiB": 10.875,
+    "kvFormula": "IF(C37=\"None\",\"no KV cache (single-pass encoder)\",IF(C37=\"Enc-Dec\",\"2 x \"&E37&\" dec-L x \"&H37&\" kv x \"&I37&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J37&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E37&\"+\"&F37&\"w) L x \"&H37&\" kv x \"&I37&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J37&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "Granite 3.0 2B classifier (arch est). Short output, but caches full prompt",
+    "smallestSingleCard": {
+      "formula": "IF(P37>Cards!$D$9,\"multi-GPU / shard\",IF(P37<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P37,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Llama-Guard-3-8B",
+    "category": "Safety & Guardrails",
+    "kvCacheType": "Decoder",
+    "totalLayers": 32,
+    "denseSelfattnLayers": 32,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 16,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 163840,
+    "kvPerSeqMiB": 640,
+    "kvTotalAtConcurrencyGiB": 11,
+    "totalVramGiB": 27,
+    "kvFormula": "IF(C38=\"None\",\"no KV cache (single-pass encoder)\",IF(C38=\"Enc-Dec\",\"2 x \"&E38&\" dec-L x \"&H38&\" kv x \"&I38&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J38&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E38&\"+\"&F38&\"w) L x \"&H38&\" kv x \"&I38&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J38&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "Llama 3.1 8B (32L, 8KV, hd128). Caches full prompt even for short verdict",
+    "smallestSingleCard": {
+      "formula": "IF(P38>Cards!$D$9,\"multi-GPU / shard\",IF(P38<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P38,Cards!$D$3:$D$9,1)+1)))",
+      "result": "NVIDIA L40S 48GB"
+    }
+  },
+  {
+    "model": "openai/privacy-filter",
+    "category": "Safety & Guardrails",
+    "kvCacheType": "None",
+    "totalLayers": 0,
+    "denseSelfattnLayers": 0,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 0,
+    "headDim": 0,
+    "imageTokens": 0,
+    "weightVramGiB": 3,
+    "kvBytesPerTokPerLayer": {
+      "formula": "IF(C39=\"None\",0,2*H39*I39*$C$9)"
+    },
+    "cachedTokenLayersPerSeq": {
+      "formula": "IF(C39=\"None\",0,IF(C39=\"Enc-Dec\",E39*($C$7+J39),E39*($C$8+J39)+F39*MIN($C$8+J39,G39)))"
+    },
+    "kvPerSeqMiB": {
+      "formula": "L39*M39/1048576"
+    },
+    "kvTotalAtConcurrencyGiB": {
+      "formula": "L39*M39*$C$5*(1+$C$10)/1073741824"
+    },
+    "totalVramGiB": 3,
+    "kvFormula": "IF(C39=\"None\",\"no KV cache (single-pass encoder)\",IF(C39=\"Enc-Dec\",\"2 x \"&E39&\" dec-L x \"&H39&\" kv x \"&I39&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J39&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E39&\"+\"&F39&\"w) L x \"&H39&\" kv x \"&I39&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J39&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "Token-classification/NER (encoder). NO autoregressive KV cache",
+    "smallestSingleCard": {
+      "formula": "IF(P39>Cards!$D$9,\"multi-GPU / shard\",IF(P39<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P39,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Qwen3Guard-Gen-4B",
+    "category": "Safety & Guardrails",
+    "kvCacheType": "Decoder",
+    "totalLayers": 36,
+    "denseSelfattnLayers": 36,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 8,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 184320,
+    "kvPerSeqMiB": 720,
+    "kvTotalAtConcurrencyGiB": 12.375,
+    "totalVramGiB": 20.375,
+    "kvFormula": "IF(C40=\"None\",\"no KV cache (single-pass encoder)\",IF(C40=\"Enc-Dec\",\"2 x \"&E40&\" dec-L x \"&H40&\" kv x \"&I40&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J40&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E40&\"+\"&F40&\"w) L x \"&H40&\" kv x \"&I40&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J40&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "Qwen3-4B classifier (36L, 8KV, hd128)",
+    "smallestSingleCard": {
+      "formula": "IF(P40>Cards!$D$9,\"multi-GPU / shard\",IF(P40<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P40,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "ShieldGemma-2B",
+    "category": "Safety & Guardrails",
+    "kvCacheType": "Decoder",
+    "totalLayers": 26,
+    "denseSelfattnLayers": 13,
+    "windowLayers": 13,
+    "windowSize": 4096,
+    "kvHeads": 4,
+    "headDim": 256,
+    "imageTokens": 0,
+    "weightVramGiB": 4,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 119808,
+    "kvPerSeqMiB": 468,
+    "kvTotalAtConcurrencyGiB": 8.04375,
+    "totalVramGiB": 12.04375,
+    "kvFormula": "IF(C41=\"None\",\"no KV cache (single-pass encoder)\",IF(C41=\"Enc-Dec\",\"2 x \"&E41&\" dec-L x \"&H41&\" kv x \"&I41&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J41&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E41&\"+\"&F41&\"w) L x \"&H41&\" kv x \"&I41&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J41&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "Gemma 2 2B: alternating sliding(4096)/global, 4KV, hd256",
+    "smallestSingleCard": {
+      "formula": "IF(P41>Cards!$D$9,\"multi-GPU / shard\",IF(P41<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P41,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Gemma 4 26B-A4B-IT",
+    "category": "LLM",
+    "kvCacheType": "Hybrid",
+    "totalLayers": 30,
+    "denseSelfattnLayers": 4,
+    "windowLayers": 26,
+    "windowSize": 4096,
+    "kvHeads": 4,
+    "headDim": 256,
+    "imageTokens": 0,
+    "weightVramGiB": 50,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 126976,
+    "kvPerSeqMiB": 496,
+    "kvTotalAtConcurrencyGiB": 8.525,
+    "totalVramGiB": 58.525,
+    "kvFormula": "IF(C42=\"None\",\"no KV cache (single-pass encoder)\",IF(C42=\"Enc-Dec\",\"2 x \"&E42&\" dec-L x \"&H42&\" kv x \"&I42&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J42&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E42&\"+\"&F42&\"w) L x \"&H42&\" kv x \"&I42&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J42&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "MoE. 26 sliding(4096)/4 global layers. hd256 sliding / 512 global. Model card verified this session",
+    "smallestSingleCard": {
+      "formula": "IF(P42>Cards!$D$9,\"multi-GPU / shard\",IF(P42<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P42,Cards!$D$3:$D$9,1)+1)))",
+      "result": "NVIDIA H100 SXM 80GB"
+    }
+  },
+  {
+    "model": "Gemma-3-4B-it",
+    "category": "LLM",
+    "kvCacheType": "Hybrid",
+    "totalLayers": 34,
+    "denseSelfattnLayers": 6,
+    "windowLayers": 28,
+    "windowSize": 1024,
+    "kvHeads": 4,
+    "headDim": 256,
+    "imageTokens": 0,
+    "weightVramGiB": 8,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 59392,
+    "kvPerSeqMiB": 232,
+    "kvTotalAtConcurrencyGiB": 3.9875,
+    "totalVramGiB": 11.9875,
+    "kvFormula": "IF(C43=\"None\",\"no KV cache (single-pass encoder)\",IF(C43=\"Enc-Dec\",\"2 x \"&E43&\" dec-L x \"&H43&\" kv x \"&I43&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J43&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E43&\"+\"&F43&\"w) L x \"&H43&\" kv x \"&I43&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J43&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "5:1 local:global. Sliding window 1024, 4KV, hd256",
+    "smallestSingleCard": {
+      "formula": "IF(P43>Cards!$D$9,\"multi-GPU / shard\",IF(P43<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P43,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Gemma-4-E4B-it",
+    "category": "LLM",
+    "kvCacheType": "Hybrid",
+    "totalLayers": 34,
+    "denseSelfattnLayers": 6,
+    "windowLayers": 28,
+    "windowSize": 1024,
+    "kvHeads": 4,
+    "headDim": 256,
+    "imageTokens": 0,
+    "weightVramGiB": 8,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 59392,
+    "kvPerSeqMiB": 232,
+    "kvTotalAtConcurrencyGiB": 3.9875,
+    "totalVramGiB": 11.9875,
+    "kvFormula": "IF(C44=\"None\",\"no KV cache (single-pass encoder)\",IF(C44=\"Enc-Dec\",\"2 x \"&E44&\" dec-L x \"&H44&\" kv x \"&I44&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J44&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E44&\"+\"&F44&\"w) L x \"&H44&\" kv x \"&I44&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J44&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "Elastic/MatFormer 4B (arch assumed Gemma-3-4B-like). Verify",
+    "smallestSingleCard": {
+      "formula": "IF(P44>Cards!$D$9,\"multi-GPU / shard\",IF(P44<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P44,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "GPT-OSS-120B",
+    "category": "LLM",
+    "kvCacheType": "Hybrid",
+    "totalLayers": 36,
+    "denseSelfattnLayers": 18,
+    "windowLayers": 18,
+    "windowSize": 128,
+    "kvHeads": 8,
+    "headDim": 64,
+    "imageTokens": 0,
+    "weightVramGiB": 60,
+    "kvBytesPerTokPerLayer": 2048,
+    "cachedTokenLayersPerSeq": 94464,
+    "kvPerSeqMiB": 184.5,
+    "kvTotalAtConcurrencyGiB": 3.17109375,
+    "totalVramGiB": 63.17109375,
+    "kvFormula": "IF(C45=\"None\",\"no KV cache (single-pass encoder)\",IF(C45=\"Enc-Dec\",\"2 x \"&E45&\" dec-L x \"&H45&\" kv x \"&I45&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J45&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E45&\"+\"&F45&\"w) L x \"&H45&\" kv x \"&I45&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J45&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "MoE. 18 dense / 18 banded(128) layers, 8KV, hd64. Model card 2508.10925",
+    "smallestSingleCard": {
+      "formula": "IF(P45>Cards!$D$9,\"multi-GPU / shard\",IF(P45<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P45,Cards!$D$3:$D$9,1)+1)))",
+      "result": "NVIDIA H100 SXM 80GB"
+    }
+  },
+  {
+    "model": "LFM2.5-1.2B-Instruct",
+    "category": "LLM",
+    "kvCacheType": "Hybrid",
+    "totalLayers": 6,
+    "denseSelfattnLayers": 6,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 2.4,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 30720,
+    "kvPerSeqMiB": 120,
+    "kvTotalAtConcurrencyGiB": 2.0625,
+    "totalVramGiB": 4.4625,
+    "kvFormula": "IF(C46=\"None\",\"no KV cache (single-pass encoder)\",IF(C46=\"Enc-Dec\",\"2 x \"&E46&\" dec-L x \"&H46&\" kv x \"&I46&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J46&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E46&\"+\"&F46&\"w) L x \"&H46&\" kv x \"&I46&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J46&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "Liquid hybrid: mostly conv blocks, ~6 attention layers. KV far smaller than a dense transformer",
+    "smallestSingleCard": {
+      "formula": "IF(P46>Cards!$D$9,\"multi-GPU / shard\",IF(P46<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P46,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Llama 3.3 70B Instruct",
+    "category": "LLM",
+    "kvCacheType": "Decoder",
+    "totalLayers": 80,
+    "denseSelfattnLayers": 80,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 141,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 409600,
+    "kvPerSeqMiB": 1600,
+    "kvTotalAtConcurrencyGiB": 27.5,
+    "totalVramGiB": 168.5,
+    "kvFormula": "IF(C47=\"None\",\"no KV cache (single-pass encoder)\",IF(C47=\"Enc-Dec\",\"2 x \"&E47&\" dec-L x \"&H47&\" kv x \"&I47&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J47&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E47&\"+\"&F47&\"w) L x \"&H47&\" kv x \"&I47&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J47&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "80L, 64Q/8KV, hd128",
+    "smallestSingleCard": {
+      "formula": "IF(P47>Cards!$D$9,\"multi-GPU / shard\",IF(P47<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P47,Cards!$D$3:$D$9,1)+1)))",
+      "result": "AMD MI300X 192GB"
+    }
+  },
+  {
+    "model": "Llama-3.2-1B-it",
+    "category": "LLM",
+    "kvCacheType": "Decoder",
+    "totalLayers": 16,
+    "denseSelfattnLayers": 16,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 64,
+    "imageTokens": 0,
+    "weightVramGiB": 2.5,
+    "kvBytesPerTokPerLayer": 2048,
+    "cachedTokenLayersPerSeq": 81920,
+    "kvPerSeqMiB": 160,
+    "kvTotalAtConcurrencyGiB": 2.75,
+    "totalVramGiB": 5.25,
+    "kvFormula": "IF(C48=\"None\",\"no KV cache (single-pass encoder)\",IF(C48=\"Enc-Dec\",\"2 x \"&E48&\" dec-L x \"&H48&\" kv x \"&I48&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J48&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E48&\"+\"&F48&\"w) L x \"&H48&\" kv x \"&I48&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J48&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "16L, 32Q/8KV, hd64",
+    "smallestSingleCard": {
+      "formula": "IF(P48>Cards!$D$9,\"multi-GPU / shard\",IF(P48<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P48,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Llama-3.2-8B-it",
+    "category": "LLM",
+    "kvCacheType": "Decoder",
+    "totalLayers": 32,
+    "denseSelfattnLayers": 32,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 16,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 163840,
+    "kvPerSeqMiB": 640,
+    "kvTotalAtConcurrencyGiB": 11,
+    "totalVramGiB": 27,
+    "kvFormula": "IF(C49=\"None\",\"no KV cache (single-pass encoder)\",IF(C49=\"Enc-Dec\",\"2 x \"&E49&\" dec-L x \"&H49&\" kv x \"&I49&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J49&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E49&\"+\"&F49&\"w) L x \"&H49&\" kv x \"&I49&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J49&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "No such model; treated as Llama 3.1 8B (32L, 8KV, hd128). Verify name",
+    "smallestSingleCard": {
+      "formula": "IF(P49>Cards!$D$9,\"multi-GPU / shard\",IF(P49<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P49,Cards!$D$3:$D$9,1)+1)))",
+      "result": "NVIDIA L40S 48GB"
+    }
+  },
+  {
+    "model": "Qwen3-30B-A3B",
+    "category": "LLM",
+    "kvCacheType": "Decoder",
+    "totalLayers": 48,
+    "denseSelfattnLayers": 48,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 4,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 60,
+    "kvBytesPerTokPerLayer": 2048,
+    "cachedTokenLayersPerSeq": 245760,
+    "kvPerSeqMiB": 480,
+    "kvTotalAtConcurrencyGiB": 8.25,
+    "totalVramGiB": 68.25,
+    "kvFormula": "IF(C50=\"None\",\"no KV cache (single-pass encoder)\",IF(C50=\"Enc-Dec\",\"2 x \"&E50&\" dec-L x \"&H50&\" kv x \"&I50&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J50&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E50&\"+\"&F50&\"w) L x \"&H50&\" kv x \"&I50&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J50&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "G",
+    "notes": "MoE 128e/8act. 48L, 32Q/4KV, hd128 (HF verified)",
+    "smallestSingleCard": {
+      "formula": "IF(P50>Cards!$D$9,\"multi-GPU / shard\",IF(P50<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P50,Cards!$D$3:$D$9,1)+1)))",
+      "result": "NVIDIA H100 SXM 80GB"
+    }
+  },
+  {
+    "model": "Qwen3.5-4B",
+    "category": "LLM",
+    "kvCacheType": "Decoder",
+    "totalLayers": 36,
+    "denseSelfattnLayers": 36,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 8,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 184320,
+    "kvPerSeqMiB": 720,
+    "kvTotalAtConcurrencyGiB": 12.375,
+    "totalVramGiB": 20.375,
+    "kvFormula": "IF(C51=\"None\",\"no KV cache (single-pass encoder)\",IF(C51=\"Enc-Dec\",\"2 x \"&E51&\" dec-L x \"&H51&\" kv x \"&I51&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J51&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E51&\"+\"&F51&\"w) L x \"&H51&\" kv x \"&I51&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J51&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "2026-dated. Assumed Qwen3-4B arch (36L, 8KV, hd128). Verify",
+    "smallestSingleCard": {
+      "formula": "IF(P51>Cards!$D$9,\"multi-GPU / shard\",IF(P51<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P51,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Arc Pro B60 24GB"
+    }
+  },
+  {
+    "model": "Qwen3.6-27B",
+    "category": "LLM",
+    "kvCacheType": "Decoder",
+    "totalLayers": 64,
+    "denseSelfattnLayers": 64,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 54,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 327680,
+    "kvPerSeqMiB": 1280,
+    "kvTotalAtConcurrencyGiB": 22,
+    "totalVramGiB": 76,
+    "kvFormula": "IF(C52=\"None\",\"no KV cache (single-pass encoder)\",IF(C52=\"Enc-Dec\",\"2 x \"&E52&\" dec-L x \"&H52&\" kv x \"&I52&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J52&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E52&\"+\"&F52&\"w) L x \"&H52&\" kv x \"&I52&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J52&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "2026-dated dense. Layer count estimated. Verify",
+    "smallestSingleCard": {
+      "formula": "IF(P52>Cards!$D$9,\"multi-GPU / shard\",IF(P52<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P52,Cards!$D$3:$D$9,1)+1)))",
+      "result": "Intel Gaudi 3 128GB"
+    }
+  },
+  {
+    "model": "Sarvam-105B",
+    "category": "LLM",
+    "kvCacheType": "Decoder",
+    "totalLayers": 80,
+    "denseSelfattnLayers": 80,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 8,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 105,
+    "kvBytesPerTokPerLayer": 4096,
+    "cachedTokenLayersPerSeq": 409600,
+    "kvPerSeqMiB": 1600,
+    "kvTotalAtConcurrencyGiB": 27.5,
+    "totalVramGiB": 132.5,
+    "kvFormula": "IF(C53=\"None\",\"no KV cache (single-pass encoder)\",IF(C53=\"Enc-Dec\",\"2 x \"&E53&\" dec-L x \"&H53&\" kv x \"&I53&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J53&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E53&\"+\"&F53&\"w) L x \"&H53&\" kv x \"&I53&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J53&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "2026-dated MoE. Architecture UNVERIFIED - placeholder arch. Do not assert externally",
+    "smallestSingleCard": {
+      "formula": "IF(P53>Cards!$D$9,\"multi-GPU / shard\",IF(P53<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P53,Cards!$D$3:$D$9,1)+1)))",
+      "result": "NVIDIA B200 180GB"
+    }
+  },
+  {
+    "model": "Sarvam-30B",
+    "category": "LLM",
+    "kvCacheType": "Decoder",
+    "totalLayers": 48,
+    "denseSelfattnLayers": 48,
+    "windowLayers": 0,
+    "windowSize": 0,
+    "kvHeads": 4,
+    "headDim": 128,
+    "imageTokens": 0,
+    "weightVramGiB": 60,
+    "kvBytesPerTokPerLayer": 2048,
+    "cachedTokenLayersPerSeq": 245760,
+    "kvPerSeqMiB": 480,
+    "kvTotalAtConcurrencyGiB": 8.25,
+    "totalVramGiB": 68.25,
+    "kvFormula": "IF(C54=\"None\",\"no KV cache (single-pass encoder)\",IF(C54=\"Enc-Dec\",\"2 x \"&E54&\" dec-L x \"&H54&\" kv x \"&I54&\" hd x \"&$C$9&\"B x (\"&$C$7&\"+\"&J54&\"img) out-tok x \"&$C$5&\" seq\",\"2 x (\"&E54&\"+\"&F54&\"w) L x \"&H54&\" kv x \"&I54&\" hd x \"&$C$9&\"B x (\"&$C$8&\"+\"&J54&\"img) tok x \"&$C$5&\" seq\"))",
+    "prov": "Y",
+    "notes": "2026-dated MoE (~2.4B active). Architecture UNVERIFIED - placeholder arch",
+    "smallestSingleCard": {
+      "formula": "IF(P54>Cards!$D$9,\"multi-GPU / shard\",IF(P54<=Cards!$D$3,Cards!$A$3,INDEX(Cards!$A$3:$A$9,MATCH(P54,Cards!$D$3:$D$9,1)+1)))",
+      "result": "NVIDIA H100 SXM 80GB"
+    }
+  }
+]

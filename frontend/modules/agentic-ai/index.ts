@@ -1,7 +1,11 @@
 export { agenticAiContent, agenticNav } from "./content";
 export type { AgenticNavItem } from "./content";
+export { AgenticLandingView } from "./AgenticLandingView";
+export { AgenticAiEntryView } from "./AgenticAiEntryView";
 export { AgenticStackView } from "./AgenticStackView";
 export { AgenticStackPageView } from "./AgenticStackPageView";
+export { AgenticStorageView } from "./AgenticStorageView";
+export { AgenticNetworkView } from "./AgenticNetworkView";
 export { AgenticHarnessPageView } from "./AgenticHarnessPageView";
 export { AgenticSubNav } from "./AgenticSubNav";
 export { SectionPlaceholder } from "./SectionPlaceholder";

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="44" viewBox="0 0 72 44" color="#1A1A19" role="img" aria-label="Near-Line HDD">
+  <title>Near-Line HDD</title>
+    <circle cx="34" cy="23" r="18" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <circle cx="34" cy="23" r="11.5" fill="none" stroke="currentColor" stroke-width="1" opacity=".45"/>
+    <circle cx="34" cy="23" r="5" fill="currentColor" opacity=".32"/>
+    <circle cx="34" cy="23" r="5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+    <line x1="60" y1="7" x2="42" y2="18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    <circle cx="60" cy="7" r="3.2" fill="currentColor"/>
+</svg>

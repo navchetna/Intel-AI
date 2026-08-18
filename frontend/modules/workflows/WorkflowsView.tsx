@@ -1,210 +1,131 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
-  WORKFLOWS, CATEGORY_ORDER, CATEGORY_META,
-  type WorkflowDef, type CategoryName, type ConfigField,
+  WORKFLOWS, CATEGORY_ORDER, CATEGORY_META, CONVENTIONS,
+  type WorkflowDef, type CategoryName, type Impl,
 } from "./data";
+import { getTaskIcon } from "./task-icons";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useRegisterExport } from "@/contexts/ExportContext";
+import { exportWorkflowsToExcel } from "./export";
+import { X, ArrowRight, Shrink, Expand } from "lucide-react";
+
+/** Darkens an "r,g,b" triplet toward black — used in light mode where a category's raw bright
+ *  accent color would have poor contrast directly on a light card. */
+function darkenRgb(rgb: string, amount = 0.4): string {
+  const [r, g, b] = rgb.split(",").map(Number);
+  return `rgb(${Math.round(r * (1 - amount))},${Math.round(g * (1 - amount))},${Math.round(b * (1 - amount))})`;
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type ConfigValues = Record<string, string | number | boolean>;
-type ViewMode     = "cards" | "table";
-type ExportTab    = "json" | "docker" | "api";
+type ViewMode = "cards" | "table";
 
-// CATEGORY_META's accents are tuned to sit on the dark navy canvas; used
-// directly as text on a light background they read too pale. Same hues,
-// darkened for light mode.
-const CATEGORY_ACCENT_LIGHT: Record<CategoryName, string> = {
-  "Working with Text":              "#4338ca",
-  "Handling Inputs":                "#b45309",
-  "Working with Language & Speech": "#0e7490",
-  "Establishing Knowledge":         "#047857",
-  "Safety & Privacy":               "#b91c1c",
+const IMPL_COLORS: Record<Impl, string> = {
+  Deterministic: "#60a5fa",
+  Model:         "#c084fc",
+  Hybrid:        "#fbbf24",
 };
 
-function resolveAccentText(theme: "light" | "dark", cat: CategoryName): string {
-  return theme === "light" ? CATEGORY_ACCENT_LIGHT[cat] : CATEGORY_META[cat].accent;
-}
+// ── Detail panel ───────────────────────────────────────────────────────────────
 
-function useAccentText(cat: CategoryName): string {
-  const { theme } = useTheme();
-  return resolveAccentText(theme, cat);
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function initValues(fields: ConfigField[]): ConfigValues {
-  return Object.fromEntries(fields.map(f => [f.key, f.defaultValue]));
-}
-
-function downloadFile(content: string, filename: string, mime: string) {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([content], { type: mime }));
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-// ── Export generators ──────────────────────────────────────────────────────────
-
-function genJSON(wf: WorkflowDef, v: ConfigValues) {
-  return JSON.stringify({ name: wf.name, id: wf.id, version: "1.0.0", tool: wf.tool, category: wf.category, config: v }, null, 2);
-}
-
-function genDocker(wf: WorkflowDef, v: ConfigValues) {
-  const env = Object.entries(v)
-    .map(([k, val]) => `      - ${k.toUpperCase()}=${String(val)}`)
-    .join("\n");
-  return `version: '3.8'
-services:
-  ${wf.id}:
-    image: intel-ai/workflow-runner:latest
-    restart: unless-stopped
-    environment:
-      - WORKFLOW_ID=${wf.id}
-${env}
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data:/app/data`;
-}
-
-function genAPI(wf: WorkflowDef, v: ConfigValues) {
-  const body = JSON.stringify({ workflow_id: wf.id, config: v, input: "<your input>" }, null, 2);
-  return `# REST endpoint — Intel-AI Workflow Runner
-curl -X POST https://api.intel-ai.local/v1/workflows/run \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer <token>" \\
-  -d '${body}'
-
-# Response schema
-# { "result": any, "metadata": { "workflow_id": string, "duration_ms": number } }`;
-}
-
-// ── Field renderer ─────────────────────────────────────────────────────────────
-
-const FIELD_BASE = "w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 transition-colors";
-const FIELD_STYLE: React.CSSProperties = {
-  background: "var(--dm-input-bg)",
-  border: "1px solid var(--dm-input-border)",
-  color: "var(--dm-input-color)",
-  colorScheme: "var(--dm-color-scheme)",
-};
-
-function FieldRow({ field, value, onChange }: {
-  field: ConfigField;
-  value: string | number | boolean;
-  onChange: (v: string | number | boolean) => void;
-}) {
-  const [show, setShow] = useState(false);
-
+/** Section label — same treatment across every field in the panel. */
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold uppercase tracking-widest text-white/45">{field.label}</span>
-
-      {field.type === "bool" ? (
-        <div className="flex items-center gap-2 h-9">
-          <button
-            type="button"
-            onClick={() => onChange(!value)}
-            className="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-offset-1 focus-visible:ring-offset-[#0a1428] focus-visible:ring-white/40"
-            style={{ background: value ? "#1262B5" : "rgba(255,255,255,0.12)" }}
-          >
-            <span
-              className="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-150 mt-0.5"
-              style={{ transform: value ? "translateX(18px)" : "translateX(2px)" }}
-            />
-          </button>
-          <span className="text-xs text-white/50">{value ? "Enabled" : "Disabled"}</span>
-        </div>
-      ) : field.type === "select" ? (
-        <select
-          value={String(value)}
-          onChange={e => onChange(e.target.value)}
-          className={FIELD_BASE}
-          style={FIELD_STYLE}
-        >
-          {field.options!.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      ) : field.type === "textarea" ? (
-        <textarea
-          value={String(value)}
-          onChange={e => onChange(e.target.value)}
-          placeholder={field.placeholder}
-          rows={3}
-          className={`${FIELD_BASE} resize-none`}
-          style={FIELD_STYLE}
-        />
-      ) : field.type === "password" ? (
-        <div className="relative">
-          <input
-            type={show ? "text" : "password"}
-            value={String(value)}
-            onChange={e => onChange(e.target.value)}
-            placeholder={field.placeholder}
-            className={`${FIELD_BASE} pr-10`}
-            style={FIELD_STYLE}
-          />
-          <button
-            type="button"
-            onClick={() => setShow(s => !s)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 text-xs px-1"
-          >{show ? "hide" : "show"}</button>
-        </div>
-      ) : (
-        <input
-          type={field.type === "number" ? "number" : "text"}
-          value={String(value)}
-          onChange={e => onChange(field.type === "number" ? parseFloat(e.target.value) || 0 : e.target.value)}
-          placeholder={field.placeholder}
-          className={FIELD_BASE}
-          style={FIELD_STYLE}
-        />
-      )}
-
-      {field.note && <span className="text-[10px] text-white/30 leading-tight">{field.note}</span>}
-    </label>
+    <span className="block text-[10px] font-bold uppercase tracking-widest text-white/25 mb-2">
+      {children}
+    </span>
   );
 }
 
-// ── Config sidebar ─────────────────────────────────────────────────────────────
+/** Prose fields (instructions, business logic, escalation rule) — flowing text, not itemized. */
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <SectionLabel>{label}</SectionLabel>
+      <p className="text-[12.5px] leading-relaxed text-white/70 whitespace-pre-wrap">{value}</p>
+    </div>
+  );
+}
 
-function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }) {
-  const meta = CATEGORY_META[wf.category];
-  const accentText = useAccentText(wf.category);
-  const [values, setValues]       = useState<ConfigValues>(() => initValues(wf.configFields));
-  const [exportTab, setExportTab] = useState<ExportTab>("json");
-  const [copied, setCopied]       = useState(false);
+/** One `name: type` / `name=default` pair parsed out of a semicolon-delimited signature string. */
+interface Param { name: string; op: "" | ":" | "="; rest: string }
 
-  const exportContent = useMemo(() => {
-    if (exportTab === "json")   return genJSON(wf, values);
-    if (exportTab === "docker") return genDocker(wf, values);
-    return genAPI(wf, values);
-  }, [wf, values, exportTab]);
-
-  function handleCopy() {
-    navigator.clipboard.writeText(exportContent).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+function parseParamList(raw: string): Param[] {
+  return raw
+    .split(";")
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(pair => {
+      const m = pair.match(/^([A-Za-z_][A-Za-z0-9_/]*)\s*(:|=)\s*(.*)$/s);
+      if (!m) return { name: pair, op: "", rest: "" };
+      return { name: m[1], op: m[2] as ":" | "=", rest: m[3] };
     });
-  }
+}
 
-  function handleDownload() {
-    if (exportTab === "json")   downloadFile(exportContent, `${wf.id}.json`,             "application/json");
-    if (exportTab === "docker") downloadFile(exportContent, `${wf.id}-compose.yml`,      "text/yaml");
-    if (exportTab === "api")    downloadFile(exportContent, `${wf.id}-api-example.sh`,   "text/plain");
-  }
+/** Inputs / Outputs / Config Parameters — one parameter per line, name and type/default
+ *  visually distinct so the signature scans like a spec sheet instead of a text blob. */
+function ParamSection({ label, value, accent }: { label: string; value: string; accent: string }) {
+  const params = parseParamList(value);
+  return (
+    <div>
+      <SectionLabel>{label}</SectionLabel>
+      {params.length === 0 ? (
+        <span className="text-[11px] text-white/25">—</span>
+      ) : (
+        <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+          {params.map((p, i) => (
+            <div
+              key={i}
+              className="px-2.5 py-1.5"
+              style={{
+                background: i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent",
+                borderTop: i === 0 ? "none" : "1px solid rgba(255,255,255,0.05)",
+              }}
+            >
+              <span className="font-mono text-[11px] font-bold" style={{ color: accent }}>{p.name}</span>
+              {p.op && <span className="font-mono text-[11px] text-white/30">{p.op === "=" ? " = " : ": "}</span>}
+              {p.rest && <span className="font-mono text-[11px] text-white/55 break-words">{p.rest}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
-  const set = (key: string, val: string | number | boolean) =>
-    setValues(p => ({ ...p, [key]: val }));
+/** Typical Chain — steps as connected pills instead of a raw "A → B → C" string. */
+function ChainSteps({ value, wfId, accent }: { value: string; wfId: string; accent: string }) {
+  const steps = value.split("→").map(s => s.trim()).filter(Boolean);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {steps.map((step, i) => {
+        const isThis = step === "THIS";
+        return (
+          <span key={i} className="flex items-center gap-1.5">
+            <span
+              className="inline-flex items-center px-2 py-1 rounded-md font-mono text-[10.5px] font-semibold"
+              style={isThis
+                ? { background: `${accent}22`, color: accent, border: `1px solid ${accent}55` }
+                : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.07)" }}
+            >
+              {isThis ? wfId : step}
+            </span>
+            {i < steps.length - 1 && <ArrowRight className="w-3 h-3 text-white/20" strokeWidth={2} />}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 
-  const TAB_LABELS: { id: ExportTab; label: string }[] = [
-    { id: "json",   label: "JSON" },
-    { id: "docker", label: "Docker" },
-    { id: "api",    label: "API / curl" },
-  ];
+function TaskDetail({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }) {
+  const meta = CATEGORY_META[wf.category];
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const accentText = isDark ? meta.accent : darkenRgb(meta.accentRgb);
+  const Icon = getTaskIcon(wf.id);
 
   return (
     <>
@@ -219,10 +140,10 @@ function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }
       <aside
         className="fixed top-0 right-0 z-50 h-full flex flex-col overflow-hidden"
         style={{
-          width: 440,
-          background: "linear-gradient(160deg, #050f22 0%, #070d1e 100%)",
+          width: 480,
+          background: "var(--dm-card-bg)",
           borderLeft: `1px solid rgba(${meta.accentRgb},0.20)`,
-          boxShadow: `-20px 0 60px rgba(0,0,0,0.6)`,
+          boxShadow: `${isDark ? "-20px 0 60px rgba(0,0,0,0.6)" : "var(--dm-card-depth)"}, 0 0 0 1px rgba(${meta.accentRgb},0.06)`,
         }}
       >
         {/* Header */}
@@ -231,81 +152,54 @@ function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }
           style={{ background: `rgba(${meta.accentRgb},0.05)` }}
         >
           <div
-            className="mt-0.5 w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-sm font-black"
+            className="mt-0.5 w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center"
             style={{ background: `rgba(${meta.accentRgb},0.15)`, color: accentText, border: `1px solid rgba(${meta.accentRgb},0.3)` }}
           >
-            {meta.icon}
+            <Icon className="w-5 h-5" strokeWidth={1.75} />
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-bold text-white/90 leading-tight">{wf.name}</h2>
-            <p className="text-[11px] mt-0.5 leading-snug text-white/40">{wf.description}</p>
+            <p className="text-[11px] mt-0.5 leading-snug text-white/40 font-mono">{wf.id}</p>
           </div>
           <button
             onClick={onClose}
-            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-white/35 hover:text-white/70 hover:bg-white/5 transition-colors text-lg leading-none"
-          >×</button>
+            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-white/35 hover:text-white/70 hover:bg-white/5 transition-colors"
+          >
+            <X className="w-4 h-4" strokeWidth={2} />
+          </button>
         </div>
 
-        {/* Config form */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-4">Configuration</p>
-          <div className="flex flex-col gap-4">
-            {wf.configFields.map(field => (
-              <FieldRow
-                key={field.key}
-                field={field}
-                value={values[field.key]}
-                onChange={v => set(field.key, v)}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Export section */}
-        <div
-          className="flex-shrink-0 border-t border-white/[0.07]"
-          style={{ background: "var(--dm-surface-a)" }}
-        >
-          {/* Tab strip */}
-          <div className="flex items-center gap-0 px-5 pt-3 pb-0">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-white/25 mr-3">Export as</span>
-            {TAB_LABELS.map(({ id, label }) => (
-              <button
-                key={id}
-                onClick={() => setExportTab(id)}
-                className="px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors"
-                style={exportTab === id
-                  ? { background: "var(--dm-input-bg)", color: accentText, borderBottom: `2px solid ${accentText}` }
-                  : { color: "var(--dm-txt-faint)", borderBottom: "2px solid transparent" }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Code preview */}
-          <div className="mx-5 mb-3 rounded-b-lg rounded-tr-lg overflow-hidden" style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)" }}>
-            <pre className="p-3 text-[10px] leading-relaxed font-mono text-white/60 overflow-x-auto max-h-[160px] overflow-y-auto whitespace-pre">
-              {exportContent}
-            </pre>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex gap-2 px-5 pb-4">
-            <button
-              onClick={handleCopy}
-              className="flex-1 py-2 text-xs font-semibold rounded-lg transition-colors"
-              style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-txt-secondary)" }}
+        {/* Spec */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
+              style={{ background: `${IMPL_COLORS[wf.impl]}22`, color: IMPL_COLORS[wf.impl] }}
             >
-              {copied ? "✓ Copied" : "Copy"}
-            </button>
-            <button
-              onClick={handleDownload}
-              className="flex-1 py-2 text-xs font-bold rounded-lg transition-all hover:brightness-110"
-              style={{ background: `rgba(${meta.accentRgb},0.18)`, border: `1px solid rgba(${meta.accentRgb},0.30)`, color: accentText }}
+              {wf.impl}
+            </span>
+            <span
+              className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
+              style={{ background: `rgba(${meta.accentRgb},0.12)`, color: meta.accent }}
             >
-              ↓ Download
-            </button>
+              {wf.category}
+            </span>
+          </div>
+
+          {/* Inputs / Outputs / Config Parameters are all the same "spec sheet" shape —
+              grouped tightly so they read as one block, distinct from the prose fields below. */}
+          <div className="flex flex-col gap-2.5">
+            <ParamSection label="Inputs" value={wf.inputs} accent={accentText} />
+            <ParamSection label="Outputs" value={wf.outputs} accent={accentText} />
+            <ParamSection label="Config Parameters" value={wf.configParameters} accent={accentText} />
+          </div>
+
+          <DetailField label="Prompt / Instructions" value={wf.promptInstructions} />
+          <DetailField label="Business Logic & Validation" value={wf.businessLogic} />
+          <DetailField label="Escalate When" value={wf.escalateWhen} />
+          <div>
+            <SectionLabel>Typical Chain</SectionLabel>
+            <ChainSteps value={wf.typicalChain} wfId={wf.id} accent={accentText} />
           </div>
         </div>
       </aside>
@@ -313,31 +207,64 @@ function ConfigSidebar({ wf, onClose }: { wf: WorkflowDef; onClose: () => void }
   );
 }
 
-// ── Workflow card ──────────────────────────────────────────────────────────────
+// ── Task card ──────────────────────────────────────────────────────────────────
+// Pinterest-tile treatment: the task's own icon is the dominant visual element;
+// everything else (inputs/outputs/prompt/etc.) lives one click away in TaskDetail.
 
-function WorkflowCard({ wf, onConfigure }: { wf: WorkflowDef; onConfigure: () => void }) {
+const IMPL_LABEL: Record<Impl, string> = {
+  Deterministic: "Code",
+  Model:         "Model",
+  Hybrid:        "Hybrid",
+};
+
+function TaskCard({ wf, onSelect }: { wf: WorkflowDef; onSelect: () => void }) {
   const meta = CATEGORY_META[wf.category];
+  const Icon = getTaskIcon(wf.id);
+  const { theme } = useTheme();
+  const iconColor = theme === "dark" ? meta.accent : darkenRgb(meta.accentRgb, 0.25);
   return (
     <div
-      onClick={onConfigure}
+      onClick={onSelect}
       role="button"
       tabIndex={0}
-      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onConfigure(); } }}
-      className="flex flex-col rounded-xl overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5"
+      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(); } }}
+      className="group flex flex-col rounded-2xl overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-1"
       style={{
-        background: "linear-gradient(150deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.02) 100%)",
+        background: "var(--dm-card-bg)",
         border: "1px solid rgba(255,255,255,0.07)",
-        boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `rgba(${meta.accentRgb},0.35)`; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.07)"; }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLElement).style.borderColor = `rgba(${meta.accentRgb},0.4)`;
+        (e.currentTarget as HTMLElement).style.boxShadow = `0 10px 28px rgba(${meta.accentRgb},0.18), 0 2px 10px rgba(0,0,0,0.25)`;
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.07)";
+        (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 10px rgba(0,0,0,0.25)";
+      }}
     >
-      {/* Top accent strip */}
-      <div className="h-1 flex-shrink-0" style={{ background: `linear-gradient(90deg, rgba(${meta.accentRgb},0.9) 0%, rgba(${meta.accentRgb},0.3) 100%)` }} />
+      {/* Icon hero */}
+      <div
+        className="relative flex items-center justify-center aspect-[4/3] flex-shrink-0"
+        style={{ background: `linear-gradient(160deg, rgba(${meta.accentRgb},0.16) 0%, rgba(${meta.accentRgb},0.05) 100%)` }}
+      >
+        <Icon
+          className="w-9 h-9 transition-transform duration-200 group-hover:scale-110"
+          style={{ color: iconColor }}
+          strokeWidth={1.6}
+        />
+        <span
+          className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full"
+          style={{ background: IMPL_COLORS[wf.impl] }}
+          title={IMPL_LABEL[wf.impl]}
+        />
+      </div>
 
-      <div className="flex flex-col gap-2 p-4 flex-1">
-        <h3 className="text-sm font-bold text-white/90 leading-tight">{wf.name}</h3>
-        <p className="text-[11px] text-white/45 leading-relaxed flex-1">{wf.description}</p>
+      {/* Label */}
+      <div className="px-3 py-2.5">
+        <h3 className="text-[12.5px] font-bold leading-snug line-clamp-2" style={{ color: "var(--dm-txt-body)" }}>
+          {wf.name}
+        </h3>
       </div>
     </div>
   );
@@ -347,17 +274,16 @@ function WorkflowCard({ wf, onConfigure }: { wf: WorkflowDef; onConfigure: () =>
 
 function CategoryHeader({ name, count }: { name: CategoryName; count: number }) {
   const meta = CATEGORY_META[name];
-  const accentText = useAccentText(name);
   return (
     <div className="flex items-center gap-3 mb-4">
       <div
         className="w-7 h-7 rounded-lg flex items-center justify-center text-sm font-black flex-shrink-0"
-        style={{ background: `rgba(${meta.accentRgb},0.15)`, color: accentText, border: `1px solid rgba(${meta.accentRgb},0.25)` }}
+        style={{ background: `rgba(${meta.accentRgb},0.15)`, color: meta.accent, border: `1px solid rgba(${meta.accentRgb},0.25)` }}
       >
         {meta.icon}
       </div>
       <h2 className="text-base font-bold text-white/80">{name}</h2>
-      <span className="text-xs text-white/30 font-medium">{count} workflow{count !== 1 ? "s" : ""}</span>
+      <span className="text-xs text-white/30 font-medium">{count} task{count !== 1 ? "s" : ""}</span>
       <div className="flex-1 h-px" style={{ background: `linear-gradient(90deg, rgba(${meta.accentRgb},0.25) 0%, transparent 100%)` }} />
     </div>
   );
@@ -365,28 +291,26 @@ function CategoryHeader({ name, count }: { name: CategoryName; count: number }) 
 
 // ── Table view ─────────────────────────────────────────────────────────────────
 
-function WorkflowTable({ workflows, onConfigure }: { workflows: WorkflowDef[]; onConfigure: (wf: WorkflowDef) => void }) {
-  const { theme } = useTheme();
+function TaskTable({ tasks, onSelect }: { tasks: WorkflowDef[]; onSelect: (wf: WorkflowDef) => void }) {
   return (
     <div className="rounded-2xl overflow-hidden border border-white/[0.07]" style={{ background: "var(--dm-table-bg)" }}>
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse table-fixed">
           <thead>
             <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
-              <th className="w-48 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Workflow</th>
-              <th className="w-44 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Category</th>
-              <th className="w-20 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Tool</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Description</th>
+              <th className="w-48 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Task</th>
+              <th className="w-52 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Category</th>
+              <th className="w-28 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Impl</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Typical Chain</th>
             </tr>
           </thead>
           <tbody>
-            {workflows.map((wf, idx) => {
+            {tasks.map((wf, idx) => {
               const meta = CATEGORY_META[wf.category];
-              const accentText = resolveAccentText(theme, wf.category);
               return (
                 <tr
                   key={wf.id}
-                  onClick={() => onConfigure(wf)}
+                  onClick={() => onSelect(wf)}
                   className="cursor-pointer transition-colors"
                   style={{
                     background: idx % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent",
@@ -401,20 +325,22 @@ function WorkflowTable({ workflows, onConfigure }: { workflows: WorkflowDef[]; o
                   <td className="px-4 py-3 overflow-hidden">
                     <span
                       className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                      style={{ background: `rgba(${meta.accentRgb},0.12)`, color: accentText }}
+                      style={{ background: `rgba(${meta.accentRgb},0.12)`, color: meta.accent }}
                     >
                       <span>{meta.icon}</span>
                       <span className="truncate">{wf.category}</span>
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-[10px] font-bold uppercase tracking-wide"
-                      style={wf.tool === "n8n" ? { color: "#fb923c" } : { color: "#60a5fa" }}>
-                      {wf.tool === "n8n" ? "N8N" : "Custom"}
+                    <span
+                      className="text-[10px] font-bold uppercase tracking-wide"
+                      style={{ color: IMPL_COLORS[wf.impl] }}
+                    >
+                      {wf.impl}
                     </span>
                   </td>
                   <td className="px-4 py-3 overflow-hidden">
-                    <span className="text-white/40 text-xs truncate block">{wf.description}</span>
+                    <span className="text-white/40 text-xs truncate block font-mono">{wf.typicalChain}</span>
                   </td>
                 </tr>
               );
@@ -426,27 +352,79 @@ function WorkflowTable({ workflows, onConfigure }: { workflows: WorkflowDef[]; o
   );
 }
 
+// ── Concise view ───────────────────────────────────────────────────────────────
+// Every task reduced to a single small chip, wrapped tightly by category — trades the
+// icon-forward card treatment for maximum density, so the full breadth of the catalog
+// reads at a glance.
+
+function ConciseTaskList({ groups, onSelect }: {
+  groups: { cat: CategoryName; rows: WorkflowDef[] }[];
+  onSelect: (wf: WorkflowDef) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      {groups.map(({ cat, rows }) => {
+        const meta = CATEGORY_META[cat];
+        return (
+          <div key={cat} className="flex flex-col gap-1.5">
+            <span
+              className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
+              style={{ color: meta.accent }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: meta.accent }} />
+              {cat}
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {rows.map(wf => (
+                <button
+                  key={wf.id}
+                  onClick={() => onSelect(wf)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-medium transition-colors whitespace-nowrap"
+                  style={{
+                    background: `rgba(${meta.accentRgb},0.08)`,
+                    border: `1px solid rgba(${meta.accentRgb},0.18)`,
+                    color: "var(--dm-txt-body)",
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `rgba(${meta.accentRgb},0.2)`; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = `rgba(${meta.accentRgb},0.08)`; }}
+                >
+                  <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: IMPL_COLORS[wf.impl] }} />
+                  {wf.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main view ──────────────────────────────────────────────────────────────────
 
 export function WorkflowsView() {
-  const { theme } = useTheme();
-  const [viewMode, setViewMode]         = useState<ViewMode>("cards");
-  const [search, setSearch]             = useState("");
+  const [viewMode, setViewMode]             = useState<ViewMode>("cards");
+  const [search, setSearch]                 = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryName | "All">("All");
-  const [toolFilter, setToolFilter]     = useState<"all" | "n8n" | "custom">("all");
-  const [selectedWf, setSelectedWf]     = useState<WorkflowDef | null>(null);
+  const [implFilter, setImplFilter]         = useState<"all" | Impl>("all");
+  const [selectedWf, setSelectedWf]         = useState<WorkflowDef | null>(null);
+  const [showConventions, setShowConventions] = useState(false);
+  const [concise, setConcise] = useState(false);
+
+  const exportHandler = useCallback(() => exportWorkflowsToExcel(WORKFLOWS), []);
+  useRegisterExport(exportHandler, "Export Tasks Catalog");
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return WORKFLOWS.filter(wf => {
       if (categoryFilter !== "All" && wf.category !== categoryFilter) return false;
-      if (toolFilter !== "all" && wf.tool !== toolFilter) return false;
+      if (implFilter !== "all" && wf.impl !== implFilter) return false;
       if (q && !wf.name.toLowerCase().includes(q) &&
-          !wf.description.toLowerCase().includes(q) &&
-          !wf.tags.some(t => t.toLowerCase().includes(q))) return false;
+          !wf.id.toLowerCase().includes(q) &&
+          !wf.outputs.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [search, categoryFilter, toolFilter]);
+  }, [search, categoryFilter, implFilter]);
 
   // Group filtered by category
   const groups = useMemo(() => {
@@ -464,24 +442,34 @@ export function WorkflowsView() {
           <div>
             <h1 className="text-4xl font-black text-white tracking-tight">Tasks</h1>
             <p className="mt-1 text-base text-white/40">
-              {filtered.length} of {WORKFLOWS.length} workflows &middot; {CATEGORY_ORDER.length} categories
+              {filtered.length} of {WORKFLOWS.length} tasks &middot; {CATEGORY_ORDER.length} categories &middot; Pydantic AI task mapping
             </p>
           </div>
 
-          {/* View toggle */}
-          <div className="flex items-center gap-1 rounded-xl p-1" style={{ background: "var(--dm-surface-b)", border: "1px solid var(--dm-border-b)" }}>
-            {(["cards", "table"] as const).map(mode => (
-              <button
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className="px-4 py-1.5 text-xs font-semibold rounded-lg capitalize transition-all"
-                style={viewMode === mode
-                  ? { background: "#1262B5", color: "white" }
-                  : { color: "var(--dm-txt-muted)" }}
-              >
-                {mode === "cards" ? "⊞ Cards" : "☰ Table"}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowConventions(true)}
+              className="px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.55)" }}
+            >
+              Conventions
+            </button>
+
+            {/* View toggle */}
+            <div className="flex items-center gap-1 rounded-xl p-1" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              {(["cards", "table"] as const).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className="px-4 py-1.5 text-xs font-semibold rounded-lg capitalize transition-all"
+                  style={viewMode === mode
+                    ? { background: "#1262B5", color: "white" }
+                    : { color: "rgba(255,255,255,0.45)" }}
+                >
+                  {mode === "cards" ? "⊞ Cards" : "☰ Table"}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -500,34 +488,49 @@ export function WorkflowsView() {
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Name, tag, description…"
+                placeholder="Name, ID, output…"
                 className="w-full px-3 py-2 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 placeholder-white/20"
                 style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)" }}
               />
             </div>
 
-            {/* Tool filter */}
+            {/* Impl filter */}
             <div>
-              <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-1">Tool</label>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-1">Impl</label>
               <select
-                value={toolFilter}
-                onChange={e => setToolFilter(e.target.value as "all" | "n8n" | "custom")}
+                value={implFilter}
+                onChange={e => setImplFilter(e.target.value as "all" | Impl)}
                 className="py-2 px-3 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
-                style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)", colorScheme: "var(--dm-color-scheme)" }}
+                style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)" }}
               >
-                <option value="all">All tools</option>
-                <option value="n8n">N8N</option>
-                <option value="custom">Intel Custom</option>
+                <option value="all">All</option>
+                <option value="Deterministic">Deterministic</option>
+                <option value="Model">Model</option>
+                <option value="Hybrid">Hybrid</option>
               </select>
             </div>
 
             {/* Reset */}
             <button
-              onClick={() => { setSearch(""); setCategoryFilter("All"); setToolFilter("all"); }}
+              onClick={() => { setSearch(""); setCategoryFilter("All"); setImplFilter("all"); }}
               className="py-2 px-4 text-sm rounded-lg text-white/40 hover:text-white/70 transition-colors"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
             >
               Reset
+            </button>
+
+            {/* Concise view toggle */}
+            <button
+              onClick={() => setConcise(v => !v)}
+              title={concise ? "Expand back to the full catalog view" : "Concise view — pack every task into one dense, categorized list"}
+              aria-label={concise ? "Expand view" : "Concise view"}
+              aria-pressed={concise}
+              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors"
+              style={concise
+                ? { background: "rgba(56,189,248,0.15)", border: "1px solid rgba(56,189,248,0.4)", color: "#38bdf8" }
+                : { background: "var(--dm-surface-a)", border: "1px solid var(--dm-border-a)", color: "var(--dm-txt-faint)" }}
+            >
+              {concise ? <Expand className="w-4 h-4" strokeWidth={1.8} /> : <Shrink className="w-4 h-4" strokeWidth={1.8} />}
             </button>
           </div>
 
@@ -537,8 +540,8 @@ export function WorkflowsView() {
               onClick={() => setCategoryFilter("All")}
               className="px-3 py-1 rounded-full text-xs font-medium transition-all"
               style={{
-                background: categoryFilter === "All" ? "var(--dm-surface-c)" : "var(--dm-surface-b)",
-                color: categoryFilter === "All" ? "var(--dm-txt-body)" : "var(--dm-txt-muted)",
+                background: categoryFilter === "All" ? "var(--dm-surface-c)" : "var(--dm-surface-a)",
+                color: categoryFilter === "All" ? "var(--dm-txt-body)" : "var(--dm-txt-faint)",
                 border: `1px solid ${categoryFilter === "All" ? "var(--dm-border-b)" : "var(--dm-border-a)"}`,
               }}
             >
@@ -554,8 +557,8 @@ export function WorkflowsView() {
                   onClick={() => setCategoryFilter(active ? "All" : cat)}
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all"
                   style={{
-                    background: active ? `rgba(${meta.accentRgb},0.15)` : "var(--dm-surface-b)",
-                    color:      active ? resolveAccentText(theme, cat) : "var(--dm-txt-muted)",
+                    background: active ? `rgba(${meta.accentRgb},0.15)` : "var(--dm-surface-a)",
+                    color:      active ? meta.accent : "var(--dm-txt-faint)",
                     border:     `1px solid ${active ? `rgba(${meta.accentRgb},0.35)` : "var(--dm-border-a)"}`,
                   }}
                 >
@@ -570,17 +573,27 @@ export function WorkflowsView() {
 
         {/* ── Content ── */}
         {filtered.length === 0 ? (
-          <div className="py-24 text-center text-white/30 text-sm">No workflows match your filters.</div>
+          <div className="py-24 text-center text-white/30 text-sm">No tasks match your filters.</div>
+        ) : concise ? (
+          <div
+            className="rounded-2xl border border-white/[0.07] p-5"
+            style={{ background: "var(--dm-filterbar-bg)" }}
+          >
+            <ConciseTaskList groups={groups} onSelect={setSelectedWf} />
+          </div>
         ) : viewMode === "table" ? (
-          <WorkflowTable workflows={filtered} onConfigure={setSelectedWf} />
+          <TaskTable tasks={filtered} onSelect={setSelectedWf} />
         ) : (
-          <div className="flex flex-col gap-10">
+          <div className="flex flex-col gap-8">
             {groups.map(({ cat, rows }) => (
               <section key={cat}>
                 <CategoryHeader name={cat} count={rows.length} />
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div
+                  className="grid gap-3"
+                  style={{ gridTemplateColumns: "repeat(auto-fill, minmax(132px, 1fr))" }}
+                >
                   {rows.map(wf => (
-                    <WorkflowCard key={wf.id} wf={wf} onConfigure={() => setSelectedWf(wf)} />
+                    <TaskCard key={wf.id} wf={wf} onSelect={() => setSelectedWf(wf)} />
                   ))}
                 </div>
               </section>
@@ -589,13 +602,47 @@ export function WorkflowsView() {
         )}
       </div>
 
-      {/* ── Config sidebar ── */}
+      {/* ── Task detail drawer ── */}
       {selectedWf && (
-        <ConfigSidebar
+        <TaskDetail
           key={selectedWf.id}
           wf={selectedWf}
           onClose={() => setSelectedWf(null)}
         />
+      )}
+
+      {/* ── Conventions modal ── */}
+      {showConventions && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            style={{ background: "rgba(1,6,18,0.55)", backdropFilter: "blur(2px)" }}
+            onClick={() => setShowConventions(false)}
+          />
+          <div
+            className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[640px] max-w-[90vw] max-h-[80vh] overflow-y-auto rounded-2xl"
+            style={{ background: "var(--dm-card-bg)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}
+          >
+            <div className="flex items-start justify-between gap-3 px-6 py-4 border-b border-white/[0.07]">
+              <div>
+                <h2 className="text-sm font-bold text-white/90">Cross-cutting conventions</h2>
+                <p className="text-[11px] mt-0.5 text-white/40">These apply to every task and are not repeated per row.</p>
+              </div>
+              <button
+                onClick={() => setShowConventions(false)}
+                className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-white/35 hover:text-white/70 hover:bg-white/5 transition-colors text-lg leading-none"
+              >×</button>
+            </div>
+            <div className="px-6 py-4 flex flex-col gap-4">
+              {CONVENTIONS.map(c => (
+                <div key={c.convention}>
+                  <span className="text-[11px] font-bold text-white/70">{c.convention}</span>
+                  <p className="text-[12px] mt-0.5 leading-relaxed text-white/45">{c.rule}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </main>
   );

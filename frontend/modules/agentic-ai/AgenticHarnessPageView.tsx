@@ -2,12 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { AgenticStackView } from "./AgenticStackView";
+import { AgenticStorageView } from "./AgenticStorageView";
+import { AgenticNetworkView } from "./AgenticNetworkView";
 import { AgenticSizingView } from "./AgenticSizingView";
 import { SizingSheet } from "./SizingSheet";
 import { SIZING_MAP, defaultInputsFor } from "./sizing-wiring";
 import { useProject } from "@/contexts/ProjectContext";
 
-type Tab = "stack" | "sizing";
+type Tab = "stack" | "storage" | "network" | "sizing";
 
 /** Infrastructure workload catalog + sizing calculators. Selections and sizing inputs live in the current Project. */
 export function AgenticHarnessPageView() {
@@ -65,7 +67,9 @@ export function AgenticHarnessPageView() {
         {/* ── tab bar ── */}
         <div className="flex gap-1 mb-2 border-b border-white/[0.07]">
           {[
-            { key: "stack" as const, label: "Stack" },
+            { key: "stack" as const, label: "SW-Stack" },
+            { key: "storage" as const, label: "Storage" },
+            { key: "network" as const, label: "Network" },
             { key: "sizing" as const, label: `Sizing${selectedWorkloads.size ? ` (${selectedWorkloads.size})` : ""}` },
           ].map(t => (
             <button
@@ -90,6 +94,12 @@ export function AgenticHarnessPageView() {
           onToggleWorkload={toggleWorkload}
           onSizingClick={openSizingFor}
         />
+      )}
+      {activeTab === "storage" && (
+        <AgenticStorageView />
+      )}
+      {activeTab === "network" && (
+        <AgenticNetworkView />
       )}
       {activeTab === "sizing" && (
         <AgenticSizingView

@@ -24,6 +24,7 @@ class InferenceBenchmark(Base):
     platform: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     serving_engine: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     model: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     dataset: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     # Integer fields
