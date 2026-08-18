@@ -7,6 +7,7 @@ export interface BenchmarkRecord {
   platform: string;
   serving_engine: string | null;
   model: string;
+  category: string | null;
   tp: number | null;
   num_deployments: number | null;
   dataset: string | null;
@@ -70,7 +71,7 @@ export const EMPTY_FILTERS: BenchmarkFilters = {
 export const BATCH_SIZES: number[] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
 
 /** Default hardware options; merged with distinct platforms loaded from the API. */
-export const DEFAULT_HARDWARE: string[] = ["Xeon", "Battlemage B70"];
+export const DEFAULT_HARDWARE: string[] = ["B70x1", "B70x2", "B70x4"];
 
 /** Serving engines the Models-page Benchmarks tab filters by. */
 export const SERVING_ENGINES: string[] = ["vLLM", "SGLang"];
@@ -84,6 +85,7 @@ export const EXCEL_COLUMNS = [
   "Platform",
   "Serving_Engine",
   "Model",
+  "Category",
   "TP",
   "Num_Deployments",
   "Dataset",
@@ -111,6 +113,7 @@ export const TABLE_COLUMNS: { key: keyof BenchmarkRecord; label: string }[] = [
   { key: "platform", label: "Platform" },
   { key: "serving_engine", label: "Serving_Engine" },
   { key: "model", label: "Model" },
+  { key: "category", label: "Category" },
   { key: "tp", label: "TP" },
   { key: "num_deployments", label: "Num_Deployments" },
   { key: "dataset", label: "Dataset" },

@@ -35,6 +35,7 @@ def _filters(
     batch_size: int | None = Query(default=None, description="Maps to concurrency"),
     platform: str | None = Query(default=None, description="Hardware platform"),
     serving_engine: str | None = Query(default=None, description="e.g. vLLM, SGLang"),
+    category: str | None = Query(default=None, description="e.g. LLM, Safety"),
 ) -> BenchmarkFilters:
     return BenchmarkFilters(
         model=model,
@@ -43,6 +44,7 @@ def _filters(
         batch_size=batch_size,
         platform=platform,
         serving_engine=serving_engine,
+        category=category,
     )
 
 

@@ -2,7 +2,7 @@
 
 export type SizingTool =
   | "postgres" | "qdrant" | "neo4j" | "mongodb" | "elastic"
-  | "pydantic-ai" | "logfire" | "clickhouse";
+  | "pydantic-ai" | "logfire" | "clickhouse" | "litellm" | "observability";
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
 
@@ -1403,11 +1403,250 @@ export function calcClickHouse(i: ClickHouseInputs): ClickHouseResults {
   };
 }
 
+// ── LiteLLM Gateway (LLM routing / token observability) ───────────────────────
+// Little's-Law concurrency + per-request CPU overhead, following the same shape
+// as the Pydantic AI agent-tier calculator (Little's Law + fleet sizing).
+
+export interface LiteLLMInputs {
+  peakRequestsPerSec: number;
+  avgRequestDurationMs: number;       // time the gateway holds the connection open (TTFT + generation)
+  streamingFraction: number;          // 0-1, fraction of requests held open longer for SSE/streaming
+  routingCpuOverheadMsPerReq: number; // gateway-added CPU work per request (auth, routing, logging, retries)
+  maxConcurrentRequestsPerPod: number;
+  vcpuPerPod: number;
+  ramPerPodGB: number;
+  targetCpuUtilization: number;       // 0-1
+  haMinReplicas: number;
+  cachingEnabled: boolean;
+  cacheHitRatioTarget: number;        // 0-1, exact/semantic response cache
+  cacheEntriesTarget: number;
+  avgCacheEntryKB: number;
+  tokenObservabilityEnabled: boolean;
+  loggedBytesPerRequest: number;      // usage/cost/latency metadata logged per request
+  logRetentionDays: number;
+  refNodeUsableVcpu: number;
+  refNodeUsableRamGB: number;
+}
+
+export interface LiteLLMResults {
+  concurrency: {
+    effectiveHoldSec: number;
+    peakConcurrentRequests: number;
+    provisionedConcurrency: number;
+  };
+  compute: {
+    cpuSecondsPerSecFleet: number;
+    coresByThroughput: number;
+    podsByConcurrency: number;
+    podsByThroughput: number;
+    recommendedPods: number;
+    recommendedFleetVcpu: number;
+    recommendedFleetRamGB: number;
+  };
+  cache: {
+    enabled: boolean;
+    rawCacheRAMGB: number;
+    recommendedCacheRAMGB: number;
+    requestsOffloadedPerSec: number;
+  };
+  observability: {
+    enabled: boolean;
+    loggedBytesPerSec: number;
+    dailyLogVolumeGB: number;
+    retainedLogVolumeGB: number;
+  };
+  cluster: {
+    totalVcpu: number;
+    totalRamGB: number;
+    nodesByVcpu: number;
+    nodesByRam: number;
+    recommendedNodes: number;
+  };
+}
+
+export const LITELLM_DEFAULTS: LiteLLMInputs = {
+  peakRequestsPerSec: 200,
+  avgRequestDurationMs: 1500,
+  streamingFraction: 0.7,
+  routingCpuOverheadMsPerReq: 8,
+  maxConcurrentRequestsPerPod: 500,
+  vcpuPerPod: 2,
+  ramPerPodGB: 2,
+  targetCpuUtilization: 0.6,
+  haMinReplicas: 3,
+  cachingEnabled: true,
+  cacheHitRatioTarget: 0.15,
+  cacheEntriesTarget: 200_000,
+  avgCacheEntryKB: 4,
+  tokenObservabilityEnabled: true,
+  loggedBytesPerRequest: 800,
+  logRetentionDays: 30,
+  refNodeUsableVcpu: 32,
+  refNodeUsableRamGB: 128,
+};
+
+export function calcLiteLLM(i: LiteLLMInputs): LiteLLMResults {
+  const effectiveHoldSec = (i.avgRequestDurationMs / 1000) * (1 + i.streamingFraction * 0.5);
+  const peakConcurrentRequests = i.peakRequestsPerSec * effectiveHoldSec;
+  const provisionedConcurrency = peakConcurrentRequests * 1.3;
+
+  const cpuSecondsPerSecFleet = i.peakRequestsPerSec * (i.routingCpuOverheadMsPerReq / 1000);
+  const coresByThroughput = Math.ceil(cpuSecondsPerSecFleet / i.targetCpuUtilization);
+
+  const podsByConcurrency = Math.ceil(provisionedConcurrency / i.maxConcurrentRequestsPerPod);
+  const podsByThroughput = Math.ceil(coresByThroughput / i.vcpuPerPod);
+  const recommendedPods = Math.max(podsByConcurrency, podsByThroughput, i.haMinReplicas);
+  const recommendedFleetVcpu = recommendedPods * i.vcpuPerPod;
+  const recommendedFleetRamGB = recommendedPods * i.ramPerPodGB;
+
+  const rawCacheRAMGB = i.cachingEnabled ? (i.cacheEntriesTarget * i.avgCacheEntryKB) / 1e6 : 0;
+  const recommendedCacheRAMGB = i.cachingEnabled ? snapUpRAM(Math.max(rawCacheRAMGB, 1)) : 0;
+  const requestsOffloadedPerSec = i.cachingEnabled ? i.peakRequestsPerSec * i.cacheHitRatioTarget : 0;
+
+  const loggedBytesPerSec = i.tokenObservabilityEnabled ? i.peakRequestsPerSec * i.loggedBytesPerRequest : 0;
+  const dailyLogVolumeGB = (loggedBytesPerSec * 86400) / 1e9;
+  const retainedLogVolumeGB = dailyLogVolumeGB * i.logRetentionDays;
+
+  const totalVcpu = recommendedFleetVcpu;
+  const totalRamGB = recommendedFleetRamGB + recommendedCacheRAMGB;
+  const nodesByVcpu = Math.ceil(totalVcpu / i.refNodeUsableVcpu);
+  const nodesByRam = Math.ceil(totalRamGB / i.refNodeUsableRamGB);
+  const recommendedNodes = Math.max(nodesByVcpu, nodesByRam, i.haMinReplicas >= 3 ? 2 : 1);
+
+  return {
+    concurrency: { effectiveHoldSec, peakConcurrentRequests, provisionedConcurrency },
+    compute: { cpuSecondsPerSecFleet, coresByThroughput, podsByConcurrency, podsByThroughput, recommendedPods, recommendedFleetVcpu, recommendedFleetRamGB },
+    cache: { enabled: i.cachingEnabled, rawCacheRAMGB, recommendedCacheRAMGB, requestsOffloadedPerSec },
+    observability: { enabled: i.tokenObservabilityEnabled, loggedBytesPerSec, dailyLogVolumeGB, retainedLogVolumeGB },
+    cluster: { totalVcpu, totalRamGB, nodesByVcpu, nodesByRam, recommendedNodes },
+  };
+}
+
+// ── Observability Stack (Prometheus + Grafana + Loki) ─────────────────────────
+// Prometheus: ~2-3 KB resident RAM per active series is well-cited operational
+// guidance; on-disk TSDB is ~1-2 bytes/sample compressed. Loki follows the same
+// ingest-rate → vCPU → object-storage shape as the Logfire calculator above.
+
+export interface ObservabilityStackInputs {
+  scrapeTargets: number;
+  activeSeriesPerTarget: number;
+  scrapeIntervalSec: number;
+  bytesPerSamplePrometheus: number;
+  metricsRetentionDays: number;
+  logIngestGBPerDay: number;
+  logCompressionRatio: number;
+  logRetentionDays: number;
+  peakToAvgLogIngestRatio: number;
+  ingestThroughputPerVcpuMBs: number;
+  peakDashboardQueryQPS: number;
+  queryQPSPerVcpu: number;
+  concurrentGrafanaUsers: number;
+  haMinReplicas: number;
+  refNodeUsableVcpu: number;
+  refNodeUsableRamGB: number;
+}
+
+export interface ObservabilityStackResults {
+  metrics: {
+    totalActiveSeries: number;
+    samplesPerSec: number;
+    ingestRateMBs: number;
+    tsdbStoragePerDayGB: number;
+    tsdbRetainedStorageGB: number;
+    prometheusRAMRequiredGB: number;
+    prometheusVcpu: number;
+    recommendedPrometheusReplicas: number;
+  };
+  logs: {
+    avgIngestRateMBs: number;
+    peakIngestRateMBs: number;
+    ingesterVcpu: number;
+    recommendedIngesterReplicas: number;
+    compressedDailyGB: number;
+    retainedObjectStorageGB: number;
+  };
+  query: {
+    queryFrontendVcpu: number;
+    recommendedQuerierReplicas: number;
+    grafanaVcpu: number;
+    grafanaRamGB: number;
+    recommendedGrafanaReplicas: number;
+  };
+  cluster: {
+    totalVcpu: number;
+    totalRamGB: number;
+    totalObjectStorageGB: number;
+    nodesByVcpu: number;
+    nodesByRam: number;
+    recommendedNodes: number;
+  };
+}
+
+export const OBSERVABILITY_STACK_DEFAULTS: ObservabilityStackInputs = {
+  scrapeTargets: 500,
+  activeSeriesPerTarget: 800,
+  scrapeIntervalSec: 15,
+  bytesPerSamplePrometheus: 1.5,
+  metricsRetentionDays: 15,
+  logIngestGBPerDay: 200,
+  logCompressionRatio: 10,
+  logRetentionDays: 30,
+  peakToAvgLogIngestRatio: 2,
+  ingestThroughputPerVcpuMBs: 15,
+  peakDashboardQueryQPS: 20,
+  queryQPSPerVcpu: 5,
+  concurrentGrafanaUsers: 40,
+  haMinReplicas: 2,
+  refNodeUsableVcpu: 32,
+  refNodeUsableRamGB: 128,
+};
+
+export function calcObservabilityStack(i: ObservabilityStackInputs): ObservabilityStackResults {
+  const totalActiveSeries = i.scrapeTargets * i.activeSeriesPerTarget;
+  const samplesPerSec = totalActiveSeries / i.scrapeIntervalSec;
+  const ingestRateMBs = (samplesPerSec * i.bytesPerSamplePrometheus) / 1e6;
+  const tsdbStoragePerDayGB = (samplesPerSec * 86400 * i.bytesPerSamplePrometheus) / 1e9;
+  const tsdbRetainedStorageGB = tsdbStoragePerDayGB * i.metricsRetentionDays;
+  const prometheusRAMRequiredGB = (totalActiveSeries * 3_000) / 1e9; // ~3 KB resident/series
+  const prometheusVcpu = Math.max(2, Math.ceil(samplesPerSec / 200_000)); // ~200k samples/s per core, conservative
+  const recommendedPrometheusReplicas = Math.max(i.haMinReplicas, Math.ceil(prometheusRAMRequiredGB / i.refNodeUsableRamGB));
+
+  const avgIngestRateMBs = (i.logIngestGBPerDay * 1000) / 86400;
+  const peakIngestRateMBs = avgIngestRateMBs * i.peakToAvgLogIngestRatio;
+  const ingesterVcpu = Math.max(2, Math.ceil(peakIngestRateMBs / i.ingestThroughputPerVcpuMBs));
+  const recommendedIngesterReplicas = Math.max(i.haMinReplicas, Math.ceil(ingesterVcpu / 2));
+  const compressedDailyGB = i.logIngestGBPerDay / i.logCompressionRatio;
+  const retainedObjectStorageGB = compressedDailyGB * i.logRetentionDays;
+
+  const queryFrontendVcpu = Math.max(1, Math.ceil(i.peakDashboardQueryQPS / i.queryQPSPerVcpu));
+  const recommendedQuerierReplicas = Math.max(i.haMinReplicas, Math.ceil(queryFrontendVcpu / 2));
+  const grafanaVcpu = Math.max(1, Math.ceil(i.concurrentGrafanaUsers / 50));
+  const grafanaRamGB = Math.max(2, grafanaVcpu * 1.5);
+  const recommendedGrafanaReplicas = Math.max(2, i.haMinReplicas);
+
+  const ingesterRamGB = ingesterVcpu * 2; // Loki ingesters ~2 GB RAM per vCPU
+  const totalVcpu = prometheusVcpu + ingesterVcpu + queryFrontendVcpu + grafanaVcpu;
+  const totalRamGB = prometheusRAMRequiredGB + ingesterRamGB + grafanaRamGB;
+  const totalObjectStorageGB = retainedObjectStorageGB;
+
+  const nodesByVcpu = Math.ceil(totalVcpu / i.refNodeUsableVcpu);
+  const nodesByRam = Math.ceil(totalRamGB / i.refNodeUsableRamGB);
+  const recommendedNodes = Math.max(nodesByVcpu, nodesByRam, i.haMinReplicas);
+
+  return {
+    metrics: { totalActiveSeries, samplesPerSec, ingestRateMBs, tsdbStoragePerDayGB, tsdbRetainedStorageGB, prometheusRAMRequiredGB, prometheusVcpu, recommendedPrometheusReplicas },
+    logs: { avgIngestRateMBs, peakIngestRateMBs, ingesterVcpu, recommendedIngesterReplicas, compressedDailyGB, retainedObjectStorageGB },
+    query: { queryFrontendVcpu, recommendedQuerierReplicas, grafanaVcpu, grafanaRamGB, recommendedGrafanaReplicas },
+    cluster: { totalVcpu, totalRamGB, totalObjectStorageGB, nodesByVcpu, nodesByRam, recommendedNodes },
+  };
+}
+
 // ── Cross-tool normalizer (Agentic Stack sizing table) ──────────────────────────
 
 export type AnyInputs =
   | PGInputs | QdrantInputs | Neo4jInputs | MongoDBInputs | ElasticInputs
-  | PydanticAIInputs | LogfireInputs | ClickHouseInputs;
+  | PydanticAIInputs | LogfireInputs | ClickHouseInputs
+  | LiteLLMInputs | ObservabilityStackInputs;
 
 export interface ResourceSummary {
   cores: number;
@@ -1450,6 +1689,14 @@ export function summarizeResources(tool: SizingTool, inputs: AnyInputs): Resourc
     case "clickhouse": {
       const r = calcClickHouse(inputs as ClickHouseInputs);
       return { cores: r.cluster.totalClusterVcpu, ramGB: r.cluster.totalClusterRamGB, gpuCount: 0 };
+    }
+    case "litellm": {
+      const r = calcLiteLLM(inputs as LiteLLMInputs);
+      return { cores: r.cluster.totalVcpu, ramGB: r.cluster.totalRamGB, gpuCount: 0 };
+    }
+    case "observability": {
+      const r = calcObservabilityStack(inputs as ObservabilityStackInputs);
+      return { cores: r.cluster.totalVcpu, ramGB: r.cluster.totalRamGB, gpuCount: 0 };
     }
   }
 }

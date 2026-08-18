@@ -1,0 +1,60 @@
+import type { AcceleratorDetail } from "./accelerator-data";
+
+// Sourced from SambaNova_RDU_Platform_Reference.pdf (compiled Aug 2026).
+export const SAMBANOVA_SN40L: AcceleratorDetail = {
+  id: "sambanova",
+  name: "SambaNova SN40L",
+  codeName: "Reconfigurable Dataflow Unit (RDU) — Cerulean",
+  tagline: "Dataflow-native alternative to GPUs for agentic inference",
+  accent: "#fb923c",
+  accentRgb: "251,146,60",
+  statusBadge: "Generally available — current-generation RDU",
+  overview: [
+    "The Reconfigurable Dataflow Unit (RDU) is a coarse-grained reconfigurable array of Pattern Compute Units (PCU) and Pattern Memory Units (PMU), programmed via a dataflow graph compiled to a static execution plan (PEF) — not SIMT/CUDA-style kernel dispatch.",
+    "SN40L (5nm TSMC, CoWoS-S dual die) is the current shipping generation, sold in DataScale and SambaRack systems and via hosted SambaCloud inference. SambaNova's positioning has shifted from large-model training toward purpose-built agentic inference: fast token generation, multi-model hot-swap, and long context.",
+  ],
+  hwSpecs: [
+    { label: "Architecture", value: "Reconfigurable Dataflow Unit (PCU + PMU array)" },
+    { label: "Process", value: "5nm TSMC, CoWoS-S (dual die)" },
+    { label: "Transistors", value: "102 billion" },
+    { label: "TDP (chip-level)", value: "Not publicly disclosed" },
+    { label: "Rack power (inference)", value: "7–14.5 kW across 16 sockets (typical 10 kW), SambaRack SN40L-16" },
+    { label: "Host CPU (reference node)", value: "2× 64-core, 2 TB DDR4 (DataScale / SambaRack SN40L-16)" },
+    { label: "Interconnect", value: "Peer-to-peer across 16 sockets in one SambaRack" },
+    { label: "Successor", value: "SN50 (Cerulean 2, ~3nm est.) — Intel Xeon 6 host, ships H2 2026" },
+  ],
+  memorySpecs: [
+    { label: "Tier 0 — On-chip SRAM (PMU)", value: "520 MiB — hundreds of TBps aggregate on-chip bandwidth" },
+    { label: "Tier 1 — On-package HBM", value: "64 GiB HBM3" },
+    { label: "Tier 1 bandwidth", value: "~2 TB/s (third-party estimate, not vendor-confirmed)" },
+    { label: "Tier 2 — Off-package DDR", value: "Up to 1.5 TiB DDR, pluggable DIMMs" },
+    { label: "DDR → HBM load rate", value: ">1 TB/s per node" },
+    { label: "8-socket node aggregate", value: "512 GiB HBM, up to 12 TB DDR (DataScale SN40L)" },
+    { label: "16-socket rack aggregate", value: "1 TB HBM, 12 TB DDR (SambaRack SN40L-16)" },
+  ],
+  tflops: [
+    { dataType: "BF16 / FP32 (native)", value: "638–640 TFLOPS / socket", note: "Native PCU SIMD datapath; supports FP32, BF16, INT32" },
+    { dataType: "FP8", value: "Not a native SN40L datapath", note: "FP8 support arrives with SN50 (next-gen)" },
+    { dataType: "INT8 / INT32", value: "Supported (SIMD ALU)", note: "Quantised inference paths; no published absolute rate" },
+    { dataType: "16-socket rack aggregate", value: "10.2 PFLOPS BF16", note: "SambaRack SN40L-16, peer-to-peer interconnect" },
+  ],
+  tflopsCaveat: "SN50 (next generation, ships H2 2026) is estimated at ~1.6 PFLOPS BF16 / ~3.2 PFLOPS FP8 per socket — a press-derived figure applying SambaNova's own stated multipliers (2.5× BF16, FP8 at 2× that) to the SN40L 640-TFLOPS baseline. This is not an official SambaNova spec sheet as of Aug 2026.",
+  swStack: [
+    { layer: "Compiler / Runtime", component: "SambaFlow", role: "Traces a PyTorch model graph, compiles to a PEF dataflow execution file, runs for training/inference" },
+    { layer: "Compiler / Runtime", component: "SambaNova Runtime", role: "Low-level execution/scheduling layer beneath SambaFlow" },
+    { layer: "Model lifecycle", component: "SambaStudio", role: "GUI platform: train, fine-tune, deploy, manage — CLI via snapi, SDK via snsdk" },
+    { layer: "Model lifecycle", component: "SambaTune", role: "Performance analysis / tracing across stack layers" },
+    { layer: "Enterprise platform", component: "SambaStack", role: "Full-stack production deployment; rapid model hot-swap for agentic workflows" },
+    { layer: "Hosted inference", component: "SambaCloud", role: "OpenAI-compatible REST API; integrates CrewAI, Hugging Face, Cline, AWS" },
+    { layer: "Compiler (inference)", component: "SambaNova Composer", role: "Compiles model graphs to the RDU dataflow model — no vLLM/SGLang/CUDA-kernel compatibility" },
+    { layer: "Fault management", component: "SambaNova Fault Management (SNFM)", role: "Error/fault reporting, diagnosis and analysis" },
+  ],
+  caveats: [
+    "Supported OS: Ubuntu 22.04.x, Red Hat Enterprise Linux 8.8. Model framework: PyTorch (no native TensorFlow/ONNX front end documented).",
+    "Founded 2017 (Palo Alto); >$1.48B raised historically, $350M+ Series E (Feb 2026), valuation ~$5B+ (2021 mark).",
+    "2026 strategic partnership with Intel: Xeon 6 as host/\"action\" CPU (agent tool-call, control-plane) + RDU for decode, GPUs (NVIDIA H200) for prefill in disaggregated serving. Intel Xeon 6 is replacing AMD EPYC as SambaNova's primary host CPU platform. First deployment: SoftBank Corp. (Japan).",
+    "Native model architecture is Composition of Experts (CoE) — many independently-trained experts behind a router; Samba-1 (1.3T aggregate params, 56 component models) runs on 8 RDU sockets.",
+    "Third-party models served on SambaCloud include Llama 3.1/3.3/4, DeepSeek-V3.1/R1, gpt-oss-120b, MiniMax-M2.7, Gemma, Qwen.",
+  ],
+  sourceNote: "Compiled from SambaNova RDU Platform Reference v1.0 (Aug 2026). Chip specs are SambaNova-published except where noted as derived or third-party; verify SN50 absolute TFLOPS/bandwidth against an official spec sheet before procurement use.",
+};

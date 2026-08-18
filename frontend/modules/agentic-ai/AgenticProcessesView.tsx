@@ -8,6 +8,7 @@ import type { BusinessProcess, ProcessParticipant } from "@/modules/projects/typ
 import { TextAreaField } from "@/components/ui";
 import { calcRequiredConcurrency, TASK_TYPES } from "@/modules/workflows/task-sizing-calcs";
 import { withBase } from "@/lib/deployment";
+import { AiSuggestedFlowPanel } from "./AiSuggestedFlowPanel";
 
 function fmt(n: number, d = 2): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: 0 });
@@ -336,7 +337,7 @@ function ReferenceDocPanel({ filename }: { filename: string | undefined }) {
 
 // ── one business process card (accordion row) ───────────────────────────────────
 
-type ProcessTab = "design" | "reference";
+type ProcessTab = "design" | "reference" | "ai-suggested-flow";
 
 function BusinessProcessCard({ process, expanded, onToggleExpand, onChange, onDelete, referenceFile }: {
   process: BusinessProcess; expanded: boolean; onToggleExpand: () => void; referenceFile: string | undefined;
@@ -388,6 +389,7 @@ function BusinessProcessCard({ process, expanded, onToggleExpand, onChange, onDe
             {([
               { key: "design" as const, label: "Design" },
               { key: "reference" as const, label: "Reference" },
+              { key: "ai-suggested-flow" as const, label: "AI-Suggested-Flow" },
             ]).map(t => (
               <button
                 key={t.key}
@@ -471,8 +473,10 @@ function BusinessProcessCard({ process, expanded, onToggleExpand, onChange, onDe
                 rows={3}
               />
             </>
-          ) : (
+          ) : tab === "reference" ? (
             <ReferenceDocPanel filename={referenceFile} />
+          ) : (
+            <AiSuggestedFlowPanel process={process} referenceFile={referenceFile} onChange={onChange} />
           )}
         </div>
       )}

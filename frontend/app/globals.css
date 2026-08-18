@@ -148,7 +148,8 @@
 [data-theme="light"] .text-white\/35, [data-theme="light"] .text-white\/30,
 [data-theme="light"] .text-white\/25                                         { color: rgba(30,41,59,0.38) !important; }
 [data-theme="light"] .text-white\/20, [data-theme="light"] .text-white\/15,
-[data-theme="light"] .text-white\/10                                         { color: rgba(30,41,59,0.28) !important; }
+[data-theme="light"] .text-white\/10, [data-theme="light"] .text-white\/18   { color: rgba(30,41,59,0.28) !important; }
+[data-theme="light"] .text-white\/28                                         { color: rgba(30,41,59,0.38) !important; }
 [data-theme="light"] .text-blue-300\/50, [data-theme="light"] .text-blue-300\/45,
 [data-theme="light"] .text-blue-400\/40                                      { color: rgba(30,41,59,0.45) !important; }
 [data-theme="light"] .placeholder-white\/20::placeholder                    { color: rgba(30,41,59,0.30) !important; }
@@ -169,6 +170,7 @@
 [data-theme="light"] .bg-white\/5, [data-theme="light"] .hover\:bg-white\/5:hover   { background: rgba(0,113,197,0.05) !important; }
 [data-theme="light"] .bg-white\/8, [data-theme="light"] .focus\:bg-white\/8:focus   { background: rgba(0,113,197,0.06) !important; }
 [data-theme="light"] .bg-white\/10, [data-theme="light"] .hover\:bg-white\/10:hover { background: rgba(0,113,197,0.08) !important; }
+[data-theme="light"] .bg-white\/\[0\.07\]  { background: rgba(0,113,197,0.06) !important; }
 
 /* Native <select> dropdown listbox — Chromium respects option background/color
    for the open popup, so this gives light mode a grey highlight instead of the
@@ -248,3 +250,35 @@ body {
 .md-reference td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--dm-border-a); color: var(--dm-txt-secondary); vertical-align: top; }
 .md-reference code { background: rgba(255,255,255,0.08); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.82em; color: var(--dm-txt-primary); }
 .md-reference a { color: #22d3ee; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
+
+/* ── Dual-handle range slider (two overlaid <input type="range">) ───────────
+   Both inputs stack on the same track; the track itself is pointer-events:none
+   so only each thumb is interactive, letting either handle be dragged independently. */
+.dual-range-input {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+}
+.dual-range-input::-webkit-slider-runnable-track { -webkit-appearance: none; background: transparent; }
+.dual-range-input::-moz-range-track { background: transparent; }
+.dual-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 14px; height: 14px;
+  border-radius: 9999px;
+  background: #38bdf8;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  cursor: pointer;
+  margin-top: 0;
+}
+.dual-range-input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 14px; height: 14px;
+  border-radius: 9999px;
+  background: #38bdf8;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  cursor: pointer;
+}

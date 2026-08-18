@@ -36,6 +36,37 @@ export interface ProcessParticipant {
   taskSizing?: TaskSizingConfig;
 }
 
+/** One agent proposed by the AI-Suggested-Flow generator for a business process. */
+export interface SuggestedAgent {
+  name: string;
+  task_type: string;
+  description: string;
+}
+
+/** One human checkpoint proposed by the AI-Suggested-Flow generator. */
+export interface SuggestedHumanCheck {
+  name: string;
+  role: string;
+  description: string;
+}
+
+/** One step in the AI-suggested end-to-end flow — `name` matches an entry in `agents` or `humans`. */
+export interface SuggestedFlowStep {
+  step: number;
+  actor: "agent" | "human";
+  name: string;
+  description: string;
+}
+
+/** The persisted result of the last AI-Suggested-Flow generation for a business process — kept so
+ *  it survives reloads instead of being re-generated (an LLM call) on every visit. */
+export interface AiSuggestedFlow {
+  agents: SuggestedAgent[];
+  humans: SuggestedHumanCheck[];
+  flow: SuggestedFlowStep[];
+  generatedAt: string;
+}
+
 /** A business process being modernized with agents, plus who (agents + humans) works it and how they collaborate.
  *  `casesPerDay` is the expected daily case volume for this process. `peakHoursPerDay` is how many
  *  of those 24 hours the daily volume is assumed to land in (default 24 — even spread; reducing it
@@ -51,6 +82,9 @@ export interface BusinessProcess {
   agents: ProcessParticipant[];
   humans: ProcessParticipant[];
   collaboration: string;
+  /** On-demand LLM-generated suggestion for this process's agent/human flow — undefined until the
+   *  user clicks "Generate" on the AI-Suggested-Flow tab. */
+  aiSuggestedFlow?: AiSuggestedFlow;
 }
 
 /** One row of the project's key sizing parameters table (e.g. peak concurrent users, annual ingestion). */

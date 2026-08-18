@@ -7,6 +7,8 @@ export interface SubLayer {
   id: string;
   title: string;
   icons: { src: string; alt: string }[];
+  /** Extra tool names to display next to the title when no icon asset exists yet for them. */
+  note?: string;
 }
 
 export interface ClickableItem {
@@ -21,8 +23,8 @@ export interface ClickableItem {
 
 export const mainLayers: ClickableItem[] = [
   {
-    id: "apis-solutions",
-    title: "APIs & solutions",
+    id: "solutions",
+    title: "Solutions",
     subtitle: "End-to-end apps & domain workflows",
     description:
       "The top-most application layer exposes high-level SDKs, REST/gRPC interfaces, and pre-built workflow templates that let developers consume the full agentic stack without needing to understand the underlying infrastructure.",
@@ -34,103 +36,105 @@ export const mainLayers: ClickableItem[] = [
     ],
   },
   {
-    id: "agent-frameworks",
-    title: "Agent frameworks",
-    subtitle: "LangGraph, CrewAI, AutoGen, Pydantic AI",
-    icons: [
-      { src: "/pydantic-ai.jpg", alt: "Pydantic AI" },
+    id: "agents",
+    title: "Agents",
+    subtitle: "Workflow, tasks, observability, evaluation, sandboxes & tools",
+    subLayers: [
+      {
+        id: "workflow",
+        title: "Workflow",
+        note: "LangGraph",
+        icons: [
+          { src: "/n8n.jpg", alt: "n8n" },
+        ],
+      },
+      {
+        id: "tasks",
+        title: "Tasks",
+        icons: [
+          { src: "/pydantic-ai.jpg", alt: "Pydantic AI" },
+        ],
+      },
+      {
+        id: "mcp",
+        title: "MCP",
+        icons: [
+          { src: "/mcp.jpg", alt: "MCP" },
+        ],
+      },
+      {
+        id: "tasks-observability",
+        title: "Tasks Observability",
+        icons: [
+          { src: "/pydantic-logfire.jpg", alt: "Pydantic Logfire" },
+          { src: "/langfuse.jpg", alt: "Langfuse" },
+        ],
+      },
+      {
+        id: "evaluation",
+        title: "Evaluation",
+        icons: [
+          { src: "/pydantic-evals.png", alt: "Pydantic Evals" },
+        ],
+      },
+      {
+        id: "sandboxes",
+        title: "Sandboxes",
+        icons: [
+          { src: "/agent-sanbox.png", alt: "Agent Sandbox" },
+        ],
+      },
     ],
     description:
-      "High-level orchestration frameworks that implement agent patterns — ReAct, plan-and-execute, multi-agent debate — and expose them via a unified API optimised for Intel hardware.",
+      "The agent layer covers everything that plans and executes work: visual/code-first workflow orchestration, type-safe task frameworks, per-task observability, systematic evaluation, isolated code-execution sandboxes, and the MCP tool gateway that governs what agents are allowed to call.",
     details: [
-      { heading: "LangGraph", body: "Graph-based state machine for complex agent workflows with cycles, conditional branching, and persistent checkpointing across steps." },
-      { heading: "CrewAI", body: "Role-based multi-agent teams where specialised agents collaborate on task decomposition and parallel sub-task execution." },
-      { heading: "AutoGen", body: "Microsoft's conversational multi-agent framework supporting both autonomous and human-in-the-loop workflows." },
-      { heading: "Pydantic AI", body: "Type-safe agent framework built around Pydantic validation — structured outputs, tool call schemas, and runtime type enforcement." },
+      { heading: "Workflow (n8n, LangGraph)", body: "Visual and graph-based orchestration builders that connect agents, tools, triggers, and data sources into automated pipelines." },
+      { heading: "Tasks (Pydantic AI)", body: "Type-safe agent/task framework built around Pydantic validation — structured outputs, tool call schemas, and runtime type enforcement." },
+      { heading: "Tasks Observability (Pydantic Logfire, Langfuse)", body: "Per-task tracing and structured logging via Pydantic Logfire, plus LLM observability via Langfuse — prompt tracking, token cost, quality scores, and user feedback correlation." },
+      { heading: "Evaluation", body: "LLM-as-judge and deterministic scorers, agent regression suites, and benchmark harnesses run automatically on every change." },
+      { heading: "Sandboxes", body: "Isolated microVM/container execution environments for agent-generated code with network isolation and resource limits." },
+      { heading: "MCP", body: "Model Context Protocol registry and runtime for tool discovery, schema validation, access policy, and rate limiting." },
     ],
   },
   {
-    id: "workflow-automation",
-    title: "Workflow automation",
-    subtitle: "n8n, Zapier, Flowise, ActivePieces",
-    icons: [
-      { src: "/n8n.jpg",          alt: "n8n" },
-      { src: "/zapier.jpg",       alt: "Zapier" },
-      { src: "/flowise.jpg",      alt: "Flowise" },
-      { src: "/activepieces.jpg", alt: "ActivePieces" },
+    id: "models",
+    title: "Models",
+    subtitle: "Gateway, serving & memory",
+    subLayers: [
+      {
+        id: "llm-gateway",
+        title: "LLM Gateway & Token Observability",
+        icons: [
+          { src: "/litellm.svg", alt: "LiteLLM" },
+        ],
+      },
+      {
+        id: "model-serving",
+        title: "Model Serving",
+        icons: [
+          { src: "/vllm.jpg",   alt: "vLLM" },
+          { src: "/sgl.jpg",    alt: "SGLang" },
+          { src: "/dynamo.jpg", alt: "Dynamo" },
+          { src: "/llmd.jpg",   alt: "llm-d" },
+        ],
+      },
+      {
+        id: "memory",
+        title: "Memory",
+        icons: [
+          { src: "/redis.jpg",    alt: "Redis" },
+          { src: "/mem0.jpg",     alt: "Mem0" },
+        ],
+      },
     ],
     description:
-      "Visual and code-first workflow builders that connect agents, tools, triggers, and data sources into automated pipelines without requiring deep engineering for every integration.",
+      "Manages model lifecycle and traffic: a LiteLLM gateway that routes and meters every token, high-throughput serving backends (vLLM, SGLang, Dynamo, llm-d), and the memory layer — Redis and Mem0 — that gives agents working and long-term recall.",
     details: [
-      { heading: "n8n", body: "Self-hosted visual workflow automation with 400+ built-in integrations and a native AI agent node for inline model calls." },
-      { heading: "Zapier", body: "Cloud-based trigger-action automation connecting thousands of SaaS tools with AI step support." },
-      { heading: "Flowise", body: "Open-source drag-and-drop LLM flow builder for chatbots, RAG chains, and multi-agent pipelines with a visual canvas." },
-      { heading: "ActivePieces", body: "Open-source Zapier alternative with self-hosted deployment, custom piece creation, and enterprise SSO." },
-    ],
-  },
-  {
-    id: "tool-gateway-mcp",
-    title: "Tool gateway & MCP catalog",
-    subtitle: "Registry, tool governance, access control",
-    icons: [
-      { src: "/mcp.jpg", alt: "MCP" },
-    ],
-    description:
-      "Centralised registry and runtime for all tools available to agents — discovery, versioning, schema validation, access policies, and rate limiting — exposed via the Model Context Protocol.",
-    details: [
-      { heading: "Tool Registry", body: "Version-controlled catalog of all tools, their input/output schemas, and capability metadata for agent discovery." },
-      { heading: "MCP Interface", body: "Native Model Context Protocol server that exposes registered tools to any MCP-compatible agent framework." },
-      { heading: "Access Control", body: "Per-tool permission policies scoped to agent roles, enforced at the gateway layer before execution." },
-      { heading: "Rate Limiting", body: "Per-tool and per-agent rate limits with backpressure signalling to prevent runaway tool-call loops." },
-    ],
-  },
-  {
-    id: "evaluation-testing",
-    title: "Evaluation & testing",
-    subtitle: "Trace evals, agent regression suites",
-    description:
-      "Systematic evaluation of agent and model outputs through trace-based scoring, regression harnesses, and benchmark suites that run on every CI push.",
-    details: [
-      { heading: "Trace Evaluations", body: "LLM-as-judge and deterministic scorers applied to captured trace data for end-to-end output quality measurement." },
-      { heading: "Agent Regression Suites", body: "Replay previous agent runs against updated models or prompts and assert output consistency within tolerance bounds." },
-      { heading: "Benchmark Harnesses", body: "Standard benchmarks (MMLU, HumanEval, MTEB) run automatically on CI to catch model quality regressions before promotion." },
-      { heading: "A/B Experimentation", body: "Traffic-split experiments between model versions with statistical significance tracking and automatic rollback on quality drops." },
-    ],
-  },
-  {
-    id: "memory-feedback",
-    title: "Memory & feedback",
-    subtitle: "Mem0, feedback capture, fine-tuning",
-    icons: [
-      { src: "/mem0.jpg",     alt: "Mem0" },
-      { src: "/langfuse.jpg", alt: "Langfuse" },
-    ],
-    description:
-      "Gives agents persistent context and a continuous improvement loop: short-term working memory within a session, long-term episodic stores across sessions, and feedback pipelines that feed into fine-tuning.",
-    details: [
-      { heading: "Working Memory", body: "In-context scratch-pad with automatic summarisation when the context window nears capacity." },
-      { heading: "Long-Term Store (Mem0)", body: "Vector-indexed episodic memory backed by pgvector or FAISS for cross-session recall and personalisation." },
-      { heading: "Feedback Capture", body: "Thumbs-up/down and free-text correction signals captured inline and routed to a preference dataset via Langfuse." },
-      { heading: "Fine-Tuning Pipeline", body: "Automated DPO/RLHF dataset construction and fine-tuning trigger on accumulated feedback batches." },
-    ],
-  },
-  {
-    id: "model-gateway-serving",
-    title: "Model gateway & serving",
-    subtitle: "LiteLLM router → vLLM, SGLang, Dynamo",
-    icons: [
-      { src: "/vllm.jpg",    alt: "vLLM" },
-      { src: "/sgl.jpg",     alt: "SGLang" },
-      { src: "/dynamo.jpg",  alt: "Dynamo" },
-      { src: "/llmd.jpg",    alt: "llm-d" },
-    ],
-    description:
-      "Manages model lifecycle and routes inference traffic through a LiteLLM gateway to the optimal backend — vLLM, SGLang, or Dynamo — based on load, latency SLOs, and hardware availability.",
-    details: [
-      { heading: "LiteLLM Router", body: "Single OpenAI-compatible endpoint that fan-outs to multiple backends with load balancing, fallback chains, and cost tracking." },
-      { heading: "vLLM Backend", body: "High-throughput inference server with PagedAttention and continuous batching for maximum token throughput." },
-      { heading: "SGLang Backend", body: "Optimised for low TTFT via RadixAttention prefix caching and constrained structured generation." },
-      { heading: "Dynamo Backend", body: "Distributed disaggregated serving across multi-node GPU/Gaudi clusters with smart prefill/decode routing." },
+      { heading: "LLM Gateway & Token Observability (LiteLLM)", body: "Single OpenAI-compatible endpoint that fan-outs to multiple backends with load balancing, fallback chains, and per-token cost tracking." },
+      { heading: "vLLM", body: "High-throughput inference server with PagedAttention and continuous batching for maximum token throughput." },
+      { heading: "SGLang", body: "Optimised for low TTFT via RadixAttention prefix caching and constrained structured generation." },
+      { heading: "Dynamo / llm-d", body: "Distributed disaggregated serving across multi-node GPU/Gaudi clusters with smart prefill/decode routing." },
+      { heading: "Memory (Redis, Mem0)", body: "Redis provides low-latency working-memory caching, and Mem0 gives vector-indexed long-term episodic recall." },
     ],
   },
   {
@@ -187,26 +191,38 @@ export const mainLayers: ClickableItem[] = [
     ],
   },
   {
-    id: "sandbox-execution",
-    title: "Sandbox & code execution",
-    subtitle: "E2B, Modal, Daytona, Firecracker",
-    description:
-      "Isolated execution environments for agent-generated code and tool testing — providing safe multi-tenant workload separation with network isolation and resource limits.",
-    details: [
-      { heading: "E2B", body: "Cloud-based secure microVM sandboxes for Python/JS code execution with sub-second cold-start and filesystem persistence." },
-      { heading: "Modal", body: "Serverless GPU/CPU compute for ephemeral workloads — scales to zero between runs and supports custom container images." },
-      { heading: "Daytona", body: "Standardised developer environments with OCI snapshot/restore for reproducible agent code execution contexts." },
-      { heading: "Firecracker", body: "AWS-developed microVM hypervisor for multi-tenant isolation — each agent code run gets its own kernel with sub-125ms boot." },
-    ],
-  },
-  {
     id: "infrastructure-orchestration",
-    title: "Infrastructure & orchestration",
-    subtitle: "Kubernetes, KVM, Slurm",
-    icons: [
-      { src: "/k8s.jpg",   alt: "Kubernetes" },
-      { src: "/kvm.jpg",   alt: "KVM" },
-      { src: "/slurm.jpg", alt: "Slurm" },
+    title: "Infrastructure Orchestration",
+    subtitle: "Kubernetes, KVM, Slurm, Prometheus+Grafana+Loki",
+    subLayers: [
+      {
+        id: "k8s",
+        title: "Kubernetes",
+        icons: [
+          { src: "/k8s.jpg", alt: "Kubernetes" },
+        ],
+      },
+      {
+        id: "vm",
+        title: "Virtualization",
+        icons: [
+          { src: "/kvm.jpg", alt: "KVM" },
+        ],
+      },
+      {
+        id: "batch",
+        title: "Batch",
+        icons: [
+          { src: "/slurm.jpg", alt: "Slurm" },
+        ],
+      },
+      {
+        id: "monitoring",
+        title: "Monitoring",
+        icons: [
+          { src: "/observability-stack.svg", alt: "Prometheus+Grafana+Loki" },
+        ],
+      },
     ],
     description:
       "The base layer provisions and manages compute, storage, and network resources on which all higher layers run — from bare-metal Intel Xeon and Gaudi nodes to Kubernetes clusters and high-speed interconnects.",
@@ -214,6 +230,7 @@ export const mainLayers: ClickableItem[] = [
       { heading: "Kubernetes", body: "Kubernetes-native scheduling with Intel Device Plugin for Gaudi, GPU, and QAT accelerators — full operator support for model servers." },
       { heading: "KVM", body: "Hardware-accelerated virtual machine management for isolated tenant environments and dev/test workload separation." },
       { heading: "Slurm", body: "HPC job scheduler for batch training and evaluation workloads across multi-node Gaudi and Xeon clusters." },
+      { heading: "Prometheus + Grafana + Loki", body: "Cluster-level metrics scraping and dashboards (Prometheus/Grafana) plus centralised log aggregation (Loki) for every node and workload in the stack." },
       { heading: "Auto-Scaling", body: "Horizontal pod autoscaler driven by inference queue depth and TTFT SLO targets, with predictive scale-up based on traffic patterns." },
     ],
   },
@@ -224,9 +241,6 @@ export const sidePanels: ClickableItem[] = [
     id: "observability-telemetry",
     title: "Observability & telemetry",
     subtitle: "+ Langfuse",
-    icons: [
-      { src: "/pydantic-logfire.jpg", alt: "Pydantic Logfire" },
-    ],
     description:
       "Cross-cutting monitoring, tracing, and continual performance analysis spanning every layer of the stack.",
     details: [

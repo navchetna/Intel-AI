@@ -1,32 +1,42 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { GripVertical } from "lucide-react";
 import { models, CATEGORY_ORDER, type Category, type Model } from "./data";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useTheme } from "@/contexts/ThemeContext";
+import { CATEGORY_STYLE as DARK_CAT, badgeTextColor } from "./category-style";
+import { useRegisterExport } from "@/contexts/ExportContext";
+import { exportModelCatalogToExcel } from "./export";
 
-// ── dark-theme category palette ───────────────────────────────────────────────
+// ── VRAM data types ───────────────────────────────────────────────────────────
 
-const DARK_CAT: Record<Category, { accent: string; row: string; rowAlt: string; badge: string; badgeText: string }> = {
-  "OCR & Document":         { accent: "#22d3ee", row: "rgba(34,211,238,0.04)",  rowAlt: "rgba(34,211,238,0.07)",  badge: "rgba(34,211,238,0.15)",  badgeText: "#67e8f9" },
-  "Vision & Multimodal":    { accent: "#a78bfa", row: "rgba(167,139,250,0.04)", rowAlt: "rgba(167,139,250,0.07)", badge: "rgba(167,139,250,0.15)", badgeText: "#c4b5fd" },
-  "Speech & Audio":         { accent: "#34d399", row: "rgba(52,211,153,0.04)",  rowAlt: "rgba(52,211,153,0.07)",  badge: "rgba(52,211,153,0.15)",  badgeText: "#6ee7b7" },
-  "Translation":            { accent: "#fbbf24", row: "rgba(251,191,36,0.04)",  rowAlt: "rgba(251,191,36,0.07)",  badge: "rgba(251,191,36,0.15)",  badgeText: "#fcd34d" },
-  "Embeddings & Retrieval": { accent: "#60a5fa", row: "rgba(96,165,250,0.04)",  rowAlt: "rgba(96,165,250,0.07)",  badge: "rgba(96,165,250,0.15)",  badgeText: "#93c5fd" },
-  "Safety & Guardrails":    { accent: "#f87171", row: "rgba(248,113,113,0.04)", rowAlt: "rgba(248,113,113,0.07)", badge: "rgba(248,113,113,0.15)", badgeText: "#fca5a5" },
-  "LLM":                    { accent: "#818cf8", row: "rgba(129,140,248,0.04)", rowAlt: "rgba(129,140,248,0.07)", badge: "rgba(129,140,248,0.15)", badgeText: "#a5b4fc" },
-  "Code & Agents":          { accent: "#fb923c", row: "rgba(251,146,60,0.04)",  rowAlt: "rgba(251,146,60,0.07)",  badge: "rgba(251,146,60,0.15)",  badgeText: "#fdba74" },
-};
+interface VramData {
+  model: string;
+  category: string;
+  kvCacheType: string;
+  totalLayers: number;
+  denseSelfattnLayers: number;
+  windowLayers: number;
+  windowSize: number;
+  kvHeads: number;
+  headDim: number;
+  imageTokens: number;
+  weightVramGiB: number;
+  kvBytesPerTokPerLayer: number;
+  cachedTokenLayersPerSeq: number;
+  kvPerSeqMiB: number;
+  kvTotalAtConcurrencyGiB: number;
+  totalVramGiB: number;
+  kvFormula: string;
+  prov: string;
+  notes: string;
+  smallestSingleCard: { formula?: string; result?: string } | string | null;
+}
+
+type CatStyle = (typeof DARK_CAT)[Category];
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-const SORT_OPTIONS = [
-  { value: "name",     label: "Name" },
-  { value: "year",     label: "Year" },
-  { value: "params",   label: "Params" },
-  { value: "category", label: "Category" },
-] as const;
-type SortKey = typeof SORT_OPTIONS[number]["value"];
 
 const GROUP_OPTIONS = [
   { value: "none",     label: "No grouping" },
@@ -38,28 +48,127 @@ type GroupKey = typeof GROUP_OPTIONS[number]["value"];
 
 const EMPTY_SELECTION: Set<string> = new Set();
 
-// ── column visibility ─────────────────────────────────────────────────────────
-// The table is dense (12–13 columns); let users hide the ones they don't need
-// instead of every column fighting for space via truncate+tooltip.
+// ── columns ────────────────────────────────────────────────────────────────────
+// The table is dense (12–13 columns). Every column (besides the pinned Model
+// identity column) is independently sortable, reorderable via drag-and-drop on
+// the header, and can be shown/hidden via the Columns picker — including the
+// columns that appear only in Detailed view.
 
-const COLUMN_OPTIONS = [
-  { key: "size",        label: "Size" },
-  { key: "vram",         label: "VRAM" },
-  { key: "cpu",          label: "CPU support" },
-  { key: "commercial",   label: "Commercial" },
-  { key: "maintained",   label: "Actively maintained" },
-  { key: "finetuning",   label: "Fine-tunable" },
-  { key: "origin",       label: "Origin" },
-] as const;
-type ColumnKey = typeof COLUMN_OPTIONS[number]["key"];
-type ColumnVisibility = Record<ColumnKey, boolean>;
-const ALL_COLUMNS_VISIBLE: ColumnVisibility = { size: true, vram: true, cpu: true, commercial: true, maintained: true, finetuning: true, origin: true };
+type ColKey =
+  | "category" | "year" | "params" | "vram" | "origin"
+  | "layers" | "kvHeads" | "headDim" | "imgTokens" | "weightVram" | "kvSeq" | "kvTotal" | "totalVram";
 
-function ColumnToggle({ visible, onChange }: { visible: ColumnVisibility; onChange: (v: ColumnVisibility) => void }) {
+interface ColumnDef {
+  key: ColKey;
+  label: string;
+  width: string;
+  align: "left" | "center";
+  detail?: boolean; // only rendered while Detailed view is on
+  sortValue: (model: Model, vdata: VramData | undefined) => number | string;
+  render: (model: Model, vdata: VramData | undefined, cat: CatStyle, isDark: boolean) => React.ReactNode;
+}
+
+const COLUMN_DEFS: ColumnDef[] = [
+  {
+    key: "category", label: "Category", width: "w-36", align: "left",
+    sortValue: m => CATEGORY_ORDER.indexOf(m.category),
+    render: (m, _v, cat, isDark) => (
+      <span
+        className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none truncate max-w-full"
+        style={{ background: cat.badge, color: badgeTextColor(isDark, cat.badgeText) }}
+      >
+        {m.category}
+      </span>
+    ),
+  },
+  {
+    key: "year", label: "Year", width: "w-24", align: "left",
+    sortValue: m => m.year,
+    render: m => <span className="text-white/50 whitespace-nowrap text-xs font-mono">{m.yearLabel}</span>,
+  },
+  {
+    key: "params", label: "Params", width: "w-28", align: "left",
+    sortValue: m => paramToNumber(m.params),
+    render: (m, _v, cat) => (
+      <span className="font-mono text-xs font-semibold truncate block" style={{ color: cat.accent }} title={m.params}>{m.params}</span>
+    ),
+  },
+  {
+    key: "vram", label: "VRAM", width: "w-28", align: "left",
+    sortValue: (m, v) => v?.totalVramGiB ?? paramToNumber(m.vram),
+    render: (m, v) => {
+      const vramDisplay = v?.totalVramGiB ? `${v.totalVramGiB.toFixed(1)} GiB` : m.vram;
+      return <span className="text-white/50 text-xs truncate block font-semibold" title={vramDisplay}>{vramDisplay}</span>;
+    },
+  },
+  {
+    key: "origin", label: "Origin", width: "w-auto", align: "left",
+    sortValue: m => m.origin,
+    render: m => <span className="text-white/40 text-xs">{m.origin}</span>,
+  },
+  {
+    key: "layers", label: "Layers", width: "w-20", align: "center", detail: true,
+    sortValue: (_m, v) => v?.totalLayers ?? -1,
+    render: (_m, v) => <span className="text-white/50 text-xs">{v?.totalLayers ?? "—"}</span>,
+  },
+  {
+    key: "kvHeads", label: "KV Heads", width: "w-20", align: "center", detail: true,
+    sortValue: (_m, v) => v?.kvHeads ?? -1,
+    render: (_m, v) => <span className="text-white/50 text-xs">{v?.kvHeads ?? "—"}</span>,
+  },
+  {
+    key: "headDim", label: "Head Dim", width: "w-20", align: "center", detail: true,
+    sortValue: (_m, v) => v?.headDim ?? -1,
+    render: (_m, v) => <span className="text-white/50 text-xs">{v?.headDim ?? "—"}</span>,
+  },
+  {
+    key: "imgTokens", label: "Img Tokens", width: "w-24", align: "center", detail: true,
+    sortValue: (_m, v) => v?.imageTokens ?? -1,
+    render: (_m, v) => <span className="text-white/50 text-xs">{v?.imageTokens ?? "—"}</span>,
+  },
+  {
+    key: "weightVram", label: "Weight VRAM", width: "w-28", align: "center", detail: true,
+    sortValue: (_m, v) => v?.weightVramGiB ?? -1,
+    render: (_m, v) => <span className="text-white/50 text-xs font-semibold">{v?.weightVramGiB ? `${v.weightVramGiB.toFixed(1)} GiB` : "—"}</span>,
+  },
+  {
+    key: "kvSeq", label: "KV/seq (MiB)", width: "w-32", align: "center", detail: true,
+    sortValue: (_m, v) => v?.kvPerSeqMiB ?? -1,
+    render: (_m, v) => <span className="text-white/50 text-xs">{v?.kvPerSeqMiB ? `${v.kvPerSeqMiB.toFixed(1)} MiB` : "—"}</span>,
+  },
+  {
+    key: "kvTotal", label: "KV Total (GiB)", width: "w-32", align: "center", detail: true,
+    sortValue: (_m, v) => v?.kvTotalAtConcurrencyGiB ?? -1,
+    render: (_m, v) => <span className="text-white/50 text-xs">{v?.kvTotalAtConcurrencyGiB ? `${v.kvTotalAtConcurrencyGiB.toFixed(2)} GiB` : "—"}</span>,
+  },
+  {
+    key: "totalVram", label: "Total VRAM", width: "w-32", align: "center", detail: true,
+    sortValue: (_m, v) => v?.totalVramGiB ?? -1,
+    render: (_m, v) => <span className="text-white/50 text-xs font-bold" style={{ color: "#22d3ee" }}>{v?.totalVramGiB ? `${v.totalVramGiB.toFixed(2)} GiB` : "—"}</span>,
+  },
+];
+
+const COLUMN_DEF_MAP: Record<ColKey, ColumnDef> = Object.fromEntries(COLUMN_DEFS.map(c => [c.key, c])) as Record<ColKey, ColumnDef>;
+
+const DEFAULT_COLUMN_ORDER: ColKey[] = COLUMN_DEFS.map(c => c.key);
+const DEFAULT_VISIBLE: Record<ColKey, boolean> = Object.fromEntries(COLUMN_DEFS.map(c => [c.key, true])) as Record<ColKey, boolean>;
+
+type SortKey = "name" | ColKey;
+
+function ColumnToggle({
+  columnOrder, visible, detailedView, onChangeVisible,
+}: {
+  columnOrder: ColKey[];
+  visible: Record<ColKey, boolean>;
+  detailedView: boolean;
+  onChangeVisible: (v: Record<ColKey, boolean>) => void;
+}) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const ref = useDismiss<HTMLDivElement>(open, () => { setOpen(false); triggerRef.current?.focus(); });
-  const hiddenCount = COLUMN_OPTIONS.filter(c => !visible[c.key]).length;
+
+  const applicable = columnOrder.filter(k => detailedView || !COLUMN_DEF_MAP[k].detail);
+  const hiddenCount = applicable.filter(k => !visible[k]).length;
 
   return (
     <div className="relative" ref={ref}>
@@ -71,31 +180,38 @@ function ColumnToggle({ visible, onChange }: { visible: ColumnVisibility; onChan
         className="py-2 px-4 text-sm rounded-lg text-white/40 hover:text-white/70 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
         style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
       >
-        Columns{hiddenCount > 0 ? ` (${COLUMN_OPTIONS.length - hiddenCount}/${COLUMN_OPTIONS.length})` : ""}
+        Columns{hiddenCount > 0 ? ` (${applicable.length - hiddenCount}/${applicable.length})` : ""}
       </button>
       {open && (
         <div
-          className="absolute right-0 top-full mt-2 w-56 rounded-lg border py-2 z-20"
+          className="absolute right-0 top-full mt-2 w-60 rounded-lg border py-2 z-20 max-h-96 overflow-y-auto"
           style={{ background: "var(--dm-card-bg)", borderColor: "var(--dm-card-border)", boxShadow: "var(--dm-card-depth)" }}
         >
           <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-muted)" }}>
             Visible columns
           </p>
-          {COLUMN_OPTIONS.map(({ key, label }) => (
-            <label
-              key={key}
-              className="nav-menu-item flex items-center gap-2.5 px-3 py-1.5 text-sm cursor-pointer"
-              style={{ color: "var(--dm-txt-secondary)" }}
-            >
-              <input
-                type="checkbox"
-                checked={visible[key]}
-                onChange={() => onChange({ ...visible, [key]: !visible[key] })}
-                className="w-3.5 h-3.5 cursor-pointer accent-[#22d3ee]"
-              />
-              {label}
-            </label>
-          ))}
+          {applicable.map(key => {
+            const def = COLUMN_DEF_MAP[key];
+            return (
+              <label
+                key={key}
+                className="nav-menu-item flex items-center gap-2.5 px-3 py-1.5 text-sm cursor-pointer"
+                style={{ color: "var(--dm-txt-secondary)" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={visible[key]}
+                  onChange={() => onChangeVisible({ ...visible, [key]: !visible[key] })}
+                  className="w-3.5 h-3.5 cursor-pointer accent-[#22d3ee]"
+                />
+                {def.label}
+                {def.detail && <span className="text-[9px] uppercase tracking-wide" style={{ color: "var(--dm-txt-faint)" }}>detail</span>}
+              </label>
+            );
+          })}
+          <p className="px-3 pt-2 mt-1 text-[10px] leading-snug" style={{ color: "var(--dm-txt-faint)", borderTop: "1px solid var(--dm-border-a)" }}>
+            Drag a column header in the table to reorder it.
+          </p>
         </div>
       )}
     </div>
@@ -115,27 +231,14 @@ function paramToNumber(p: string): number {
 
 // ── ui primitives ─────────────────────────────────────────────────────────────
 
-function BoolIcon({ val }: { val: boolean }) {
-  return val
-    ? <span className="text-success font-bold text-sm select-none">✓</span>
-    : <span className="text-white/20 text-sm select-none">—</span>;
-}
-
 function selectStyle(isDark: boolean): React.CSSProperties {
   return isDark
     ? { background: "#0e1d38", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.85)", colorScheme: "dark" }
     : { background: "#e2e8f0", border: "1px solid rgba(15,23,42,0.15)", color: "#1e293b", colorScheme: "light" };
 }
 
-/** Category-accent badge text needs to stay legible against its low-opacity accent
- *  background: pale accent-on-pale-accent (fine on the dark canvas) collapses to
- *  near-invisible in light mode, so light mode always uses a dark neutral instead. */
-function badgeTextColor(isDark: boolean, darkColor: string): string {
-  return isDark ? darkColor : "#1e293b";
-}
-
-function SortableTh<K extends string>({ label, k, width, sortKey, sortDir, onSort }: {
-  label: string; k: K; width: string; sortKey: K; sortDir: "asc" | "desc"; onSort: (k: K) => void;
+function SortableTh({ label, k, width, sortKey, sortDir, onSort }: {
+  label: string; k: SortKey; width: string; sortKey: SortKey; sortDir: "asc" | "desc"; onSort: (k: SortKey) => void;
 }) {
   const active = sortKey === k;
   return (
@@ -152,6 +255,45 @@ function SortableTh<K extends string>({ label, k, width, sortKey, sortDir, onSor
         {active
           ? <span className="ml-1" style={{ color: "#22d3ee" }}>{sortDir === "asc" ? "↑" : "↓"}</span>
           : <span className="text-white/20 ml-1">↕</span>}
+      </button>
+    </th>
+  );
+}
+
+/** A sortable header that also supports drag-and-drop reordering of the column. */
+function DraggableTh({ col, sortKey, sortDir, onSort, draggedKey, onDragStart, onDragOver, onDrop, onDragEnd }: {
+  col: ColumnDef;
+  sortKey: SortKey; sortDir: "asc" | "desc"; onSort: (k: SortKey) => void;
+  draggedKey: ColKey | null;
+  onDragStart: (k: ColKey) => void;
+  onDragOver: (k: ColKey) => void;
+  onDrop: (k: ColKey) => void;
+  onDragEnd: () => void;
+}) {
+  const active = sortKey === col.key;
+  const alignCls = col.align === "center" ? "text-center" : "text-left";
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+      draggable
+      onDragStart={() => onDragStart(col.key)}
+      onDragOver={e => { e.preventDefault(); onDragOver(col.key); }}
+      onDrop={e => { e.preventDefault(); onDrop(col.key); }}
+      onDragEnd={onDragEnd}
+      className={`${col.width} px-4 py-3 ${alignCls} font-semibold text-white/50 text-xs uppercase tracking-wider cursor-grab active:cursor-grabbing transition-opacity`}
+      style={{ opacity: draggedKey === col.key ? 0.35 : 1 }}
+      title={`Drag to reorder · click to sort by ${col.label}`}
+    >
+      <button
+        type="button" onClick={() => onSort(col.key)}
+        className={`flex items-center gap-1 select-none focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40 rounded ${alignCls === "text-center" ? "mx-auto" : ""}`}
+      >
+        <GripVertical className="w-3 h-3 text-white/15 flex-shrink-0" aria-hidden />
+        {col.label}
+        {active
+          ? <span style={{ color: "#22d3ee" }}>{sortDir === "asc" ? "↑" : "↓"}</span>
+          : <span className="text-white/20">↕</span>}
       </button>
     </th>
   );
@@ -180,7 +322,13 @@ function DarkSelect({ label, value, onChange, children }: {
 
 // ── expanded detail panel ─────────────────────────────────────────────────────
 
-function ExpandedRow({ model, colSpan, isDark }: { model: Model; colSpan: number; isDark: boolean }) {
+function ExpandedRow({ model, colSpan, isDark, vramData, detailedView }: {
+  model: Model;
+  colSpan: number;
+  isDark: boolean;
+  vramData?: VramData;
+  detailedView: boolean;
+}) {
   const c = DARK_CAT[model.category];
   return (
     <tr>
@@ -224,6 +372,42 @@ function ExpandedRow({ model, colSpan, isDark }: { model: Model; colSpan: number
               </div>
             </div>
           </div>
+
+          {/* Detailed VRAM Info Section */}
+          {detailedView && vramData && (
+            <div className="mt-5 pt-5" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25 mb-3">KV Cache & VRAM Details</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 text-xs">
+                <div>
+                  <p className="text-white/40 mb-0.5">KV Cache Type</p>
+                  <p className="text-white/70 font-medium">{vramData.kvCacheType}</p>
+                </div>
+                <div>
+                  <p className="text-white/40 mb-0.5">Dense / Self-attn Layers</p>
+                  <p className="text-white/70 font-medium">{vramData.denseSelfattnLayers}</p>
+                </div>
+                <div>
+                  <p className="text-white/40 mb-0.5">Window Layers</p>
+                  <p className="text-white/70 font-medium">{vramData.windowLayers} {vramData.windowSize > 0 ? `(size: ${vramData.windowSize})` : ""}</p>
+                </div>
+                <div>
+                  <p className="text-white/40 mb-0.5">KV Bytes/tok/layer</p>
+                  <p className="text-white/70 font-medium">{vramData.kvBytesPerTokPerLayer.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-white/40 mb-0.5">Cached Token-layers/seq</p>
+                  <p className="text-white/70 font-medium">{vramData.cachedTokenLayersPerSeq.toLocaleString()}</p>
+                </div>
+                {vramData.notes && (
+                  <div className="col-span-2 md:col-span-3">
+                    <p className="text-white/40 mb-0.5">Notes</p>
+                    <p className="text-white/60 text-xs italic leading-relaxed">{vramData.notes}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="mt-4 pt-3 flex items-center gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <a
               href={`https://huggingface.co/${model.hfId}`}
@@ -292,7 +476,40 @@ export function ModelsView({
   const [sortDir, setSortDir]               = useState<"asc" | "desc">("asc");
   const [groupBy, setGroupBy]               = useState<GroupKey>("category");
   const [expandedId, setExpandedId]         = useState<string | null>(null);
-  const [visibleCols, setVisibleCols]       = useState<ColumnVisibility>(ALL_COLUMNS_VISIBLE);
+  const [columnOrder, setColumnOrder]       = useState<ColKey[]>(DEFAULT_COLUMN_ORDER);
+  const [visibleCols, setVisibleCols]       = useState<Record<ColKey, boolean>>(DEFAULT_VISIBLE);
+  const [draggedKey, setDraggedKey]         = useState<ColKey | null>(null);
+  const [detailedView, setDetailedView]     = useState(false);
+  const [vramData, setVramData]             = useState<VramData[]>([]);
+
+  // Load VRAM data
+  useEffect(() => {
+    fetch("/vram_data.json")
+      .then(res => res.json())
+      .then(data => setVramData(data))
+      .catch(err => console.error("Failed to load VRAM data:", err));
+  }, []);
+
+  // Helper to find VRAM data for a model
+  const getVramDataForModel = (model: Model): VramData | undefined => {
+    // Try exact match first
+    let match = vramData.find(v => v.model === model.name);
+    if (match) return match;
+
+    // Try case-insensitive match
+    match = vramData.find(v => v.model.toLowerCase() === model.name.toLowerCase());
+    if (match) return match;
+
+    // Try matching by HF ID (extract model name from HF ID)
+    const hfModelName = model.hfId.split("/").pop() || "";
+    match = vramData.find(v => v.model.toLowerCase().includes(hfModelName.toLowerCase()));
+    return match;
+  };
+
+  // Register Excel export handler
+  useRegisterExport(async () => {
+    await exportModelCatalogToExcel(models);
+  }, "Export Model Catalog to Excel");
 
   const origins = useMemo(() => {
     const raw = models.map(m => m.origin.split("(")[0].trim().split("—")[0].trim()).filter(Boolean);
@@ -314,15 +531,23 @@ export function ModelsView({
   }, [search, categoryFilter, originFilter, cpuFilter, commercialFilter]);
 
   const sorted = useMemo(() => {
+    const colDef = sortKey === "name" ? null : COLUMN_DEF_MAP[sortKey];
     return [...filtered].sort((a, b) => {
-      let cmp = 0;
-      if (sortKey === "name")     cmp = a.name.localeCompare(b.name);
-      if (sortKey === "year")     cmp = a.year - b.year;
-      if (sortKey === "params")   cmp = paramToNumber(a.params) - paramToNumber(b.params);
-      if (sortKey === "category") cmp = CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category);
+      let av: number | string;
+      let bv: number | string;
+      if (!colDef) {
+        av = a.name; bv = b.name;
+      } else {
+        av = colDef.sortValue(a, getVramDataForModel(a));
+        bv = colDef.sortValue(b, getVramDataForModel(b));
+      }
+      const cmp = typeof av === "string" && typeof bv === "string"
+        ? av.localeCompare(bv)
+        : (av as number) - (bv as number);
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [filtered, sortKey, sortDir]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sortKey, sortDir, vramData]);
 
   function groupModels(): { label: string; rows: Model[] }[] {
     if (groupBy === "none") return [{ label: "", rows: sorted }];
@@ -348,8 +573,25 @@ export function ModelsView({
     else { setSortKey(key); setSortDir("asc"); }
   }
 
-  const visibleColCount = COLUMN_OPTIONS.filter(c => visibleCols[c.key]).length;
-  const COLS = (selectionMode ? 1 : 0) + 1 /* chevron */ + 4 /* model, category, year, params */ + visibleColCount;
+  function handleColumnDrop(targetKey: ColKey) {
+    setColumnOrder(prev => {
+      if (!draggedKey || draggedKey === targetKey) return prev;
+      const next = [...prev];
+      const from = next.indexOf(draggedKey);
+      const to = next.indexOf(targetKey);
+      if (from === -1 || to === -1) return prev;
+      next.splice(from, 1);
+      next.splice(to, 0, draggedKey);
+      return next;
+    });
+    setDraggedKey(null);
+  }
+
+  const displayedColumns = columnOrder
+    .filter(k => visibleCols[k] && (detailedView || !COLUMN_DEF_MAP[k].detail))
+    .map(k => COLUMN_DEF_MAP[k]);
+
+  const COLS = (selectionMode ? 1 : 0) + 1 /* chevron */ + 1 /* model */ + displayedColumns.length;
 
   const inputStyle = {
     background: "var(--dm-input-bg)",
@@ -431,7 +673,25 @@ export function ModelsView({
             </DarkSelect>
 
             {/* Columns */}
-            <ColumnToggle visible={visibleCols} onChange={setVisibleCols} />
+            <ColumnToggle columnOrder={columnOrder} visible={visibleCols} detailedView={detailedView} onChangeVisible={setVisibleCols} />
+
+            {/* Detailed View Toggle */}
+            <label className="flex items-center gap-2.5 cursor-pointer select-none py-2 px-4 rounded-lg transition-colors"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <span className="text-sm text-white/40">Detailed</span>
+              <span
+                role="switch"
+                aria-checked={detailedView}
+                onClick={() => setDetailedView(v => !v)}
+                className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+                style={{ background: detailedView ? "#22d3ee" : "rgba(255,255,255,0.15)" }}
+              >
+                <span
+                  className="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                  style={{ transform: detailedView ? "translateX(18px)" : "translateX(3px)" }}
+                />
+              </span>
+            </label>
 
             {/* Reset */}
             <button
@@ -439,6 +699,7 @@ export function ModelsView({
                 setSearch(""); setCategoryFilter("All"); setOriginFilter("All");
                 setCpuFilter(null); setCommercialFilter(null);
                 setSortKey("category"); setSortDir("asc"); setGroupBy("category");
+                setColumnOrder(DEFAULT_COLUMN_ORDER); setVisibleCols(DEFAULT_VISIBLE);
               }}
               className="py-2 px-4 text-sm rounded-lg text-white/40 hover:text-white/70 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
@@ -484,17 +745,21 @@ export function ModelsView({
                 <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
                   {selectionMode && <th className="w-10 px-3 py-3" />}
                   <th className="w-10 px-3 py-3" />
-                  <SortableTh<SortKey> label="Model" k="name" width="w-44" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                  <SortableTh<SortKey> label="Category" k="category" width="w-36" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                  <SortableTh<SortKey> label="Year" k="year" width="w-24" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                  <SortableTh<SortKey> label="Params" k="params" width="w-28" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                  {visibleCols.size && <th className="w-28 px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Size</th>}
-                  {visibleCols.vram && <th className="w-28 px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">VRAM</th>}
-                  {visibleCols.cpu && <th className="w-12 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">CPU</th>}
-                  {visibleCols.commercial && <th className="w-20 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Com.</th>}
-                  {visibleCols.maintained && <th className="w-14 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Act.</th>}
-                  {visibleCols.finetuning && <th className="w-16 px-2 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Fine.</th>}
-                  {visibleCols.origin && <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Origin</th>}
+                  <SortableTh label="Model" k="name" width="w-44" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  {displayedColumns.map(col => (
+                    <DraggableTh
+                      key={col.key}
+                      col={col}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                      draggedKey={draggedKey}
+                      onDragStart={setDraggedKey}
+                      onDragOver={() => {}}
+                      onDrop={handleColumnDrop}
+                      onDragEnd={() => setDraggedKey(null)}
+                    />
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -514,6 +779,7 @@ export function ModelsView({
                       const col = DARK_CAT[model.category];
                       const isExpanded = expandedId === model.hfId;
                       const bg = idx % 2 === 0 ? col.row : col.rowAlt;
+                      const vdata = getVramDataForModel(model);
                       return (
                         <>
                           <tr
@@ -564,46 +830,22 @@ export function ModelsView({
                               <div className="font-semibold text-white/90 text-sm leading-tight truncate">{model.name}</div>
                               <div className="text-[11px] text-white/30 mt-0.5 font-mono truncate">{model.hfId}</div>
                             </td>
-                            {/* category */}
-                            <td className="px-4 py-3 overflow-hidden">
-                              <span
-                                className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none truncate max-w-full"
-                                style={{ background: col.badge, color: badgeTextColor(isDark, col.badgeText) }}
-                              >
-                                {model.category}
-                              </span>
-                            </td>
-                            {/* year */}
-                            <td className="px-4 py-3 text-white/50 whitespace-nowrap text-xs font-mono">{model.yearLabel}</td>
-                            {/* params */}
-                            <td className="px-4 py-3 overflow-hidden">
-                              <span className="font-mono text-xs font-semibold truncate block" style={{ color: col.accent }} title={model.params}>{model.params}</span>
-                            </td>
-                            {/* size */}
-                            {visibleCols.size && (
-                              <td className="px-4 py-3 overflow-hidden">
-                                <span className="text-white/50 text-xs truncate block" title={model.modelSize}>{model.modelSize}</span>
+                            {/* dynamic columns */}
+                            {displayedColumns.map(colDef => (
+                              <td key={colDef.key} className={`py-3 overflow-hidden ${colDef.align === "center" ? "px-2 text-center" : "px-4"}`}>
+                                {colDef.render(model, vdata, col, isDark)}
                               </td>
-                            )}
-                            {/* vram */}
-                            {visibleCols.vram && (
-                              <td className="px-4 py-3 overflow-hidden">
-                                <span className="text-white/50 text-xs truncate block" title={model.vram}>{model.vram}</span>
-                              </td>
-                            )}
-                            {/* cpu */}
-                            {visibleCols.cpu && <td className="px-2 py-3 text-center"><BoolIcon val={model.cpuSupport} /></td>}
-                            {/* commercial */}
-                            {visibleCols.commercial && <td className="px-2 py-3 text-center"><BoolIcon val={model.commercial} /></td>}
-                            {/* maintained */}
-                            {visibleCols.maintained && <td className="px-2 py-3 text-center"><BoolIcon val={model.maintained} /></td>}
-                            {/* finetune */}
-                            {visibleCols.finetuning && <td className="px-2 py-3 text-center"><BoolIcon val={model.finetuning} /></td>}
-                            {/* origin */}
-                            {visibleCols.origin && <td className="px-4 py-3 text-white/40 text-xs">{model.origin}</td>}
+                            ))}
                           </tr>
                           {isExpanded && (
-                            <ExpandedRow key={`${model.hfId}-exp`} model={model} colSpan={COLS} isDark={isDark} />
+                            <ExpandedRow
+                              key={`${model.hfId}-exp`}
+                              model={model}
+                              colSpan={COLS}
+                              isDark={isDark}
+                              vramData={vdata}
+                              detailedView={detailedView}
+                            />
                           )}
                         </>
                       );

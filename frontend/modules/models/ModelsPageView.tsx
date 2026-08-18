@@ -1,20 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ModelsView } from "./ModelsView";
+import { useCallback, useMemo, useState } from "react";
+import { ModelsView } from "./ModelsView_reimagined";
 import { RequestVolumeSizingView } from "./RequestVolumeSizingView";
 import { ModelBenchmarksView } from "./ModelBenchmarksView";
 import { ModelDefaultsView } from "./ModelDefaultsView";
+import { KvOffloadView } from "./KvOffloadView";
 import { models, type Model } from "./data";
+import { exportModelCatalogToExcel } from "./export";
 import { useProject } from "@/contexts/ProjectContext";
+import { useRegisterExport } from "@/contexts/ExportContext";
 
-type Tab = "catalog" | "sizing" | "benchmarks" | "defaults";
+type Tab = "catalog" | "sizing" | "benchmarks" | "defaults" | "kv-cache-offload";
 
 /** Owns cross-tab UI state (active tab) for the Model Catalog / Sizing pair. Selections live in the current Project. */
 export function ModelsPageView() {
   const { data, updateModels } = useProject();
   const [activeTab, setActiveTab]         = useState<Tab>("catalog");
   const [selectionMode, setSelectionMode] = useState(false);
+
+  const exportHandler = useCallback(() => exportModelCatalogToExcel(models), []);
+  useRegisterExport(exportHandler, "Export Model Catalog");
 
   const { selectedModels: selectedModelIds } = data.models;
   const selected = useMemo(() => new Set(selectedModelIds), [selectedModelIds]);
@@ -60,6 +66,7 @@ export function ModelsPageView() {
             { key: "sizing" as const, label: `Sizing${selected.size ? ` (${selected.size})` : ""}` },
             { key: "benchmarks" as const, label: "Benchmarks" },
             { key: "defaults" as const, label: "Defaults" },
+            { key: "kv-cache-offload" as const, label: "KV Cache Offload" },
           ].map(t => (
             <button
               key={t.key}
@@ -84,6 +91,7 @@ export function ModelsPageView() {
       )}
       {activeTab === "benchmarks" && <ModelBenchmarksView />}
       {activeTab === "defaults" && <ModelDefaultsView />}
+      {activeTab === "kv-cache-offload" && <KvOffloadView />}
     </main>
   );
 }

@@ -12,6 +12,8 @@ import {
   calcPydanticAI, type PydanticAIInputs,
   calcLogfire, type LogfireInputs,
   calcClickHouse, type ClickHouseInputs,
+  calcLiteLLM, type LiteLLMInputs,
+  calcObservabilityStack, type ObservabilityStackInputs,
   type AnyInputs, type SizingTool,
 } from "./sizing-calcs";
 
@@ -48,6 +50,8 @@ const TOOL_META: Record<SizingTool, { name: string; accent: string; accentRgb: s
   "pydantic-ai": { name: "Pydantic AI Agent Tier Sizing", accent: "#E92063", accentRgb: "233,32,99", logo: "/pydantic-ai.jpg", tagline: "Size the agent orchestration fleet (Xeon-class) with Little's Law concurrency" },
   logfire:  { name: "Pydantic Logfire Sizing", accent: "#8B5CF6", accentRgb: "139,92,246", logo: "/pydantic-logfire.jpg", tagline: "Size a self-hosted Logfire cluster — object storage, ingest/query pods, and Postgres metadata" },
   clickhouse: { name: "ClickHouse Cluster Sizing", accent: "#FFCC01", accentRgb: "255,204,1", logo: "/clickhouse.jpg", tagline: "Size a ClickHouse cluster for high-volume logs, traces, and metrics" },
+  litellm: { name: "LiteLLM Gateway Sizing", accent: "#14B8A6", accentRgb: "20,184,166", logo: "/litellm.svg", tagline: "Size the LLM gateway fleet — routing throughput, response caching, and token observability" },
+  observability: { name: "Observability Stack Sizing", accent: "#F97316", accentRgb: "249,115,22", logo: "/observability-stack.svg", tagline: "Size Prometheus, Grafana, and Loki for cluster metrics, dashboards, and log aggregation" },
 };
 
 // ── Shared input primitives ────────────────────────────────────────────────────
@@ -1147,6 +1151,224 @@ function ClickHouseForm({ accent, accentRgb, inputs, onChange }: {
   );
 }
 
+// ── LiteLLM Gateway form + results ─────────────────────────────────────────────
+
+function LiteLLMForm({ accentRgb, inputs, onChange }: {
+  accent: string; accentRgb: string; inputs: LiteLLMInputs; onChange: (i: LiteLLMInputs) => void;
+}) {
+  const inp = inputs;
+  const r = useMemo(() => calcLiteLLM(inp), [inp]);
+  const set = <K extends keyof LiteLLMInputs>(k: K, v: LiteLLMInputs[K]) => onChange({ ...inp, [k]: v });
+  const fmt = (n: number) => n < 10 ? n.toFixed(2) : n.toFixed(1);
+
+  return (
+    <AccentCtx.Provider value={accentRgb}>
+    <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
+      {/* Inputs */}
+      <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
+        <SectionTitle>Traffic &amp; concurrency</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Peak requests/sec" value={inp.peakRequestsPerSec} min={0} step={10} onChange={v => set("peakRequestsPerSec", v)} />
+          <NumField label="Avg request duration (ms)" value={inp.avgRequestDurationMs} min={1} step={100} onChange={v => set("avgRequestDurationMs", v)} note="TTFT + generation" />
+          <NumField label="Streaming fraction" value={inp.streamingFraction} min={0} step={0.1} onChange={v => set("streamingFraction", v)} note="0–1" />
+          <NumField label="Gateway CPU overhead (ms/req)" value={inp.routingCpuOverheadMsPerReq} min={0} step={1} onChange={v => set("routingCpuOverheadMsPerReq", v)} note="auth, routing, retries" />
+        </div>
+        <SectionTitle>Pod shape &amp; HA</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Max concurrent req/pod" value={inp.maxConcurrentRequestsPerPod} min={1} step={50} onChange={v => set("maxConcurrentRequestsPerPod", v)} />
+          <NumField label="vCPU/pod" value={inp.vcpuPerPod} min={1} step={1} onChange={v => set("vcpuPerPod", v)} />
+          <NumField label="RAM/pod (GB)" value={inp.ramPerPodGB} min={1} step={1} onChange={v => set("ramPerPodGB", v)} />
+          <NumField label="Target CPU utilization" value={inp.targetCpuUtilization} min={0.1} step={0.05} onChange={v => set("targetCpuUtilization", v)} note="0–1" />
+          <NumField label="HA min replicas" value={inp.haMinReplicas} min={1} step={1} onChange={v => set("haMinReplicas", v)} />
+        </div>
+        <SectionTitle>Response caching</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <BoolField label="Caching enabled" value={inp.cachingEnabled} onChange={v => set("cachingEnabled", v)} />
+          <NumField label="Cache hit ratio target" value={inp.cacheHitRatioTarget} min={0} step={0.05} onChange={v => set("cacheHitRatioTarget", v)} note="0–1" />
+          <NumField label="Cache entries target" value={inp.cacheEntriesTarget} min={0} step={10000} onChange={v => set("cacheEntriesTarget", v)} />
+          <NumField label="Avg cache entry (KB)" value={inp.avgCacheEntryKB} min={0.1} step={0.5} onChange={v => set("avgCacheEntryKB", v)} />
+        </div>
+        <SectionTitle>Token observability &amp; logging</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <BoolField label="Token observability enabled" value={inp.tokenObservabilityEnabled} onChange={v => set("tokenObservabilityEnabled", v)} />
+          <NumField label="Logged bytes/request" value={inp.loggedBytesPerRequest} min={0} step={50} onChange={v => set("loggedBytesPerRequest", v)} note="usage, cost, latency" />
+          <NumField label="Log retention (days)" value={inp.logRetentionDays} min={1} step={1} onChange={v => set("logRetentionDays", v)} />
+        </div>
+        <SectionTitle>Node template</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Ref node usable vCPU" value={inp.refNodeUsableVcpu} min={1} step={1} onChange={v => set("refNodeUsableVcpu", v)} />
+          <NumField label="Ref node usable RAM (GB)" value={inp.refNodeUsableRamGB} min={1} step={1} onChange={v => set("refNodeUsableRamGB", v)} />
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-4">Recommended fleet</p>
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <MetricCard label="Gateway pods" value={r.compute.recommendedPods} unit="pods" accent={accentRgb} />
+          <MetricCard label="Fleet vCPU" value={r.compute.recommendedFleetVcpu} unit="cores" accent={accentRgb} />
+          <MetricCard label="Fleet RAM" value={r.compute.recommendedFleetRamGB} unit="GB" accent={accentRgb} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <MetricCard label="Recommended nodes" value={r.cluster.recommendedNodes} unit="nodes" accent={accentRgb} />
+          <MetricCard label="Cache RAM" value={r.cache.recommendedCacheRAMGB} unit="GB" accent={accentRgb} />
+        </div>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Concurrency modeling</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Effective connection hold" value={fmt(r.concurrency.effectiveHoldSec)} unit="sec" />
+            <WorkingRow label="Peak concurrent requests" value={fmt(r.concurrency.peakConcurrentRequests)} />
+            <WorkingRow label="Provisioned concurrency (+30%)" value={fmt(r.concurrency.provisionedConcurrency)} />
+            <WorkingRow label="Cores by throughput" value={r.compute.coresByThroughput} />
+            <WorkingRow label="Pods by concurrency / throughput" value={`${r.compute.podsByConcurrency} / ${r.compute.podsByThroughput}`} />
+          </div>
+        </details>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Response cache sizing</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Raw cache RAM" value={fmt(r.cache.rawCacheRAMGB)} unit="GB" />
+            <WorkingRow label="Requests offloaded/sec" value={fmt(r.cache.requestsOffloadedPerSec)} />
+          </div>
+        </details>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Token observability &amp; logging</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Logged bytes/sec" value={fmt(r.observability.loggedBytesPerSec)} />
+            <WorkingRow label="Daily log volume" value={fmt(r.observability.dailyLogVolumeGB)} unit="GB" />
+            <WorkingRow label="Retained log volume" value={fmt(r.observability.retainedLogVolumeGB)} unit="GB" />
+          </div>
+        </details>
+
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-2">Cluster totals</p>
+        <div className="rounded-lg border border-white/[0.07] p-3 mb-4">
+          <ConfRow k="Total vCPU" v={r.cluster.totalVcpu} />
+          <ConfRow k="Total RAM" v={`${r.cluster.totalRamGB} GB`} />
+        </div>
+
+        <div className="rounded-lg border border-white/[0.07] p-3 text-[11px] text-white/35 leading-relaxed">
+          <strong className="text-white/50">Notes: </strong>
+          LiteLLM holds a connection open for the full generation while streaming, so concurrency (not raw RPS) is
+          the binding constraint at high `avgRequestDurationMs`. Response caching only helps for repeated/deterministic
+          prompts — set the hit ratio conservatively for agentic traffic.
+        </div>
+      </div>
+    </div>
+    </AccentCtx.Provider>
+  );
+}
+
+// ── Observability Stack (Prometheus + Grafana + Loki) form + results ──────────
+
+function ObservabilityStackForm({ accentRgb, inputs, onChange }: {
+  accent: string; accentRgb: string; inputs: ObservabilityStackInputs; onChange: (i: ObservabilityStackInputs) => void;
+}) {
+  const inp = inputs;
+  const r = useMemo(() => calcObservabilityStack(inp), [inp]);
+  const set = <K extends keyof ObservabilityStackInputs>(k: K, v: ObservabilityStackInputs[K]) => onChange({ ...inp, [k]: v });
+  const fmt = (n: number) => n < 10 ? n.toFixed(2) : n.toFixed(1);
+
+  return (
+    <AccentCtx.Provider value={accentRgb}>
+    <div className="flex flex-col lg:flex-row gap-0 flex-1 min-h-0">
+      {/* Inputs */}
+      <div className="lg:w-[340px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-white/[0.07]">
+        <SectionTitle>Metrics (Prometheus)</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Scrape targets" value={inp.scrapeTargets} min={1} step={10} onChange={v => set("scrapeTargets", v)} />
+          <NumField label="Active series/target" value={inp.activeSeriesPerTarget} min={1} step={50} onChange={v => set("activeSeriesPerTarget", v)} />
+          <NumField label="Scrape interval (sec)" value={inp.scrapeIntervalSec} min={1} step={1} onChange={v => set("scrapeIntervalSec", v)} />
+          <NumField label="Bytes/sample (compressed)" value={inp.bytesPerSamplePrometheus} min={0.1} step={0.1} onChange={v => set("bytesPerSamplePrometheus", v)} />
+          <NumField label="Metrics retention (days)" value={inp.metricsRetentionDays} min={1} step={1} onChange={v => set("metricsRetentionDays", v)} />
+        </div>
+        <SectionTitle>Logs (Loki)</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Log ingest (GB/day)" value={inp.logIngestGBPerDay} min={0} step={10} onChange={v => set("logIngestGBPerDay", v)} />
+          <NumField label="Compression ratio" value={inp.logCompressionRatio} min={1} step={1} onChange={v => set("logCompressionRatio", v)} note="x" />
+          <NumField label="Log retention (days)" value={inp.logRetentionDays} min={1} step={1} onChange={v => set("logRetentionDays", v)} />
+          <NumField label="Peak-to-avg ingest ratio" value={inp.peakToAvgLogIngestRatio} min={1} step={0.5} onChange={v => set("peakToAvgLogIngestRatio", v)} note="x" />
+          <NumField label="Ingest throughput/vCPU (MB/s)" value={inp.ingestThroughputPerVcpuMBs} min={1} step={1} onChange={v => set("ingestThroughputPerVcpuMBs", v)} />
+        </div>
+        <SectionTitle>Query &amp; Grafana</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="Peak dashboard QPS" value={inp.peakDashboardQueryQPS} min={0} step={1} onChange={v => set("peakDashboardQueryQPS", v)} />
+          <NumField label="Query QPS/vCPU" value={inp.queryQPSPerVcpu} min={1} step={1} onChange={v => set("queryQPSPerVcpu", v)} />
+          <NumField label="Concurrent Grafana users" value={inp.concurrentGrafanaUsers} min={0} step={5} onChange={v => set("concurrentGrafanaUsers", v)} />
+        </div>
+        <SectionTitle>Node template &amp; HA</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="HA min replicas" value={inp.haMinReplicas} min={1} step={1} onChange={v => set("haMinReplicas", v)} />
+          <NumField label="Ref node usable vCPU" value={inp.refNodeUsableVcpu} min={1} step={1} onChange={v => set("refNodeUsableVcpu", v)} />
+          <NumField label="Ref node usable RAM (GB)" value={inp.refNodeUsableRamGB} min={1} step={1} onChange={v => set("refNodeUsableRamGB", v)} />
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-4">Recommended cluster</p>
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <MetricCard label="Cluster nodes" value={r.cluster.recommendedNodes} unit="nodes" accent={accentRgb} />
+          <MetricCard label="Total vCPU" value={r.cluster.totalVcpu} unit="cores" accent={accentRgb} />
+          <MetricCard label="Total RAM" value={r.cluster.totalRamGB} unit="GB" accent={accentRgb} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <MetricCard label="Loki object storage" value={fmt(r.cluster.totalObjectStorageGB)} unit="GB" accent={accentRgb} />
+          <MetricCard label="Prometheus RAM" value={fmt(r.metrics.prometheusRAMRequiredGB)} unit="GB" accent={accentRgb} />
+        </div>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Prometheus sizing</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Total active series" value={r.metrics.totalActiveSeries.toLocaleString()} />
+            <WorkingRow label="Samples/sec" value={fmt(r.metrics.samplesPerSec)} />
+            <WorkingRow label="TSDB storage/day" value={fmt(r.metrics.tsdbStoragePerDayGB)} unit="GB" />
+            <WorkingRow label="TSDB retained storage" value={fmt(r.metrics.tsdbRetainedStorageGB)} unit="GB" />
+            <WorkingRow label="Prometheus vCPU" value={r.metrics.prometheusVcpu} />
+            <WorkingRow label="Recommended Prometheus replicas" value={r.metrics.recommendedPrometheusReplicas} />
+          </div>
+        </details>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Loki ingest &amp; storage</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Avg / peak ingest rate" value={`${fmt(r.logs.avgIngestRateMBs)} / ${fmt(r.logs.peakIngestRateMBs)}`} unit="MB/s" />
+            <WorkingRow label="Ingester vCPU" value={r.logs.ingesterVcpu} />
+            <WorkingRow label="Recommended ingester replicas" value={r.logs.recommendedIngesterReplicas} />
+            <WorkingRow label="Compressed/day" value={fmt(r.logs.compressedDailyGB)} unit="GB" />
+          </div>
+        </details>
+
+        <details className="mb-4">
+          <summary className="cursor-pointer text-[11px] font-semibold text-white/40 hover:text-white/60 transition-colors mb-2">Query &amp; Grafana tiers</summary>
+          <div className="rounded-lg border border-white/[0.07] p-3 mt-2">
+            <WorkingRow label="Query frontend vCPU" value={r.query.queryFrontendVcpu} />
+            <WorkingRow label="Recommended querier replicas" value={r.query.recommendedQuerierReplicas} />
+            <WorkingRow label="Grafana vCPU / RAM" value={`${r.query.grafanaVcpu} / ${fmt(r.query.grafanaRamGB)}`} unit="cores/GB" />
+            <WorkingRow label="Recommended Grafana replicas" value={r.query.recommendedGrafanaReplicas} />
+          </div>
+        </details>
+
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-2">Cluster totals</p>
+        <div className="rounded-lg border border-white/[0.07] p-3 mb-4">
+          <ConfRow k="Total vCPU" v={r.cluster.totalVcpu} />
+          <ConfRow k="Total RAM" v={`${r.cluster.totalRamGB} GB`} />
+          <ConfRow k="Loki object storage" v={`${fmt(r.cluster.totalObjectStorageGB)} GB`} />
+        </div>
+
+        <div className="rounded-lg border border-white/[0.07] p-3 text-[11px] text-white/35 leading-relaxed">
+          <strong className="text-white/50">Notes: </strong>
+          Prometheus RAM is dominated by active series cardinality, not sample rate — watch high-cardinality labels
+          (e.g. per-request IDs) before scaling scrape targets. Loki logs land in cheap object storage, so its
+          dominant cost is ingest/query compute, not retained capacity.
+        </div>
+      </div>
+    </div>
+    </AccentCtx.Provider>
+  );
+}
+
 // ── Modal wrapper ──────────────────────────────────────────────────────────────
 
 export function SizingSheet({ tool, inputs, onInputsChange, onClose }: Props) {
@@ -1209,6 +1431,8 @@ export function SizingSheet({ tool, inputs, onInputsChange, onClose }: Props) {
           {tool === "pydantic-ai" && <PydanticAIForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as PydanticAIInputs} onChange={onInputsChange} />}
           {tool === "logfire"     && <LogfireForm    accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as LogfireInputs}    onChange={onInputsChange} />}
           {tool === "clickhouse"  && <ClickHouseForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as ClickHouseInputs} onChange={onInputsChange} />}
+          {tool === "litellm"       && <LiteLLMForm            accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as LiteLLMInputs}            onChange={onInputsChange} />}
+          {tool === "observability" && <ObservabilityStackForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as ObservabilityStackInputs} onChange={onInputsChange} />}
         </div>
       </div>
     </div>
