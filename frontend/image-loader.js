@@ -15,8 +15,11 @@ function normalizePrefix(value) {
 
 const PREFIX = normalizePrefix(process.env.NEXT_PUBLIC_BASE_PATH);
 
-export default function intelImageLoader({ src }) {
+export default function intelImageLoader({ src, width }) {
   if (/^https?:\/\//.test(src)) return src;
   const path = src.startsWith("/") ? src : `/${src}`;
-  return `${PREFIX}${path}`;
+  // The static file server always returns the same asset regardless of this
+  // query param — it exists only so the URL varies by width, which is what
+  // Next's dev-mode loader check requires to recognize width support.
+  return `${PREFIX}${path}?w=${width}`;
 }
