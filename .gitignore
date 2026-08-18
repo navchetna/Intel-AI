@@ -23,6 +23,10 @@ next-env.d.ts
 .env.local
 *.local
 
+# DB dumps produced by backend/scripts/db_dump.sh — data artifacts, share out
+# of band (not via git); see backend/scripts/db_restore.sh to load one.
+*.dump
+
 # Editors / OS
 .DS_Store
 .idea/
