@@ -79,7 +79,7 @@ export function ModelsPageView() {
               onClick={() => setActiveTab(t.key)}
               className="px-4 py-2.5 text-sm font-semibold transition-colors -mb-px border-b-2"
               style={{
-                color: activeTab === t.key ? "#22d3ee" : "var(--dm-txt-faint)",
+                color: activeTab === t.key ? "#22d3ee" : "var(--dm-txt-muted)",
                 borderColor: activeTab === t.key ? "#22d3ee" : "transparent",
               }}
             >

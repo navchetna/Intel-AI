@@ -122,7 +122,7 @@ function SiliconGroup({
 export function IntelStackDiagram() {
   return (
     <div
-      className="rounded-2xl overflow-hidden shadow-md w-full"
+      className="intel-stack-diagram rounded-2xl overflow-hidden shadow-md w-full"
       style={{ background: "var(--diag-bg)", border: "1px solid var(--diag-border)" }}
     >
 
