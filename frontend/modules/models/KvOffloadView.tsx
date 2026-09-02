@@ -35,9 +35,9 @@ const inputStyle: React.CSSProperties = {
 function LeverField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-1">{label}</label>
+      <label className="block text-[10px] font-semibold uppercase tracking-widest text-[var(--dm-txt-faint)] mb-1">{label}</label>
       {children}
-      {hint && <p className="mt-1 text-[10px] text-white/25 max-w-[13rem] leading-snug">{hint}</p>}
+      {hint && <p className="mt-1 text-[10px] text-[var(--dm-txt-faintest)] max-w-[13rem] leading-snug">{hint}</p>}
     </div>
   );
 }
@@ -75,12 +75,12 @@ function VerdictBadge({ offloadWins, factor }: { offloadWins: boolean; factor: n
 function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <div
-      className="rounded-2xl border border-white/[0.07] overflow-hidden mb-6"
+      className="rounded-2xl border border-[var(--dm-border-a)] overflow-hidden mb-6"
       style={{ background: "var(--dm-table-bg)", boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}
     >
       <div className="px-5 pt-4 pb-3" style={{ borderBottom: "1px solid var(--dm-border-a)" }}>
-        <h2 className="text-sm font-bold text-white/90">{title}</h2>
-        {subtitle && <p className="mt-0.5 text-xs text-white/40 leading-relaxed">{subtitle}</p>}
+        <h2 className="text-sm font-bold text-[var(--dm-txt-primary)]">{title}</h2>
+        {subtitle && <p className="mt-0.5 text-xs text-[var(--dm-txt-muted)] leading-relaxed">{subtitle}</p>}
       </div>
       {children}
     </div>
@@ -92,42 +92,42 @@ function SectionCard({ title, subtitle, children }: { title: string; subtitle?: 
 function ReferencePanel() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-2xl border border-white/[0.07] overflow-hidden mb-6" style={{ background: "var(--dm-table-bg)" }}>
+    <div className="rounded-2xl border border-[var(--dm-border-a)] overflow-hidden mb-6" style={{ background: "var(--dm-table-bg)" }}>
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-5 py-3.5 text-left"
       >
-        <span className="text-sm font-bold text-white/90">Reference data & method</span>
-        <span className="text-xs text-white/30">{open ? "Hide ▲" : "Show ▼"}</span>
+        <span className="text-sm font-bold text-[var(--dm-txt-primary)]">Reference data & method</span>
+        <span className="text-xs text-[var(--dm-txt-faint)]">{open ? "Hide ▲" : "Show ▼"}</span>
       </button>
       {open && (
         <div className="px-5 pb-5 space-y-5" style={{ borderTop: "1px solid var(--dm-border-a)" }}>
           <div className="pt-4">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">Model architecture</h3>
+            <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--dm-txt-muted)] mb-2">Model architecture</h3>
             <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "var(--dm-border-a)" }}>
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr style={{ background: "var(--dm-table-head)" }}>
                     {["Model", "Active B", "Layers", "Dense", "Window", "Win size", "Q heads", "KV heads", "Head dim", "", "Note"].map(h => (
-                      <th key={h} className="px-2.5 py-2 text-left font-semibold text-white/40 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      <th key={h} className="px-2.5 py-2 text-left font-semibold text-[var(--dm-txt-muted)] uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {OFFLOAD_MODELS.map(m => (
                     <tr key={m.name} style={{ borderTop: "1px solid var(--dm-border-a)" }}>
-                      <td className="px-2.5 py-1.5 font-semibold text-white/70 whitespace-nowrap">{m.name}</td>
-                      <td className="px-2.5 py-1.5 text-white/50 font-mono">{m.activeParamsB}</td>
-                      <td className="px-2.5 py-1.5 text-white/50 font-mono">{m.layers}</td>
-                      <td className="px-2.5 py-1.5 text-white/50 font-mono">{m.denseLayers}</td>
-                      <td className="px-2.5 py-1.5 text-white/50 font-mono">{m.windowLayers}</td>
-                      <td className="px-2.5 py-1.5 text-white/50 font-mono">{m.windowLayers > 0 ? m.windowSize : "—"}</td>
-                      <td className="px-2.5 py-1.5 text-white/50 font-mono">{m.qHeads}</td>
-                      <td className="px-2.5 py-1.5 text-white/50 font-mono">{m.kvHeads}</td>
-                      <td className="px-2.5 py-1.5 text-white/50 font-mono">{m.headDim}</td>
+                      <td className="px-2.5 py-1.5 font-semibold text-[var(--dm-txt-secondary)] whitespace-nowrap">{m.name}</td>
+                      <td className="px-2.5 py-1.5 text-[var(--dm-txt-muted)] font-mono">{m.activeParamsB}</td>
+                      <td className="px-2.5 py-1.5 text-[var(--dm-txt-muted)] font-mono">{m.layers}</td>
+                      <td className="px-2.5 py-1.5 text-[var(--dm-txt-muted)] font-mono">{m.denseLayers}</td>
+                      <td className="px-2.5 py-1.5 text-[var(--dm-txt-muted)] font-mono">{m.windowLayers}</td>
+                      <td className="px-2.5 py-1.5 text-[var(--dm-txt-muted)] font-mono">{m.windowLayers > 0 ? m.windowSize : "—"}</td>
+                      <td className="px-2.5 py-1.5 text-[var(--dm-txt-muted)] font-mono">{m.qHeads}</td>
+                      <td className="px-2.5 py-1.5 text-[var(--dm-txt-muted)] font-mono">{m.kvHeads}</td>
+                      <td className="px-2.5 py-1.5 text-[var(--dm-txt-muted)] font-mono">{m.headDim}</td>
                       <td className="px-2.5 py-1.5"><ProvBadge prov={m.prov} /></td>
-                      <td className="px-2.5 py-1.5 text-white/35 max-w-xs">{m.note}</td>
+                      <td className="px-2.5 py-1.5 text-[var(--dm-txt-faint)] max-w-xs">{m.note}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -137,30 +137,30 @@ function ReferencePanel() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">Read-bandwidth media</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--dm-txt-muted)] mb-2">Read-bandwidth media</h3>
               <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "var(--dm-border-a)" }}>
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr style={{ background: "var(--dm-table-head)" }}>
                       {["Medium", "GB/s", "", "Note"].map(h => (
-                        <th key={h} className="px-2.5 py-2 text-left font-semibold text-white/40 uppercase tracking-wide">{h}</th>
+                        <th key={h} className="px-2.5 py-2 text-left font-semibold text-[var(--dm-txt-muted)] uppercase tracking-wide">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {OFFLOAD_MEDIA.map(m => (
                       <tr key={m.key} style={{ borderTop: "1px solid var(--dm-border-a)" }}>
-                        <td className="px-2.5 py-1.5 font-semibold text-white/70">{m.name}</td>
-                        <td className="px-2.5 py-1.5 text-white/50 font-mono">{m.readBwGBps}</td>
+                        <td className="px-2.5 py-1.5 font-semibold text-[var(--dm-txt-secondary)]">{m.name}</td>
+                        <td className="px-2.5 py-1.5 text-[var(--dm-txt-muted)] font-mono">{m.readBwGBps}</td>
                         <td className="px-2.5 py-1.5"><ProvBadge prov={m.prov} /></td>
-                        <td className="px-2.5 py-1.5 text-white/35">{m.note}</td>
+                        <td className="px-2.5 py-1.5 text-[var(--dm-txt-faint)]">{m.note}</td>
                       </tr>
                     ))}
                     <tr style={{ borderTop: "1px solid var(--dm-border-a)" }}>
-                      <td className="px-2.5 py-1.5 font-semibold text-white/70">Write → GPU (PCIe Gen5 x16)</td>
-                      <td className="px-2.5 py-1.5 text-white/50 font-mono">{WRITE_TO_GPU_BW_GBPS}</td>
+                      <td className="px-2.5 py-1.5 font-semibold text-[var(--dm-txt-secondary)]">Write → GPU (PCIe Gen5 x16)</td>
+                      <td className="px-2.5 py-1.5 text-[var(--dm-txt-muted)] font-mono">{WRITE_TO_GPU_BW_GBPS}</td>
                       <td className="px-2.5 py-1.5"><ProvBadge prov="G" /></td>
-                      <td className="px-2.5 py-1.5 text-white/35">{WRITE_TO_GPU_NOTE}</td>
+                      <td className="px-2.5 py-1.5 text-[var(--dm-txt-faint)]">{WRITE_TO_GPU_NOTE}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -168,23 +168,23 @@ function ReferencePanel() {
             </div>
 
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">Accelerator peak BF16 TFLOPS</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--dm-txt-muted)] mb-2">Accelerator peak BF16 TFLOPS</h3>
               <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "var(--dm-border-a)" }}>
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr style={{ background: "var(--dm-table-head)" }}>
                       {["Accelerator", "TFLOPS", "", "Note"].map(h => (
-                        <th key={h} className="px-2.5 py-2 text-left font-semibold text-white/40 uppercase tracking-wide">{h}</th>
+                        <th key={h} className="px-2.5 py-2 text-left font-semibold text-[var(--dm-txt-muted)] uppercase tracking-wide">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {OFFLOAD_ACCELERATORS.map(a => (
                       <tr key={a.name} style={{ borderTop: "1px solid var(--dm-border-a)" }}>
-                        <td className="px-2.5 py-1.5 font-semibold text-white/70">{a.name}</td>
-                        <td className="px-2.5 py-1.5 text-white/50 font-mono">{a.peakBf16TFLOPS}</td>
+                        <td className="px-2.5 py-1.5 font-semibold text-[var(--dm-txt-secondary)]">{a.name}</td>
+                        <td className="px-2.5 py-1.5 text-[var(--dm-txt-muted)] font-mono">{a.peakBf16TFLOPS}</td>
                         <td className="px-2.5 py-1.5"><ProvBadge prov={a.prov} /></td>
-                        <td className="px-2.5 py-1.5 text-white/35">{a.note}</td>
+                        <td className="px-2.5 py-1.5 text-[var(--dm-txt-faint)]">{a.note}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -194,8 +194,8 @@ function ReferencePanel() {
           </div>
 
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">Method</h3>
-            <ul className="text-xs text-white/45 leading-relaxed space-y-1.5 list-disc pl-4">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--dm-txt-muted)] mb-2">Method</h3>
+            <ul className="text-xs text-[var(--dm-txt-muted)] leading-relaxed space-y-1.5 list-disc pl-4">
               <li>Prefill FLOPs = 2×P_active×T (projections + MLP/experts, linear in tokens) + 4×causal×d_q×[dense_L×T² + window_L×T×min(T,window)] (attention, quadratic). Windowed layers attend ≤ window keys, so their attention is ~linear, not T².</li>
               <li>Recompute time = Prefill FLOPs / (peak BF16 TFLOPS × achieved MFU) — the compute-bound floor; real prefill also carries memory-BW and kernel-launch overheads, so treat this as optimistic.</li>
               <li>KV size (single sequence) = 2×KV_heads×head_dim×bytes × [dense_L×T + window_L×min(T,window)]. Windowed layers store only the window.</li>
@@ -264,16 +264,16 @@ export function KvOffloadView() {
 
   return (
     <div className="mx-auto max-w-screen-2xl px-6 pb-12">
-      <p className="mb-4 text-sm text-white/40 max-w-3xl leading-relaxed">
-        For a cached prefix, is it faster to <strong className="text-white/60">load</strong> the KV cache from off-GPU
-        media, or <strong className="text-white/60">recompute</strong> it via prefill? Pick a model and accelerator,
+      <p className="mb-4 text-sm text-[var(--dm-txt-muted)] max-w-3xl leading-relaxed">
+        For a cached prefix, is it faster to <strong className="text-[var(--dm-txt-muted)]">load</strong> the KV cache from off-GPU
+        media, or <strong className="text-[var(--dm-txt-muted)]">recompute</strong> it via prefill? Pick a model and accelerator,
         tune the levers, and compare across context lengths — single sequence (concurrency scales both sides equally,
         so it cancels out of the crossover).
       </p>
 
       {/* ── levers ── */}
       <div
-        className="rounded-2xl border border-white/[0.07] p-5 mb-6"
+        className="rounded-2xl border border-[var(--dm-border-a)] p-5 mb-6"
         style={{ background: "var(--dm-filterbar-bg)", boxShadow: "0 0 0 1px var(--dm-border-a)" }}
       >
         <div className="flex flex-wrap gap-4 items-end">
@@ -331,8 +331,8 @@ export function KvOffloadView() {
 
           <button
             onClick={resetLevers}
-            className="py-2 px-4 text-sm rounded-lg text-white/40 hover:text-white/70 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
+            className="py-2 px-4 text-sm rounded-lg text-[var(--dm-txt-muted)] hover:text-[var(--dm-txt-secondary)] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
+            style={{ background: "var(--dm-surface-a)", border: "1px solid var(--dm-border-b)" }}
           >
             Reset
           </button>
@@ -355,8 +355,8 @@ export function KvOffloadView() {
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px]"
             style={{ background: "var(--dm-surface-a)", border: "1px solid var(--dm-border-a)" }}
           >
-            <span className="uppercase tracking-wide font-semibold text-white/35">{chip.label}</span>
-            <span className="font-mono text-white/70">{chip.value}</span>
+            <span className="uppercase tracking-wide font-semibold text-[var(--dm-txt-faint)]">{chip.label}</span>
+            <span className="font-mono text-[var(--dm-txt-secondary)]">{chip.value}</span>
           </span>
         ))}
       </div>
@@ -370,31 +370,31 @@ export function KvOffloadView() {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
-                <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Context</th>
-                <th className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">KV size</th>
-                <th className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Prefill TFLOP</th>
-                <th className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Recompute (ms)</th>
+                <th className="px-4 py-3 text-left font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider">Context</th>
+                <th className="px-4 py-3 text-center font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider">KV size</th>
+                <th className="px-4 py-3 text-center font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider">Prefill TFLOP</th>
+                <th className="px-4 py-3 text-center font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider">Recompute (ms)</th>
                 {OFFLOAD_MEDIA.map(m => (
-                  <th key={m.key} className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider" title={m.name}>
+                  <th key={m.key} className="px-4 py-3 text-center font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider" title={m.name}>
                     {m.key.toUpperCase()} load (ms)
                   </th>
                 ))}
-                <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Verdict</th>
+                <th className="px-4 py-3 text-left font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider">Verdict</th>
                 <th className="w-8" />
               </tr>
             </thead>
             <tbody>
               {rows.map(row => (
-                <tr key={row.contextTokens} className="transition-colors" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                  <td className="px-4 py-3 font-mono text-white/80 font-semibold">{fmtTokens(row.contextTokens)}</td>
-                  <td className="px-4 py-3 text-center font-mono text-white/50">{row.kvGiB.toFixed(2)} GiB</td>
-                  <td className="px-4 py-3 text-center font-mono text-white/50">{row.prefillTFLOP.toFixed(1)}</td>
-                  <td className="px-4 py-3 text-center font-mono text-white/70 font-semibold">{fmtMs(row.recomputeMs)}</td>
+                <tr key={row.contextTokens} className="transition-colors" style={{ borderBottom: "1px solid var(--dm-border-a)" }}>
+                  <td className="px-4 py-3 font-mono text-[var(--dm-txt-body)] font-semibold">{fmtTokens(row.contextTokens)}</td>
+                  <td className="px-4 py-3 text-center font-mono text-[var(--dm-txt-muted)]">{row.kvGiB.toFixed(2)} GiB</td>
+                  <td className="px-4 py-3 text-center font-mono text-[var(--dm-txt-muted)]">{row.prefillTFLOP.toFixed(1)}</td>
+                  <td className="px-4 py-3 text-center font-mono text-[var(--dm-txt-secondary)] font-semibold">{fmtMs(row.recomputeMs)}</td>
                   {row.mediaLoadMs.map(m => (
                     <td
                       key={m.key}
                       className="px-4 py-3 text-center font-mono"
-                      style={m.key === row.fastestMedia.key ? { color: "#34d399", fontWeight: 700 } : { color: "rgba(255,255,255,0.5)" }}
+                      style={m.key === row.fastestMedia.key ? { color: "#34d399", fontWeight: 700 } : { color: "var(--dm-txt-muted)" }}
                     >
                       {fmtMs(m.totalMs)}
                     </td>
@@ -405,7 +405,7 @@ export function KvOffloadView() {
                       <button
                         onClick={() => removeContext(row.contextTokens)}
                         aria-label={`Remove ${fmtTokens(row.contextTokens)} context`}
-                        className="text-white/20 hover:text-white/50 transition-colors"
+                        className="text-[var(--dm-txt-faintest)] hover:text-[var(--dm-txt-muted)] transition-colors"
                       >
                         ×
                       </button>
@@ -427,32 +427,32 @@ export function KvOffloadView() {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
-                <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Delta</th>
-                <th className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Extra KV</th>
-                <th className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Extra prefill TFLOP</th>
-                <th className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider">Extra recompute (ms)</th>
+                <th className="px-4 py-3 text-left font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider">Delta</th>
+                <th className="px-4 py-3 text-center font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider">Extra KV</th>
+                <th className="px-4 py-3 text-center font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider">Extra prefill TFLOP</th>
+                <th className="px-4 py-3 text-center font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider">Extra recompute (ms)</th>
                 {OFFLOAD_MEDIA.map(m => (
-                  <th key={m.key} className="px-4 py-3 text-center font-semibold text-white/50 text-xs uppercase tracking-wider" title={m.name}>
+                  <th key={m.key} className="px-4 py-3 text-center font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider" title={m.name}>
                     +{m.key.toUpperCase()} (ms)
                   </th>
                 ))}
-                <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Incremental verdict</th>
+                <th className="px-4 py-3 text-left font-semibold text-[var(--dm-txt-muted)] text-xs uppercase tracking-wider">Incremental verdict</th>
               </tr>
             </thead>
             <tbody>
               {incrementalRows.map(row => {
                 const fastest = Math.min(...row.extraMediaLoadMs.map(m => m.extraMs));
                 return (
-                  <tr key={row.toTokens} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                    <td className="px-4 py-3 font-mono text-white/80 font-semibold">{fmtTokens(row.fromTokens)} → {fmtTokens(row.toTokens)}</td>
-                    <td className="px-4 py-3 text-center font-mono text-white/50">{row.extraKvGiB.toFixed(2)} GiB</td>
-                    <td className="px-4 py-3 text-center font-mono text-white/50">{row.extraPrefillTFLOP.toFixed(1)}</td>
-                    <td className="px-4 py-3 text-center font-mono text-white/70 font-semibold">{fmtMs(row.extraRecomputeMs)}</td>
+                  <tr key={row.toTokens} style={{ borderBottom: "1px solid var(--dm-border-a)" }}>
+                    <td className="px-4 py-3 font-mono text-[var(--dm-txt-body)] font-semibold">{fmtTokens(row.fromTokens)} → {fmtTokens(row.toTokens)}</td>
+                    <td className="px-4 py-3 text-center font-mono text-[var(--dm-txt-muted)]">{row.extraKvGiB.toFixed(2)} GiB</td>
+                    <td className="px-4 py-3 text-center font-mono text-[var(--dm-txt-muted)]">{row.extraPrefillTFLOP.toFixed(1)}</td>
+                    <td className="px-4 py-3 text-center font-mono text-[var(--dm-txt-secondary)] font-semibold">{fmtMs(row.extraRecomputeMs)}</td>
                     {row.extraMediaLoadMs.map(m => (
                       <td
                         key={m.key}
                         className="px-4 py-3 text-center font-mono"
-                        style={m.extraMs === fastest ? { color: "#34d399", fontWeight: 700 } : { color: "rgba(255,255,255,0.5)" }}
+                        style={m.extraMs === fastest ? { color: "#34d399", fontWeight: 700 } : { color: "var(--dm-txt-muted)" }}
                       >
                         {fmtMs(m.extraMs)}
                       </td>

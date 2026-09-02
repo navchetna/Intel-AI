@@ -6,12 +6,13 @@ import { RequestVolumeSizingView } from "./RequestVolumeSizingView";
 import { ModelBenchmarksView } from "./ModelBenchmarksView";
 import { ModelDefaultsView } from "./ModelDefaultsView";
 import { KvOffloadView } from "./KvOffloadView";
+import { DeepAnalysisView } from "./DeepAnalysisView";
 import { models, type Model } from "./data";
 import { exportModelCatalogToExcel } from "./export";
 import { useProject } from "@/contexts/ProjectContext";
 import { useRegisterExport } from "@/contexts/ExportContext";
 
-type Tab = "catalog" | "sizing" | "benchmarks" | "defaults" | "kv-cache-offload";
+type Tab = "catalog" | "benchmarks" | "kv-cache-offload" | "defaults" | "sizing" | "deep-analysis";
 
 /** Owns cross-tab UI state (active tab) for the Model Catalog / Sizing pair. Selections live in the current Project. */
 export function ModelsPageView() {
@@ -32,6 +33,10 @@ export function ModelsPageView() {
   }
 
   const selectedModels: Model[] = models.filter(m => selected.has(m.hfId));
+
+  // selected can carry stale ids from a renamed/removed catalog entry — the Sizing tab
+  // badge must reflect models that actually still exist, not the raw stored id count.
+  const validSelectedCount = selectedModels.length;
 
   return (
     <main className="min-h-screen" style={{ background: "var(--dm-page-bg)" }}>
@@ -63,10 +68,11 @@ export function ModelsPageView() {
         <div className="flex gap-1 mb-6 border-b border-white/[0.07]">
           {[
             { key: "catalog" as const, label: "Catalog" },
-            { key: "sizing" as const, label: `Sizing${selected.size ? ` (${selected.size})` : ""}` },
             { key: "benchmarks" as const, label: "Benchmarks" },
-            { key: "defaults" as const, label: "Defaults" },
             { key: "kv-cache-offload" as const, label: "KV Cache Offload" },
+            { key: "defaults" as const, label: "Task-Model-Mapping" },
+            { key: "sizing" as const, label: `Sizing${validSelectedCount ? ` (${validSelectedCount})` : ""}` },
+            { key: "deep-analysis" as const, label: "Deep Analysis" },
           ].map(t => (
             <button
               key={t.key}
@@ -92,6 +98,7 @@ export function ModelsPageView() {
       {activeTab === "benchmarks" && <ModelBenchmarksView />}
       {activeTab === "defaults" && <ModelDefaultsView />}
       {activeTab === "kv-cache-offload" && <KvOffloadView />}
+      {activeTab === "deep-analysis" && <DeepAnalysisView />}
     </main>
   );
 }

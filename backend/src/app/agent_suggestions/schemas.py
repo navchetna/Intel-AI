@@ -3,12 +3,6 @@
 from pydantic import BaseModel, Field
 
 
-class AgentSuggestionsRequest(BaseModel):
-    business_process_name: str
-    description: str = ""
-    reference_text: str = ""
-
-
 class SuggestedAgent(BaseModel):
     name: str
     task_type: str
@@ -32,3 +26,13 @@ class AgentSuggestionsResponse(BaseModel):
     agents: list[SuggestedAgent] = []
     humans: list[SuggestedHumanCheck] = []
     flow: list[SuggestedFlowStep] = []
+
+
+class AgentSuggestionsRequest(BaseModel):
+    business_process_name: str
+    description: str = ""
+    reference_text: str = ""
+    # Customer-consultation refinement loop: a free-text nudge plus the currently-active
+    # proposal to revise, if this is a regeneration rather than the first generation.
+    nudge_prompt: str = ""
+    previous_flow: AgentSuggestionsResponse | None = None

@@ -58,12 +58,22 @@ export interface SuggestedFlowStep {
   description: string;
 }
 
-/** The persisted result of the last AI-Suggested-Flow generation for a business process — kept so
+/** One generation of the AI-Suggested-Flow — either the initial proposal (`prompt` undefined) or a
+ *  regeneration nudged by a specific piece of customer-consultation feedback (`prompt` set). Kept so
  *  it survives reloads instead of being re-generated (an LLM call) on every visit. */
 export interface AiSuggestedFlow {
+  id: string;
+  prompt?: string;
   agents: SuggestedAgent[];
   humans: SuggestedHumanCheck[];
   flow: SuggestedFlowStep[];
+  generatedAt: string;
+}
+
+/** The persisted result of the last Implementation Workflow extraction for a business process —
+ *  Markdown content generated from the project's documents, notes, and discussion log. */
+export interface ImplementationWorkflow {
+  content: string;
   generatedAt: string;
 }
 
@@ -85,6 +95,12 @@ export interface BusinessProcess {
   /** On-demand LLM-generated suggestion for this process's agent/human flow — undefined until the
    *  user clicks "Generate" on the AI-Suggested-Flow tab. */
   aiSuggestedFlow?: AiSuggestedFlow;
+  /** Prior generations, most recent first — pushed here right before `aiSuggestedFlow` is
+   *  overwritten by a regeneration, so a nudge that didn't land can be reverted or deleted. */
+  aiSuggestedFlowHistory?: AiSuggestedFlow[];
+  /** On-demand LLM-extracted implementation write-up — undefined until the user clicks "Extract"
+   *  on the Implementation Workflow tab. */
+  implementationWorkflow?: ImplementationWorkflow;
 }
 
 /** One row of the project's key sizing parameters table (e.g. peak concurrent users, annual ingestion). */
@@ -148,5 +164,25 @@ export interface ProjectDocument {
   filename: string;
   content_type: string;
   size_bytes: number;
+  created_at: string;
+}
+
+/** A free-text note attached to a project (see modules/projects/notes-api.ts). */
+export interface ProjectNote {
+  id: number;
+  project_id: number;
+  title: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One message in a project's flat discussion log — no threading, no auth (see
+ *  modules/projects/discussions-api.ts). */
+export interface ProjectDiscussionMessage {
+  id: number;
+  project_id: number;
+  author: string;
+  message: string;
   created_at: string;
 }

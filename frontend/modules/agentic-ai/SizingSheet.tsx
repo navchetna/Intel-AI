@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import Image from "next/image";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
@@ -16,6 +16,8 @@ import {
   calcObservabilityStack, type ObservabilityStackInputs,
   type AnyInputs, type SizingTool,
 } from "./sizing-calcs";
+import { allWorkloadIcons } from "./layers";
+import { OPTIMIZATIONS, type OptimizationEntry } from "./optimizations-data";
 
 export type { SizingTool } from "./sizing-calcs";
 
@@ -35,11 +37,19 @@ const AccentCtx = createContext<string>("129,140,248");
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Props {
-  tool: SizingTool;
-  inputs: AnyInputs;
+  /** Absent when the workload has no sizing calculator — the panel opens straight to Optimizations. */
+  tool?: SizingTool;
+  /** Icon `alt` text — looks up Optimizations content and, when `tool` is absent, the header icon. */
+  workloadId: string;
+  inputs?: AnyInputs;
   onInputsChange: (inputs: AnyInputs) => void;
   onClose: () => void;
 }
+
+/** Icon src by workload id, for the panel header when there's no sizing tool (and thus no TOOL_META). */
+const ICON_SRC_BY_ALT: Record<string, string> = Object.fromEntries(
+  allWorkloadIcons.map(w => [w.icon.alt, w.icon.src])
+);
 
 const TOOL_META: Record<SizingTool, { name: string; accent: string; accentRgb: string; logo: string; tagline: string }> = {
   postgres: { name: "PostgreSQL OLTP Sizing",  accent: "#38bdf8", accentRgb: "56,189,248",  logo: "/postgre.jpg", tagline: "Estimate CPU, RAM & postgresql.conf for production OLTP workloads" },
@@ -1369,48 +1379,103 @@ function ObservabilityStackForm({ accentRgb, inputs, onChange }: {
   );
 }
 
-// ── Modal wrapper ──────────────────────────────────────────────────────────────
+// ── Optimizations tab ────────────────────────────────────────────────────────
 
-export function SizingSheet({ tool, inputs, onInputsChange, onClose }: Props) {
-  const meta = TOOL_META[tool];
+function OptimizationRow({ entry, accent }: { entry: OptimizationEntry; accent: string }) {
+  const { isa, hardwareMustKnows, inRepo, inRepoNote } = entry.detail;
+  return (
+    <div className="rounded-xl border p-4" style={{ borderColor: "var(--dm-border-a)", background: "var(--dm-surface-a)" }}>
+      <h4 className="text-sm font-bold mb-3" style={{ color: accent }}>{entry.label}</h4>
+      <div className="flex flex-col gap-3">
+        <div>
+          <span className="block text-[10px] font-bold uppercase tracking-widest text-white/35 mb-1">ISA / Accelerator</span>
+          <p className="text-[12.5px] leading-relaxed text-white/80">{isa}</p>
+        </div>
+        <div>
+          <span className="block text-[10px] font-bold uppercase tracking-widest text-white/35 mb-1">Hardware must-knows</span>
+          <p className="text-[12.5px] leading-relaxed text-white/70 whitespace-pre-line">{hardwareMustKnows}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+            style={inRepo === "Yes"
+              ? { background: "rgba(74,222,128,0.15)", color: "#4ade80" }
+              : { background: "rgba(255,255,255,0.06)", color: "var(--dm-txt-faint)" }}
+          >
+            {inRepo === "Yes" ? "In optimization repo" : "Not in repo"}
+          </span>
+          {inRepoNote && <span className="text-[11px] font-mono text-white/45">{inRepoNote}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OptimizationsPanel({ workloadId, accent }: { workloadId: string; accent: string }) {
+  const entries = OPTIMIZATIONS[workloadId];
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4">
+      {!entries || entries.length === 0 ? (
+        <p className="text-sm text-white/40">No optimization notes documented for this workload yet.</p>
+      ) : (
+        entries.map(e => <OptimizationRow key={e.label} entry={e} accent={accent} />)
+      )}
+    </div>
+  );
+}
+
+// ── Right-side panel wrapper ─────────────────────────────────────────────────
+
+type SheetTab = "sizing" | "optimizations";
+
+export function SizingSheet({ tool, workloadId, inputs, onInputsChange, onClose }: Props) {
+  const meta = tool ? TOOL_META[tool] : undefined;
   const { theme } = useTheme();
   const isDark = theme === "dark";
+  const [tab, setTab] = useState<SheetTab>(tool ? "sizing" : "optimizations");
+
+  const accent = meta?.accent ?? "#38bdf8";
+  const accentRgb = meta?.accentRgb ?? "56,189,248";
+  const logo = meta?.logo ?? ICON_SRC_BY_ALT[workloadId];
+  const name = meta?.name ?? workloadId;
+  const tagline = meta?.tagline ?? "Intel software-optimization notes";
+  const hasOptimizations = !!OPTIMIZATIONS[workloadId];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8"
-      style={{ background: "rgba(1,6,18,0.88)", backdropFilter: "blur(8px)" }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
+    <>
+      {/* Backdrop */}
       <div
-        className="relative flex flex-col w-full max-w-[1100px] rounded-2xl overflow-hidden"
+        className="fixed inset-0 z-40"
+        style={{ background: "rgba(1,6,18,0.55)", backdropFilter: "blur(2px)" }}
+        onClick={onClose}
+      />
+
+      {/* Drawer */}
+      <aside
+        className="fixed top-0 right-0 z-50 h-full flex flex-col overflow-hidden"
         style={{
+          width: "min(1000px, 92vw)",
           background: "var(--dm-card-bg)",
-          border: `1px solid rgba(${meta.accentRgb},0.18)`,
-          boxShadow: `${isDark ? "0 40px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04)" : "var(--dm-card-depth)"}, 0 0 0 1px rgba(${meta.accentRgb},0.06)`,
-          maxHeight: "92vh",
+          borderLeft: `1px solid rgba(${accentRgb},0.18)`,
+          boxShadow: `${isDark ? "-20px 0 60px rgba(0,0,0,0.6)" : "var(--dm-card-depth)"}, 0 0 0 1px rgba(${accentRgb},0.06)`,
         }}
       >
         {/* Header */}
         <div
           className="flex-shrink-0 flex items-center gap-4 px-6 py-4 border-b border-white/[0.07]"
-          style={{ background: `rgba(${meta.accentRgb},0.04)` }}
+          style={{ background: `rgba(${accentRgb},0.04)` }}
         >
-          <div
-            className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
-            style={{ border: `1px solid rgba(${meta.accentRgb},0.3)`, background: `rgba(${meta.accentRgb},0.1)` }}
-          >
-            <Image src={meta.logo} alt={tool} width={40} height={40} className="w-full h-full object-contain" />
-          </div>
+          {logo && (
+            <div
+              className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
+              style={{ border: `1px solid rgba(${accentRgb},0.3)`, background: `rgba(${accentRgb},0.1)` }}
+            >
+              <Image src={logo} alt={workloadId} width={40} height={40} className="w-full h-full object-contain" />
+            </div>
+          )}
           <div className="flex-1 min-w-0">
-            <h2 className="text-base font-bold text-white leading-tight">{meta.name}</h2>
-            <p className="text-[11px] text-white/40 mt-0.5">{meta.tagline}</p>
-          </div>
-          <div
-            className="flex-shrink-0 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full"
-            style={{ color: isDark ? meta.accent : darkenRgb(meta.accentRgb), background: `rgba(${meta.accentRgb},0.12)`, border: `1px solid rgba(${meta.accentRgb},0.25)` }}
-          >
-            Intel-AI Sizing Tool
+            <h2 className="text-base font-bold text-white leading-tight">{name}</h2>
+            <p className="text-[11px] text-white/40 mt-0.5">{tagline}</p>
           </div>
           <button
             onClick={onClose}
@@ -1421,20 +1486,52 @@ export function SizingSheet({ tool, inputs, onInputsChange, onClose }: Props) {
           </button>
         </div>
 
-        {/* Form + Results (fills remaining height) */}
-        <div className="flex flex-col flex-1 min-h-0" style={{ height: "calc(92vh - 72px)" }}>
-          {tool === "postgres" && <PGForm      accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as PGInputs}      onChange={onInputsChange} />}
-          {tool === "qdrant"   && <QdrantForm  accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as QdrantInputs}  onChange={onInputsChange} />}
-          {tool === "neo4j"    && <Neo4jForm   accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as Neo4jInputs}   onChange={onInputsChange} />}
-          {tool === "mongodb"  && <MongoDBForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as MongoDBInputs} onChange={onInputsChange} />}
-          {tool === "elastic"  && <ElasticForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as ElasticInputs} onChange={onInputsChange} />}
-          {tool === "pydantic-ai" && <PydanticAIForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as PydanticAIInputs} onChange={onInputsChange} />}
-          {tool === "logfire"     && <LogfireForm    accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as LogfireInputs}    onChange={onInputsChange} />}
-          {tool === "clickhouse"  && <ClickHouseForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as ClickHouseInputs} onChange={onInputsChange} />}
-          {tool === "litellm"       && <LiteLLMForm            accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as LiteLLMInputs}            onChange={onInputsChange} />}
-          {tool === "observability" && <ObservabilityStackForm accent={meta.accent} accentRgb={meta.accentRgb} inputs={inputs as ObservabilityStackInputs} onChange={onInputsChange} />}
+        {/* Tab bar */}
+        <div className="flex-shrink-0 flex gap-1 px-6 border-b border-white/[0.07]">
+          {([
+            { key: "sizing" as const, label: "Sizing" },
+            { key: "optimizations" as const, label: "Optimizations" },
+          ]).map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className="px-4 py-2.5 text-sm font-semibold transition-colors -mb-px border-b-2"
+              style={{
+                color: tab === t.key ? (isDark ? accent : darkenRgb(accentRgb)) : "var(--dm-txt-faint)",
+                borderColor: tab === t.key ? accent : "transparent",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
-      </div>
-    </div>
+
+        {/* Tab content (fills remaining height) */}
+        <div className="flex flex-col flex-1 min-h-0">
+          {tab === "sizing" ? (
+            tool && inputs ? (
+              <>
+                {tool === "postgres" && <PGForm      accent={meta!.accent} accentRgb={meta!.accentRgb} inputs={inputs as PGInputs}      onChange={onInputsChange} />}
+                {tool === "qdrant"   && <QdrantForm  accent={meta!.accent} accentRgb={meta!.accentRgb} inputs={inputs as QdrantInputs}  onChange={onInputsChange} />}
+                {tool === "neo4j"    && <Neo4jForm   accent={meta!.accent} accentRgb={meta!.accentRgb} inputs={inputs as Neo4jInputs}   onChange={onInputsChange} />}
+                {tool === "mongodb"  && <MongoDBForm accent={meta!.accent} accentRgb={meta!.accentRgb} inputs={inputs as MongoDBInputs} onChange={onInputsChange} />}
+                {tool === "elastic"  && <ElasticForm accent={meta!.accent} accentRgb={meta!.accentRgb} inputs={inputs as ElasticInputs} onChange={onInputsChange} />}
+                {tool === "pydantic-ai" && <PydanticAIForm accent={meta!.accent} accentRgb={meta!.accentRgb} inputs={inputs as PydanticAIInputs} onChange={onInputsChange} />}
+                {tool === "logfire"     && <LogfireForm    accent={meta!.accent} accentRgb={meta!.accentRgb} inputs={inputs as LogfireInputs}    onChange={onInputsChange} />}
+                {tool === "clickhouse"  && <ClickHouseForm accent={meta!.accent} accentRgb={meta!.accentRgb} inputs={inputs as ClickHouseInputs} onChange={onInputsChange} />}
+                {tool === "litellm"       && <LiteLLMForm            accent={meta!.accent} accentRgb={meta!.accentRgb} inputs={inputs as LiteLLMInputs}            onChange={onInputsChange} />}
+                {tool === "observability" && <ObservabilityStackForm accent={meta!.accent} accentRgb={meta!.accentRgb} inputs={inputs as ObservabilityStackInputs} onChange={onInputsChange} />}
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center px-6 py-5">
+                <p className="text-sm text-white/40">No sizing calculator documented for this workload yet.{hasOptimizations ? " See the Optimizations tab." : ""}</p>
+              </div>
+            )
+          ) : (
+            <OptimizationsPanel workloadId={workloadId} accent={isDark ? accent : darkenRgb(accentRgb)} />
+          )}
+        </div>
+      </aside>
+    </>
   );
 }

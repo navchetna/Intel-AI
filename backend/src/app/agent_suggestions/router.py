@@ -24,7 +24,14 @@ async def generate(payload: AgentSuggestionsRequest, db: AsyncSession = Depends(
             detail="No GROQ API key configured — set one in Settings (gear icon in the top-right) first.",
         )
 
-    user_message = build_user_message(payload.business_process_name, payload.description, payload.reference_text)
+    previous_flow = payload.previous_flow.model_dump() if payload.previous_flow else None
+    user_message = build_user_message(
+        payload.business_process_name,
+        payload.description,
+        payload.reference_text,
+        payload.nudge_prompt,
+        previous_flow,
+    )
 
     try:
         raw = await request_json_completion(api_key, SYSTEM_PROMPT, user_message)

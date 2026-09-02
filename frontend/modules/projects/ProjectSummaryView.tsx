@@ -163,8 +163,8 @@ export function ProjectSummaryView() {
           </p>
         </div>
 
-        <ProjectSummaryEditor />
         <ProjectDocumentsPanel />
+        <ProjectSummaryEditor />
 
         {/* ═══════════════ BUSINESS PROCESSES ═══════════════ */}
         <SectionHeader index="1" title="Business Processes" subtitle={`${data.agents.businessProcesses.length} process${data.agents.businessProcesses.length === 1 ? "" : "es"} — from Agents &gt; Agents`} />
@@ -279,6 +279,7 @@ export function ProjectSummaryView() {
       {openSizingId && openTool && (
         <SizingSheet
           tool={openTool}
+          workloadId={openSizingId}
           inputs={sizingInputs[openSizingId] ?? defaultInputsFor(openTool)}
           onInputsChange={next => updateAgenticStack({ sizingInputs: { ...sizingInputs, [openSizingId]: next } })}
           onClose={() => setOpenSizingId(null)}

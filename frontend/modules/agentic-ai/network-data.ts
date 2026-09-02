@@ -129,7 +129,7 @@ export const NETWORK_WORKLOADS: NetworkWorkload[] = [
   {
     id: "model-serving-weights",
     name: "Model serving\nvLLM · SGLang · Dynamo · llm-d",
-    planes: ["2"],
+    planes: ["1", "2"],
     nic: "400G RDMA",
     placementConstraint: "SR-IOV VF; EP domain inside the scale-up boundary",
   },

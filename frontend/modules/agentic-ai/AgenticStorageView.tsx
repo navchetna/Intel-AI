@@ -136,6 +136,7 @@ const STORAGE_LAYERS: StorageLayer[] = [
           { src: "/mongo.jpg", alt: "MongoDB" },
           { src: "/neo4j.jpg", alt: "Neo4J" },
           { src: "/clickhouse.jpg", alt: "ClickHouse" },
+          { src: "/elastic.jpg", alt: "Elastic" },
         ],
       },
       {
@@ -159,7 +160,6 @@ const STORAGE_LAYERS: StorageLayer[] = [
         id: "connectors",
         title: "Connectors",
         icons: [
-          { src: "/elastic.jpg", alt: "Elastic" },
           { src: "/fluents.jpg", alt: "Fluentd" },
           { src: "/dabezium.jpg", alt: "Debezium" },
         ],
@@ -436,7 +436,7 @@ function StorageLayerRow({
             >
               {layer.title}
             </p>
-            <p className="text-blue-300/60 text-[13px] mt-1 font-medium">{layer.subtitle}</p>
+            <p className="text-[13px] mt-1 font-medium" style={{ color: isDark ? "rgba(147,197,253,0.6)" : "#1e3a8a" }}>{layer.subtitle}</p>
           </div>
         </div>
         {/* Sub-layers */}
@@ -446,7 +446,7 @@ function StorageLayerRow({
             <Fragment key={sub.id}>
               {idx > 0 && <div className="self-stretch w-px my-2" style={{ background: `rgba(${rgb},0.2)` }} />}
               <div className="flex flex-col gap-3 pt-3">
-                <span className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: `rgba(${rgb},0.75)` }}>
+                <span className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: isDark ? `rgba(${rgb},0.75)` : "#0f172a" }}>
                   {sub.title}
                   {sub.note && <span className="normal-case tracking-normal font-medium opacity-65 text-[10px]"> · {sub.note}</span>}
                 </span>
@@ -485,7 +485,7 @@ function StorageLayerRow({
         <p className="font-black text-base leading-tight tracking-wide" style={{ color: hovered ? color : "var(--dm-txt-body)" }}>
           {layer.title}
         </p>
-        <p className="text-blue-300/60 text-[13px] mt-1 font-medium">{layer.subtitle}</p>
+        <p className="text-[13px] mt-1 font-medium" style={{ color: isDark ? "rgba(147,197,253,0.6)" : "#1e3a8a" }}>{layer.subtitle}</p>
       </div>
       {layer.icons && layer.icons.length > 0 && (
         <div className="relative flex items-stretch gap-4 flex-shrink-0">
@@ -607,7 +607,12 @@ export function AgenticStorageView() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
-  const [selectedVendors, setSelectedVendors] = useState<Record<string, string>>({});
+  const [selectedVendors, setSelectedVendors] = useState<Record<string, string>>({
+    C1: "DAOS",
+    C2: "Dell PowerStore",
+    C3: "MinIO (AIStor)",
+    C4: "MinIO (AIStor)",
+  });
   const [highlightedClass, setHighlightedClass] = useState<string | null>(null);
 
   function handleClassHighlight(classCode: string) {

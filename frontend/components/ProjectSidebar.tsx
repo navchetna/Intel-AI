@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useProject } from "@/contexts/ProjectContext";
 import { buildProjectTree, allFolderPaths, type ProjectTreeNode, type ProjectTreeFolder } from "@/modules/projects/tree";
 import { timeAgo } from "@/modules/projects/format";
@@ -16,9 +17,18 @@ function FolderTreeIcon() {
   );
 }
 
-function TreeNodeRow({ node, depth, expanded, onToggleFolder, currentId }: {
+function TrashIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" />
+    </svg>
+  );
+}
+
+function TreeNodeRow({ node, depth, expanded, onToggleFolder, currentId, onDelete }: {
   node: ProjectTreeNode; depth: number;
   expanded: Set<string>; onToggleFolder: (path: string) => void; currentId: number | null;
+  onDelete: (id: number, name: string) => void;
 }) {
   const padLeft = 10 + depth * 14;
 
@@ -45,6 +55,7 @@ function TreeNodeRow({ node, depth, expanded, onToggleFolder, currentId }: {
           <TreeNodeRow
             key={c.type === "folder" ? c.path : c.project.id}
             node={c} depth={depth + 1} expanded={expanded} onToggleFolder={onToggleFolder} currentId={currentId}
+            onDelete={onDelete}
           />
         ))}
       </div>
@@ -53,27 +64,40 @@ function TreeNodeRow({ node, depth, expanded, onToggleFolder, currentId }: {
 
   const active = node.project.id === currentId;
   return (
-    <Link
-      href={`/projects/${node.project.id}`}
-      className="nav-menu-item flex items-center gap-1.5 py-1.5 pr-3 text-[12.5px] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/40"
+    <div
+      className="nav-menu-item group flex items-center gap-1.5 py-1.5 pr-2 text-[12.5px] transition-colors"
       style={{
-        paddingLeft: padLeft + 14,
         background: active ? "var(--dm-nav-active-bg)" : undefined,
         color: active ? "var(--dm-nav-active-text)" : "var(--dm-txt-secondary)",
       }}
     >
-      <span
-        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-        style={{ background: active ? "#22c55e" : "transparent", border: active ? "none" : "1px solid var(--dm-border-b)" }}
-      />
-      <span className="truncate flex-1 min-w-0 font-medium">{node.name}</span>
-      <span className="text-[10px] flex-shrink-0" style={{ color: "var(--dm-txt-faint)" }}>{timeAgo(node.project.updated_at)}</span>
-    </Link>
+      <Link
+        href={`/projects/${node.project.id}`}
+        className="flex items-center gap-1.5 flex-1 min-w-0 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/40"
+        style={{ paddingLeft: padLeft + 14 }}
+      >
+        <span
+          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+          style={{ background: active ? "#22c55e" : "transparent", border: active ? "none" : "1px solid var(--dm-border-b)" }}
+        />
+        <span className="truncate flex-1 min-w-0 font-medium">{node.name}</span>
+        <span className="text-[10px] flex-shrink-0" style={{ color: "var(--dm-txt-faint)" }}>{timeAgo(node.project.updated_at)}</span>
+      </Link>
+      <button
+        type="button"
+        onClick={() => onDelete(node.project.id, node.name)}
+        aria-label={`Delete ${node.name}`} title="Delete project"
+        className="nav-icon-btn flex-shrink-0 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+      >
+        <TrashIcon />
+      </button>
+    </div>
   );
 }
 
 export function ProjectSidebar() {
-  const { projects, currentProject, projectsLoading, listError, createProject } = useProject();
+  const { projects, currentProject, projectsLoading, listError, createProject, deleteProject } = useProject();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -112,6 +136,18 @@ export function ProjectSidebar() {
       if (next.has(path)) next.delete(path); else next.add(path);
       return next;
     });
+  }
+
+  async function handleDelete(id: number, name: string) {
+    if (!window.confirm(`Delete "${name}"? This can't be undone.`)) return;
+    setErr(null);
+    try {
+      const wasCurrent = currentProject?.id === id;
+      await deleteProject(id);
+      if (wasCurrent) router.push("/projects");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
   }
 
   async function handleCreate() {
@@ -222,7 +258,7 @@ export function ProjectSidebar() {
           <TreeNodeRow
             key={node.type === "folder" ? (node as ProjectTreeFolder).path : node.project.id}
             node={node} depth={0} expanded={expanded} onToggleFolder={toggleFolder}
-            currentId={currentProject?.id ?? null}
+            currentId={currentProject?.id ?? null} onDelete={handleDelete}
           />
         ))}
       </div>

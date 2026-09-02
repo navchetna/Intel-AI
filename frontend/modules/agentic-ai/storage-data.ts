@@ -2,7 +2,7 @@
 
 export interface StorageClass {
   id: string;
-  code: string; // C0, C1, C2, C3, C4, C5
+  code: string; // C0, C1, C2, C3, C4
   name: string;
   latency: string;
   technologies: string;
@@ -34,65 +34,55 @@ export interface VendorLandscape {
   software: string;
 }
 
-// Storage class definitions (C0-C5 hierarchy)
+// Storage class definitions (C0-C4 hierarchy)
 export const STORAGE_CLASSES: StorageClass[] = [
   {
     id: "c0",
     code: "C0",
-    name: "Transactional block",
+    name: "Direct Attached Storage",
     latency: "50–200 μs",
     technologies: "TLC NVMe, direct-attach, PLP",
-    useCases: "Durability-critical small writes: checkpoints, OLTP, etcd",
+    useCases: "Stateless workloads — n8n, Pydantic AI, MCP, Pydantic Evals, Agent Sandbox",
     color: "#b91c1c", // red-700
     colorRgb: "185,28,28",
   },
   {
     id: "c1",
     code: "C1",
-    name: "Context memory (KV)",
+    name: "Context Memory (KV-Cache)",
     latency: "0.1–2 ms",
     technologies: "DRAM → TLC NVMe → pod flash",
-    useCases: "KV cache / context memory. Ephemeral — no protection",
+    useCases: "vLLM, SGLang, Dynamo, llm-d — KV cache / context memory. Ephemeral — no protection",
     color: "#ea580c", // orange-600
     colorRgb: "234,88,12",
   },
   {
     id: "c2",
     code: "C2",
-    name: "Shared hot namespace",
+    name: "Shared Hot Storage",
     latency: "0.3–2 ms",
     technologies: "All-flash parallel filesystem",
-    useCases: "Shared hot namespace, checkpoints, scratch",
+    useCases: "Stateful, transactional workloads — Databases (MySQL, PostgreSQL, MongoDB, Neo4J), VectorDB (Qdrant, Milvus, Redis)",
     color: "#d97706", // amber-600
     colorRgb: "217,119,6",
   },
   {
     id: "c3",
     code: "C3",
-    name: "Warm capacity",
-    latency: "1–5 ms",
-    technologies: "QLC NVMe, flash object",
-    useCases: "Vector indexes, warm objects, registries",
-    color: "#059669", // emerald-600
-    colorRgb: "5,150,105",
-  },
-  {
-    id: "c4",
-    code: "C4",
-    name: "Lake / bulk object",
+    name: "Lake House Storage",
     latency: "10–80 ms",
     technologies: "Nearline HDD object",
-    useCases: "Lake, raw corpora, cold telemetry",
+    useCases: "Warm tier for mixed storage — Observability and Analytics",
     color: "#0284c7", // sky-600
     colorRgb: "2,132,199",
   },
   {
-    id: "c5",
-    code: "C5",
-    name: "Archive / WORM",
+    id: "c4",
+    code: "C4",
+    name: "Archive",
     latency: "s – hours",
     technologies: "Tape, cold object, WORM",
-    useCases: "Audit, provenance, compliance retention",
+    useCases: "Cold tier for Observability; audit, provenance, compliance retention",
     color: "#475569", // slate-600
     colorRgb: "71,85,105",
   },
@@ -136,7 +126,7 @@ export const STORAGE_WORKLOADS: StorageWorkload[] = [
   {
     id: "tasks-observability",
     name: "Tasks observability\nPydantic Logfire · Langfuse",
-    classId: "C3, C4",
+    classId: "C2, C3, C4",
     filesystem: "ClickHouse MergeTree on NVMe\nTTL MOVE to S3",
     keyDriver: "Volume scales with steps per task,\nnot requests per second",
     criticalTech: "ClickHouse · MinIO / S3 ·\nasymmetric retention policy",
@@ -162,7 +152,7 @@ export const STORAGE_WORKLOADS: StorageWorkload[] = [
   {
     id: "llm-gateway",
     name: "LLM gateway\nLiteLLM",
-    classId: "C0, C3, C4",
+    classId: "C2, C3, C4",
     filesystem: "Postgres (config) + Redis (counters)\nClickHouse / object (payloads)",
     keyDriver: "Payload logs must never enter the OLTP DB.\n60 GB/day raw at 100k tasks",
     criticalTech: "PostgreSQL, Redis, ClickHouse ·\nsemantic cache in vector store",
@@ -170,17 +160,17 @@ export const STORAGE_WORKLOADS: StorageWorkload[] = [
   {
     id: "agent-memory",
     name: "Agent memory\nRedis · Mem0",
-    classId: "C0, C3",
+    classId: "C2",
     filesystem: "Redis AOF everysec on NVMe\nRDB snapshots to object",
     keyDriver: "Hot, permanently growing, on the critical\npath once per step. p99 < 5 ms",
-    criticalTech: "Redis, Neo4j (entity graph), vector store ·\nevict dormant users to C3 — cuts DRAM 70–90%",
+    criticalTech: "Redis, Neo4j (entity graph), vector store ·\nevict dormant users to colder storage — cuts DRAM 70–90%",
   },
 
   // DATA & KNOWLEDGE LAYER
   {
     id: "databases",
     name: "Databases\nPostgreSQL · MySQL · MongoDB ·\nNeo4j",
-    classId: "C0",
+    classId: "C2",
     filesystem: "XFS, noatime\nLocal PV — never network block",
     keyDriver: "fsync p99 < 1 ms. CDC forces WAL retention:\n20 MB/s × 12 h outage = 864 GB",
     criticalTech: "PLP TLC NVMe · Neo4j page cache should\nhold the whole graph",
@@ -188,7 +178,7 @@ export const STORAGE_WORKLOADS: StorageWorkload[] = [
   {
     id: "clickhouse-analytics",
     name: "ClickHouse\nTrace & token analytics",
-    classId: "C0, C3, C4",
+    classId: "C2, C3",
     filesystem: "XFS hot volume + s3 disk\nTTL MOVE policy",
     keyDriver: "Merge amplification: provision 2–4×\nwrite headroom over raw ingest",
     criticalTech: "ClickHouse tiered storage · MinIO / S3 ·\n10–30× columnar compression",
@@ -196,7 +186,7 @@ export const STORAGE_WORKLOADS: StorageWorkload[] = [
   {
     id: "vector-db",
     name: "Vector DB\nRedis · Qdrant · Milvus",
-    classId: "C0, C3",
+    classId: "C2",
     filesystem: "mmap segments on NVMe\nMilvus: object + etcd + MQ + local cache",
     keyDriver: "Index placement is the largest cost lever\nin the stack. 10k qps = 1M IOPS",
     criticalTech: "DiskANN, AiSAQ, CAGRA · Kioxia LC9,\nMicron 6600 ION, Solidigm D5 QLC\nMaidO · Elasticsearch",
@@ -204,7 +194,7 @@ export const STORAGE_WORKLOADS: StorageWorkload[] = [
   {
     id: "pipelines",
     name: "Pipelines\nKafka · Spark",
-    classId: "C0, C4",
+    classId: "C2, C3",
     filesystem: "XFS + page cache (Kafka)\nLocal NVMe scratch (Spark shuffle)",
     keyDriver: "Kafka tiered storage cuts the hot tier\n80–95%. Shuffle never on network FS",
     criticalTech: "KIP-405 tiered storage · Celeborn / Uniffle\ndisaggregated shuffle · remote task logs",
@@ -212,7 +202,7 @@ export const STORAGE_WORKLOADS: StorageWorkload[] = [
   {
     id: "pipelines-airflow",
     name: "Pipelines — orchestration\nAirflow",
-    classId: "C3, C4",
+    classId: "C2, C3",
     filesystem: "Metadata DB (task state)\nLogs and DAG artifacts on object",
     keyDriver: "Scheduler metadata is small and warm;\ntask logs and artifacts are large and cold",
     criticalTech: "Postgres/MySQL metadata store ·\nS3 / MinIO for logs and DAG artifacts",
@@ -220,7 +210,7 @@ export const STORAGE_WORKLOADS: StorageWorkload[] = [
   {
     id: "connectors",
     name: "Connectors\nElastic · Fluentd · Debezium",
-    classId: "C3, C4",
+    classId: "C2, C3",
     filesystem: "Hot-warm-cold-frozen tiers\nSearchable snapshots on object",
     keyDriver: "Fluentd buffer sizing is a data-loss control.\nDebezium's cost lands on the source DB",
     criticalTech: "Elasticsearch ILM · object-backed frozen tier ·\nalarm on replication slot lag",
@@ -270,7 +260,7 @@ export const STORAGE_WORKLOADS: StorageWorkload[] = [
   {
     id: "prometheus-grafana-loki",
     name: "Prometheus · Grafana · Loki\nPlatform telemetry",
-    classId: "C0, C3, C4",
+    classId: "C2, C3, C4",
     filesystem: "XFS local TSDB\nObject-backed chunks (Loki)",
     keyDriver: "2M series at 15 s ≈ 590 GB for 30 days.\nBeyond that, remote-write not bigger disks",
     criticalTech: "Thanos / Mimir / Cortex on object ·\nLoki index on NVMe, chunks on S3",
@@ -292,7 +282,7 @@ export const FILESYSTEM_TECHNOLOGIES: FilesystemTech[] = [
   { category: "Parallel / shared", technology: "Hammerspace Tier 0", useFor: "Makes in-server NVMe a shared parallel namespace", notes: "No new hardware; metadata-plane dependency" },
 
   // Object
-  { category: "Object", technology: "MinIO · Ceph RGW", useFor: "Self-hosted S3 for ClickHouse, Milvus, Loki tiering", notes: "Pair with QLC for C3, HDD for C4" },
+  { category: "Object", technology: "MinIO · Ceph RGW", useFor: "Self-hosted S3 for ClickHouse, Milvus, Loki tiering", notes: "Pair with HDD for C3" },
 
   // Container / sandbox
   { category: "Container / sandbox", technology: "EROFS + fscache", useFor: "Read-only base images, lazy pull, shared page cache", notes: "Cuts image-pull-to-start dramatically" },
@@ -327,18 +317,12 @@ export const VENDOR_LANDSCAPE: VendorLandscape[] = [
   },
   {
     classId: "C3",
-    mediaVendors: "Kioxia LC9 · Micron 6600 ION · Solidigm D5 · SK hynix PS1012 · Phison Pascari",
-    systemVendors: "VAST · Pure · MinIO AIStor · Cloudian · Scality ARTESCA",
-    software: "MinIO · Ceph RGW · JuiceFS · DiskANN / AiSAQ",
-  },
-  {
-    classId: "C4",
     mediaVendors: "Seagate · Toshiba · WD nearline HDD",
     systemVendors: "Cloudian · Scality RING · Dell ObjectScale · Quantum ActiveScale · NetApp StorageGRID",
     software: "Ceph · MinIO · cloud object",
   },
   {
-    classId: "C5",
+    classId: "C4",
     mediaVendors: "LTO tape",
     systemVendors: "Spectra Logic · Quantum Scalar · IBM TS4500",
     software: "S3 Object Lock · Glacier-class",
@@ -372,9 +356,8 @@ export const STORAGE_CLASS_MEDIA: Record<string, MediaType[]> = {
   "C0": [MEDIA_TYPES.tlcNvme],
   "C1": [MEDIA_TYPES.hbm, MEDIA_TYPES.dram, MEDIA_TYPES.cxl, MEDIA_TYPES.tlcNvme, MEDIA_TYPES.podFlash],
   "C2": [MEDIA_TYPES.podFlash],
-  "C3": [MEDIA_TYPES.qlcNvme],
-  "C4": [MEDIA_TYPES.nearlineHdd],
-  "C5": [MEDIA_TYPES.tape],
+  "C3": [MEDIA_TYPES.nearlineHdd],
+  "C4": [MEDIA_TYPES.tape],
 };
 
 export const STORAGE_GOVERNING_CONSTRAINT =

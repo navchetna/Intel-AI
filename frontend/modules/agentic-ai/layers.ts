@@ -123,18 +123,17 @@ export const mainLayers: ClickableItem[] = [
         title: "Memory",
         icons: [
           { src: "/redis.jpg",    alt: "Redis" },
-          { src: "/mem0.jpg",     alt: "Mem0" },
         ],
       },
     ],
     description:
-      "Manages model lifecycle and traffic: a LiteLLM gateway that routes and meters every token, high-throughput serving backends (vLLM, SGLang, Dynamo, llm-d), and the memory layer — Redis and Mem0 — that gives agents working and long-term recall.",
+      "Manages model lifecycle and traffic: a LiteLLM gateway that routes and meters every token, high-throughput serving backends (vLLM, SGLang, Dynamo, llm-d), and the memory layer — Redis — that gives agents working recall.",
     details: [
       { heading: "LLM Gateway & Token Observability (LiteLLM)", body: "Single OpenAI-compatible endpoint that fan-outs to multiple backends with load balancing, fallback chains, and per-token cost tracking." },
       { heading: "vLLM", body: "High-throughput inference server with PagedAttention and continuous batching for maximum token throughput." },
       { heading: "SGLang", body: "Optimised for low TTFT via RadixAttention prefix caching and constrained structured generation." },
       { heading: "Dynamo / llm-d", body: "Distributed disaggregated serving across multi-node GPU/Gaudi clusters with smart prefill/decode routing." },
-      { heading: "Memory (Redis, Mem0)", body: "Redis provides low-latency working-memory caching, and Mem0 gives vector-indexed long-term episodic recall." },
+      { heading: "Memory (Redis)", body: "Redis provides low-latency working-memory caching for agents." },
     ],
   },
   {
@@ -151,6 +150,7 @@ export const mainLayers: ClickableItem[] = [
           { src: "/mongo.jpg",     alt: "MongoDB" },
           { src: "/neo4j.jpg",     alt: "Neo4J" },
           { src: "/clickhouse.jpg", alt: "ClickHouse" },
+          { src: "/elastic.jpg",   alt: "Elastic" },
         ],
       },
       {
@@ -175,7 +175,6 @@ export const mainLayers: ClickableItem[] = [
         id: "data-connectors",
         title: "Connectors",
         icons: [
-          { src: "/elastic.jpg",   alt: "Elastic" },
           { src: "/fluents.jpg",   alt: "Fluentd" },
           { src: "/dabezium.jpg",  alt: "Debezium" },
         ],
@@ -184,10 +183,10 @@ export const mainLayers: ClickableItem[] = [
     description:
       "Connects agents to structured and unstructured enterprise knowledge — relational databases, vector indices, streaming pipelines, and data connectors — with access controls inherited from the governance layer.",
     details: [
-      { heading: "Databases", body: "MySQL, PostgreSQL, MongoDB, and Neo4J provide relational, document, and graph storage with schema introspection and safe SQL generation. ClickHouse adds columnar OLAP storage for high-volume logs, traces, and analytical queries." },
+      { heading: "Databases", body: "MySQL, PostgreSQL, MongoDB, and Neo4J provide relational, document, and graph storage with schema introspection and safe SQL generation. ClickHouse adds columnar OLAP storage for high-volume logs, traces, and analytical queries, and Elasticsearch adds full-text search." },
       { heading: "Vector Databases", body: "Redis, QDrant, and Milvus power AVX-512 / AMX-accelerated dense similarity search for sub-millisecond RAG and semantic retrieval." },
       { heading: "Pipelines", body: "Kafka streams real-time events, Spark handles batch analytics, and Airflow orchestrates end-to-end data pipelines with lineage tracking." },
-      { heading: "Connectors", body: "Elasticsearch for full-text search, Fluentd for log aggregation, and Debezium for database change capture to keep downstream stores in sync." },
+      { heading: "Connectors", body: "Fluentd for log aggregation, and Debezium for database change capture to keep downstream stores in sync." },
     ],
   },
   {

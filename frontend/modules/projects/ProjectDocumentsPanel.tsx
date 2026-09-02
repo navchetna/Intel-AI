@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useProject } from "@/contexts/ProjectContext";
 import { fetchDocuments, uploadDocument, deleteDocument, documentFileUrl } from "./documents-api";
-import type { ProjectDocument } from "./types";
+import { fetchNotes, createNote, updateNote, deleteNote } from "./notes-api";
+import { fetchDiscussionMessages, postDiscussionMessage, deleteDiscussionMessage } from "./discussions-api";
+import type { ProjectDocument, ProjectNote, ProjectDiscussionMessage } from "./types";
 import { timeAgo } from "./format";
 
 type Tab = "documents" | "notes" | "discussions";
@@ -130,10 +132,247 @@ function UploadForm({ onUpload }: { onUpload: (title: string, file: File) => Pro
   );
 }
 
-/** Placeholder for everything related to a project beyond its sizing data: document
- *  attachments (fully working — upload, list, click-to-view), plus Notes and
- *  Discussions tabs reserved for later (no auth/multi-user system to build real
- *  threaded discussion against yet). */
+const textAreaStyle: React.CSSProperties = {
+  background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)",
+};
+
+function NoteCard({ note, onSave, onDelete }: {
+  note: ProjectNote; onSave: (patch: { title?: string; body?: string }) => Promise<void>; onDelete: () => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(note.title);
+  const [body, setBody] = useState(note.body);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true); setError(null);
+    try {
+      await onSave({ title: title.trim() || note.title, body });
+      setEditing(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <li className="py-3" style={{ borderTop: "1px solid var(--dm-border-a)" }}>
+      {editing ? (
+        <div className="space-y-2">
+          <input
+            value={title} onChange={e => setTitle(e.target.value)}
+            className="w-full rounded-lg px-3 py-1.5 text-sm font-semibold focus:outline-none" style={textAreaStyle}
+          />
+          <textarea
+            value={body} onChange={e => setBody(e.target.value)} rows={3}
+            className="w-full rounded-lg px-3 py-1.5 text-sm focus:outline-none" style={textAreaStyle}
+          />
+          {error && <p className="text-xs text-danger">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              type="button" onClick={save} disabled={busy}
+              className="rounded-md px-3 py-1.5 text-xs font-semibold text-white bg-intel-blue hover:bg-intel-dark transition-colors disabled:opacity-50"
+            >
+              {busy ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button" onClick={() => { setEditing(false); setTitle(note.title); setBody(note.body); }}
+              className="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+              style={{ color: "var(--dm-txt-secondary)" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-3">
+          <button type="button" onClick={() => setEditing(true)} className="group flex-1 min-w-0 text-left">
+            <span className="block text-sm font-semibold group-hover:underline" style={{ color: "var(--dm-txt-primary)" }}>{note.title}</span>
+            {note.body && <span className="block text-[13px] mt-1 whitespace-pre-wrap" style={{ color: "var(--dm-txt-secondary)" }}>{note.body}</span>}
+            <span className="block text-[11px] mt-1" style={{ color: "var(--dm-txt-faint)" }}>Updated {timeAgo(note.updated_at)}</span>
+          </button>
+          <button
+            type="button" onClick={onDelete} aria-label={`Delete ${note.title}`}
+            className="flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-base transition-colors hover:text-danger"
+            style={{ color: "var(--dm-txt-faint)" }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function NotesTab({ projectId }: { projectId: number }) {
+  const [notes, setNotes] = useState<ProjectNote[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setNotes(null); setError(null);
+    fetchNotes(projectId)
+      .then(rows => { if (!cancelled) setNotes(rows); })
+      .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  async function handleAdd() {
+    const t = title.trim();
+    if (!t) return;
+    setBusy(true); setError(null);
+    try {
+      const note = await createNote(projectId, t, body);
+      setNotes(prev => [note, ...(prev ?? [])]);
+      setTitle(""); setBody("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSave(note: ProjectNote, patch: { title?: string; body?: string }) {
+    const saved = await updateNote(projectId, note.id, patch);
+    setNotes(prev => (prev ?? []).map(n => n.id === note.id ? saved : n));
+  }
+
+  async function handleDelete(note: ProjectNote) {
+    await deleteNote(projectId, note.id);
+    setNotes(prev => (prev ?? []).filter(n => n.id !== note.id));
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-end gap-2 mb-4">
+        <div className="flex-1 min-w-[160px]">
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-muted)" }}>Title</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Note title" className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" style={textAreaStyle} />
+        </div>
+        <button
+          type="button" onClick={handleAdd} disabled={!title.trim() || busy}
+          className="rounded-lg px-4 py-2 text-sm font-semibold text-white bg-intel-blue hover:bg-intel-dark transition-colors disabled:opacity-50"
+        >
+          {busy ? "Adding…" : "Add note"}
+        </button>
+        <textarea
+          value={body} onChange={e => setBody(e.target.value)} placeholder="Note body (optional)" rows={2}
+          className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" style={textAreaStyle}
+        />
+      </div>
+      {error && <p className="text-xs text-danger mb-3">{error}</p>}
+      {notes === null ? (
+        <p className="text-xs" style={{ color: "var(--dm-txt-faint)" }}>Loading notes…</p>
+      ) : notes.length === 0 ? (
+        <p className="text-xs" style={{ color: "var(--dm-txt-faint)" }}>No notes yet — add one above.</p>
+      ) : (
+        <ul>
+          {notes.map(note => (
+            <NoteCard key={note.id} note={note} onSave={patch => handleSave(note, patch)} onDelete={() => handleDelete(note)} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function DiscussionsTab({ projectId }: { projectId: number }) {
+  const [messages, setMessages] = useState<ProjectDiscussionMessage[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [author, setAuthor] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMessages(null); setError(null);
+    fetchDiscussionMessages(projectId)
+      .then(rows => { if (!cancelled) setMessages(rows); })
+      .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  async function handlePost() {
+    const a = author.trim(), m = message.trim();
+    if (!a || !m) return;
+    setBusy(true); setError(null);
+    try {
+      const row = await postDiscussionMessage(projectId, a, m);
+      setMessages(prev => [...(prev ?? []), row]);
+      setMessage("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete(row: ProjectDiscussionMessage) {
+    await deleteDiscussionMessage(projectId, row.id);
+    setMessages(prev => (prev ?? []).filter(m => m.id !== row.id));
+  }
+
+  return (
+    <div>
+      {error && <p className="text-xs text-danger mb-3">{error}</p>}
+      <div className="mb-4 max-h-80 overflow-y-auto rounded-xl border" style={{ borderColor: "var(--dm-border-a)" }}>
+        {messages === null ? (
+          <p className="text-xs p-3" style={{ color: "var(--dm-txt-faint)" }}>Loading discussion…</p>
+        ) : messages.length === 0 ? (
+          <p className="text-xs p-3" style={{ color: "var(--dm-txt-faint)" }}>No messages yet — start the discussion below.</p>
+        ) : (
+          <ul>
+            {messages.map(row => (
+              <li key={row.id} className="flex items-start gap-3 px-3 py-2.5" style={{ borderTop: "1px solid var(--dm-border-a)" }}>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[12px] font-semibold" style={{ color: "var(--dm-txt-primary)" }}>{row.author}</span>
+                  <span className="text-[11px] ml-2" style={{ color: "var(--dm-txt-faint)" }}>{timeAgo(row.created_at)}</span>
+                  <p className="text-[13px] mt-0.5 whitespace-pre-wrap" style={{ color: "var(--dm-txt-secondary)" }}>{row.message}</p>
+                </div>
+                <button
+                  type="button" onClick={() => handleDelete(row)} aria-label="Delete message"
+                  className="flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-sm transition-colors hover:text-danger"
+                  style={{ color: "var(--dm-txt-faint)" }}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="w-40">
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-muted)" }}>Name</label>
+          <input value={author} onChange={e => setAuthor(e.target.value)} placeholder="Your name" className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" style={textAreaStyle} />
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-muted)" }}>Message</label>
+          <input
+            value={message} onChange={e => setMessage(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") handlePost(); }}
+            placeholder="Add to the discussion" className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" style={textAreaStyle}
+          />
+        </div>
+        <button
+          type="button" onClick={handlePost} disabled={!author.trim() || !message.trim() || busy}
+          className="rounded-lg px-4 py-2 text-sm font-semibold text-white bg-intel-blue hover:bg-intel-dark transition-colors disabled:opacity-50"
+        >
+          {busy ? "Posting…" : "Post"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Everything related to a project beyond its sizing data: document attachments, free-text
+ *  notes, and a flat discussion log — the three sources the Implementation Workflow extractor
+ *  reads from (see the "Extract" button on a business process's Implementation Workflow tab). */
 export function ProjectDocumentsPanel() {
   const { currentProject } = useProject();
   const [tab, setTab] = useState<Tab>("documents");
@@ -227,17 +466,9 @@ export function ProjectDocumentsPanel() {
           </div>
         )}
 
-        {tab === "notes" && (
-          <div className="rounded-xl border border-dashed py-14 text-center" style={{ borderColor: "var(--dm-border-b)" }}>
-            <p className="text-sm" style={{ color: "var(--dm-txt-muted)" }}>Notes are coming soon.</p>
-          </div>
-        )}
+        {tab === "notes" && <NotesTab projectId={projectId} />}
 
-        {tab === "discussions" && (
-          <div className="rounded-xl border border-dashed py-14 text-center" style={{ borderColor: "var(--dm-border-b)" }}>
-            <p className="text-sm" style={{ color: "var(--dm-txt-muted)" }}>Discussions are coming soon.</p>
-          </div>
-        )}
+        {tab === "discussions" && <DiscussionsTab projectId={projectId} />}
       </div>
 
       {viewing && <PdfViewerModal doc={viewing} projectId={projectId} onClose={() => setViewing(null)} />}

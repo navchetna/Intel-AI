@@ -7,7 +7,7 @@ import json
 import httpx
 
 GROQ_CHAT_COMPLETIONS_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "openai/gpt-oss-120b"
 REQUEST_TIMEOUT_SEC = 60.0
 
 
