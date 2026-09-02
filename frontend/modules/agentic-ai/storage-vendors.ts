@@ -10,129 +10,100 @@ export interface VendorMapping {
 }
 
 export const STORAGE_VENDORS: VendorMapping[] = [
-  // C0 - Transactional block
+  // C2 - Shared hot storage
   {
     name: "NetApp AFF / ONTAP",
     platform: "NetApp AFF / ONTAP",
-    mapping: ["C0", "C2"],
+    mapping: ["C2"],
     description: "Unified enterprise NAS/SAN with FabricPool tiering",
     intelMapping: "Xeon4; AES-NI",
   },
   {
     name: "Pure / Everpure",
     platform: "Pure / Everpure",
-    mapping: ["C0", "C2"],
-    description: "FlashArray at C0, FlashBlade at C2/C3",
+    mapping: ["C2"],
+    description: "FlashBlade unified fast file and object",
     intelMapping: "Xeon4; AES-NI",
   },
   {
     name: "IBM FlashSystem",
     platform: "IBM FlashSystem",
-    mapping: ["C0"],
-    description: "Transactional block",
+    mapping: ["C2"],
+    description: "Shared hot storage array",
     intelMapping: "AES-NI on controller",
-  },
-  {
-    name: "Kaminario / Silk (historical)",
-    platform: "Kaminario / Silk (historical)",
-    mapping: ["C0"],
-    description: "Retained only as the cleanest published QAT proof point",
-    intelMapping: "Xeon-SP + C6268 chipset; QAT DEFLATE",
   },
   {
     name: "Dell PowerStore",
     platform: "Dell PowerStore",
-    mapping: ["C0"],
-    description: "Transactional block array",
+    mapping: ["C2"],
+    description: "Shared hot storage array",
     intelMapping: "Xeon; AES-NI — at-rest encryption; QAT — in-line compression",
   },
 
-  // C1 - Hot shared namespace + context memory
+  // C1 - Context memory (KV-cache)
   {
     name: "WEKA",
     platform: "WEKA",
-    mapping: ["C1", "C2"],
-    description: "Hot shared namespace + context memory",
+    mapping: ["C1"],
+    description: "Context memory / KV-cache namespace",
     intelMapping: "SIMD — data path",
   },
   {
     name: "VAST Data",
     platform: "VAST Data",
-    mapping: ["C1", "C2", "C3"],
-    description: "QLC economics at flash latency — spans C2/C3",
+    mapping: ["C1"],
+    description: "QLC economics at flash latency — context memory tier",
     intelMapping: "SPDK / DPDK",
   },
   {
     name: "Hammerspace",
     platform: "Hammerspace",
-    mapping: ["C1", "C2"],
+    mapping: ["C1"],
     description: "Namespace orchestration across tiers",
     intelMapping: "SPDK — NVMe-oF; Optane-PMEM design-in, CXL candidate",
   },
-
-  // C2 - HPC/AI parallel object store
   {
     name: "DAOS",
     platform: "DAOS",
-    mapping: ["C2"],
-    description: "HPC/AI parallel object store",
+    mapping: ["C1"],
+    description: "HPC/AI parallel object store — context memory tier",
     intelMapping: "SIMD via ISA-L and EC; ISA-L, SPDK; Optane PMEM design-in, CXL fit",
   },
-  {
-    name: "IBM Storage Scale",
-    platform: "IBM Storage Scale",
-    mapping: ["C2", "C4", "C5"],
-    description: "Parallel FS with policy-driven tape tiering",
-    intelMapping: "ISA-L for EC",
-  },
-  {
-    name: "Dell PowerScale",
-    platform: "Dell PowerScale",
-    mapping: ["C2"],
-    description: "Scale-out NAS",
-  },
-  {
-    name: "DDN (EXAScaler / Infinia)",
-    platform: "DDN (EXAScaler / Infinia)",
-    mapping: ["C2", "C3"],
-    description: "HPC throughput; Infinia targets C3 and KV",
-    intelMapping: "Lustre SIMD, ISA-L",
-  },
 
-  // C4/C5 - Warm bulk and cold archive object
+  // C3/C4 - Lake house and archive object
   {
     name: "MinIO (AIStor)",
     platform: "MinIO (AIStor)",
-    mapping: ["C4", "C5"],
-    description: "Object store spanning warm flash and bulk HDD",
+    mapping: ["C3", "C4"],
+    description: "Object store spanning bulk HDD and cold archive",
     intelMapping: "Xeon6+; AVX-512/AVX2 Reed-Solomon EC & bitrot hashing (no ISA-L); AES-NI via Go runtime",
   },
   {
     name: "Ceph",
     platform: "Ceph (RBD / CephFS / RGW)",
-    mapping: ["C4", "C5"],
+    mapping: ["C3", "C4"],
     description: "Unified block/file/object; strongest as RGW object",
     intelMapping: "Xeon6+; AES-NI via isa-l and OpenSSL crypto paths; SIMD through the ISA-L plugin; QAT compression zlib/QATzip; QAT crypto offload AES-GCM and DEFLATE",
   },
   {
     name: "Cloudian",
     platform: "Cloudian",
-    mapping: ["C4", "C5"],
+    mapping: ["C3", "C4"],
     description: "Bulk object with strong WORM/object-lock",
     intelMapping: "AES-NI",
   },
   {
     name: "Scality",
     platform: "Scality (RING / ARTESCA)",
-    mapping: ["C4", "C5"],
-    description: "RING at C4, ARTESCA at flash-object C3",
+    mapping: ["C3", "C4"],
+    description: "RING at C3, bulk/cold object with ARTESCA",
     intelMapping: "AES-NI",
   },
   {
     name: "Quantum ActiveScale",
     platform: "Quantum ActiveScale",
-    mapping: ["C4", "C5"],
-    description: "Object with integrated tape tier",
+    mapping: ["C4"],
+    description: "Object with integrated tape tier — cold archive",
     intelMapping: "AES-NI",
   },
 ];

@@ -7,6 +7,7 @@ import { AgenticNetworkView } from "./AgenticNetworkView";
 import { AgenticSizingView } from "./AgenticSizingView";
 import { SizingSheet } from "./SizingSheet";
 import { SIZING_MAP, defaultInputsFor } from "./sizing-wiring";
+import { OPTIMIZATIONS } from "./optimizations-data";
 import { useProject } from "@/contexts/ProjectContext";
 
 type Tab = "stack" | "storage" | "network" | "sizing";
@@ -32,11 +33,12 @@ export function AgenticHarnessPageView() {
   }
 
   function openSizingFor(id: string) {
-    if (!SIZING_MAP[id]) return; // no calculator wired up yet — inert
+    if (!SIZING_MAP[id] && !OPTIMIZATIONS[id]) return; // nothing documented for this workload — inert
     setOpenSizingId(id);
   }
 
   const openTool = openSizingId ? SIZING_MAP[openSizingId] : undefined;
+  const openHasPanel = !!openSizingId && (!!openTool || !!OPTIMIZATIONS[openSizingId]);
 
   return (
     <main className="min-h-screen" style={{ background: "var(--dm-page-bg)" }}>
@@ -67,7 +69,7 @@ export function AgenticHarnessPageView() {
         {/* ── tab bar ── */}
         <div className="flex gap-1 mb-2 border-b border-white/[0.07]">
           {[
-            { key: "stack" as const, label: "SW-Stack" },
+            { key: "stack" as const, label: "Software" },
             { key: "storage" as const, label: "Storage" },
             { key: "network" as const, label: "Network" },
             { key: "sizing" as const, label: `Sizing${selectedWorkloads.size ? ` (${selectedWorkloads.size})` : ""}` },
@@ -111,11 +113,12 @@ export function AgenticHarnessPageView() {
         />
       )}
 
-      {/* ── Sizing Sheet Modal — shared across both tabs ── */}
-      {openSizingId && openTool && (
+      {/* ── Sizing / Optimizations panel — shared across tabs ── */}
+      {openHasPanel && openSizingId && (
         <SizingSheet
           tool={openTool}
-          inputs={sizingInputs[openSizingId] ?? defaultInputsFor(openTool)}
+          workloadId={openSizingId}
+          inputs={openTool ? (sizingInputs[openSizingId] ?? defaultInputsFor(openTool)) : undefined}
           onInputsChange={next => updateAgenticStack({ sizingInputs: { ...sizingInputs, [openSizingId]: next } })}
           onClose={() => setOpenSizingId(null)}
         />

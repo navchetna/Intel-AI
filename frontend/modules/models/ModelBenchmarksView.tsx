@@ -140,8 +140,25 @@ function computeGoldenRows(rowsIn: JoinedRow[], levers: GoldSlaLevers): JoinedRo
   return golden.sort((a, b) => a.model.name.localeCompare(b.model.name) || a.record.platform.localeCompare(b.record.platform));
 }
 
-type SortCol = "input_tokens" | "output_tokens" | "concurrency" | "mean_ttft_ms" | "interactivity_tokens_per_sec_per_user" | "request_throughput";
+type SortCol =
+  | "model" | "category" | "serving_engine" | "platform"
+  | "input_tokens" | "output_tokens" | "concurrency" | "mean_ttft_ms"
+  | "mean_tpot_ms" | "output_token_throughput"
+  | "interactivity_tokens_per_sec_per_user" | "request_throughput";
 type SortDir = "asc" | "desc";
+
+/** Pulls the comparable value for a column — string columns come off `model` or have a
+ *  display fallback (e.g. serving_engine defaults to "vLLM"), numeric columns come
+ *  straight off `record` with missing values sorting last. */
+function sortValue(row: JoinedRow, col: SortCol): string | number {
+  switch (col) {
+    case "model":         return row.model.name;
+    case "category":      return row.model.category;
+    case "serving_engine": return row.record.serving_engine || "vLLM";
+    case "platform":      return row.record.platform;
+    default:               return row.record[col] ?? -Infinity;
+  }
+}
 
 export const DEFAULT_TTFT_THRESHOLD_MS = 2000;
 export const DEFAULT_TOK_PER_USER_THRESHOLD = 10;
@@ -232,8 +249,12 @@ export function ModelBenchmarksView() {
 
     if (sortCol) {
       joined = [...joined].sort((a, b) => {
-        const av = a.record[sortCol] ?? -Infinity;
-        const bv = b.record[sortCol] ?? -Infinity;
+        const av = sortValue(a, sortCol);
+        const bv = sortValue(b, sortCol);
+        if (typeof av === "string" || typeof bv === "string") {
+          const cmp = String(av).localeCompare(String(bv));
+          return sortDir === "asc" ? cmp : -cmp;
+        }
         return sortDir === "asc" ? av - bv : bv - av;
       });
     }
@@ -273,17 +294,20 @@ export function ModelBenchmarksView() {
     else { setSortCol(col); setSortDir("asc"); }
   }
 
-  function SortHeader({ col, children, color }: { col: SortCol; children: React.ReactNode; color?: { dark: string; light: string } }) {
+  function SortHeader({ col, children, color, align = "right", widthClass = "w-16" }: {
+    col: SortCol; children: React.ReactNode; color?: { dark: string; light: string };
+    align?: "left" | "right"; widthClass?: string;
+  }) {
     const active = sortCol === col;
     const baseColor = color ? (isDark ? color.dark : color.light) : (isDark ? "rgba(255,255,255,0.6)" : "rgba(51,65,85,0.8)");
     const activeColor = color ? (isDark ? color.dark : color.light) : (isDark ? "#38bdf8" : "#0284c7");
     return (
       <th
         onClick={() => toggleSort(col)}
-        className="w-16 px-1.5 py-1.5 text-right font-bold text-[10px] uppercase tracking-[0.08em] cursor-pointer select-none whitespace-nowrap transition-colors hover:opacity-90"
+        className={`${widthClass} px-1.5 py-1.5 ${align === "right" ? "text-right" : "text-left"} font-bold text-[10px] uppercase tracking-[0.08em] cursor-pointer select-none whitespace-nowrap transition-colors hover:opacity-90`}
         style={{ color: active ? activeColor : baseColor }}
       >
-        <div className="flex items-center justify-end gap-1">
+        <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : "justify-start"}`}>
           {color && <span className="w-1 h-1 rounded-full" style={{ background: isDark ? color.dark : color.light }} />}
           {children}
           <span className="text-[9px]" style={{ opacity: active ? 1 : 0.4 }}>
@@ -418,26 +442,16 @@ export function ModelBenchmarksView() {
                     : "linear-gradient(to bottom, #e2e8f0 0%, #cbd5e1 100%)",
                   borderBottom: isDark ? "2px solid rgba(56,189,248,0.15)" : "2px solid rgba(100,116,139,0.2)"
                 }}>
-                  <th className="w-48 px-2 py-1.5 text-left font-bold text-[10px] uppercase tracking-[0.08em]" style={{ color: isDark ? "rgba(255,255,255,0.6)" : "rgba(51,65,85,0.8)" }}>Model</th>
-                  <th className="w-20 px-1.5 py-1.5 text-left font-bold text-[10px] uppercase tracking-[0.08em]" style={{ color: isDark ? "rgba(255,255,255,0.6)" : "rgba(51,65,85,0.8)" }}>Cat</th>
-                  <th className="w-16 px-1.5 py-1.5 text-left font-bold text-[10px] uppercase tracking-[0.08em]" style={{ color: isDark ? "rgba(255,255,255,0.6)" : "rgba(51,65,85,0.8)" }}>Engine</th>
-                  <th className="w-32 px-1.5 py-1.5 text-left font-bold text-[10px] uppercase tracking-[0.08em]" style={{ color: isDark ? "rgba(255,255,255,0.6)" : "rgba(51,65,85,0.8)" }}>Platform</th>
+                  <SortHeader col="model" align="left" widthClass="w-48">Model</SortHeader>
+                  <SortHeader col="category" align="left" widthClass="w-20">Cat</SortHeader>
+                  <SortHeader col="serving_engine" align="left" widthClass="w-16">Engine</SortHeader>
+                  <SortHeader col="platform" align="left" widthClass="w-32">Platform</SortHeader>
                   <SortHeader col="input_tokens">In Tok</SortHeader>
                   <SortHeader col="output_tokens">Out Tok</SortHeader>
                   <SortHeader col="concurrency">Conc</SortHeader>
                   <SortHeader col="mean_ttft_ms" color={{ dark: "#fbbf24", light: "#d97706" }}>TTFT</SortHeader>
-                  <th className="w-20 px-1.5 py-1.5 text-right font-bold text-[10px] uppercase tracking-[0.08em]" style={{ color: isDark ? "#a78bfa" : "#7c3aed" }}>
-                    <div className="flex items-center justify-end gap-1">
-                      <span className="w-1 h-1 rounded-full" style={{ background: isDark ? "#a78bfa" : "#7c3aed" }} />
-                      TPOT
-                    </div>
-                  </th>
-                  <th className="w-20 px-1.5 py-1.5 text-right font-bold text-[10px] uppercase tracking-[0.08em]" style={{ color: isDark ? "#34d399" : "#059669" }}>
-                    <div className="flex items-center justify-end gap-1">
-                      <span className="w-1 h-1 rounded-full" style={{ background: isDark ? "#34d399" : "#059669" }} />
-                      Out/s
-                    </div>
-                  </th>
+                  <SortHeader col="mean_tpot_ms" widthClass="w-20" color={{ dark: "#a78bfa", light: "#7c3aed" }}>TPOT</SortHeader>
+                  <SortHeader col="output_token_throughput" widthClass="w-20" color={{ dark: "#34d399", light: "#059669" }}>Out/s</SortHeader>
                   <SortHeader col="interactivity_tokens_per_sec_per_user" color={{ dark: "#38bdf8", light: "#0284c7" }}>Tok/u</SortHeader>
                   <SortHeader col="request_throughput" color={{ dark: "#f87171", light: "#dc2626" }}>Req/s</SortHeader>
                 </tr>

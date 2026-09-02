@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
-import { readdir } from "fs/promises";
-import path from "path";
 
-/** Lists the numbered "NN_...md" source-extract files in /public, sorted ascending — the Nth
- *  file (01_, 02_, ...) is the reference document for the Nth business process. Not under /api
- *  since that prefix is rewritten to the backend service (see next.config.ts). */
+/** Used to list the numbered "NN_...md" source-extract files in /public and match the Nth
+ *  file (01_, 02_, ...) to the Nth business process — but that matched by position across
+ *  ALL projects, so every project's business processes showed the same handful of reference
+ *  docs from one past engagement. Stubbed to return no files until reference docs are
+ *  associated per-project instead of globally by index. */
 export async function GET() {
-  const publicDir = path.join(process.cwd(), "public");
-  const entries = await readdir(publicDir);
-  const files = entries
-    .filter(f => /^\d{2}_.*\.md$/.test(f))
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  return NextResponse.json({ files });
+  return NextResponse.json({ files: [] });
 }

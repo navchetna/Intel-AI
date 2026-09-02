@@ -47,6 +47,8 @@ export async function generateAgentSuggestions(input: {
   business_process_name: string;
   description: string;
   reference_text: string;
+  nudge_prompt?: string;
+  previous_flow?: AgentSuggestions;
 }): Promise<AgentSuggestions> {
   const res = await fetch(apiUrl("/generate"), {
     method: "POST",

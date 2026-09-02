@@ -39,6 +39,51 @@ class Project(BaseModel):
     updated_at: datetime
 
 
+class ProjectNoteCreate(BaseModel):
+    title: str
+    body: str = ""
+
+
+class ProjectNoteUpdate(BaseModel):
+    title: str | None = None
+    body: str | None = None
+
+
+class ProjectNoteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: int
+    title: str
+    body: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectDiscussionMessageCreate(BaseModel):
+    author: str
+    message: str
+
+
+class ProjectDiscussionMessageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: int
+    author: str
+    message: str
+    created_at: datetime
+
+
+class ImplementationExtractRequest(BaseModel):
+    business_process_name: str
+    description: str = ""
+
+
+class ImplementationExtractResponse(BaseModel):
+    content: str = ""
+
+
 class ProjectDocumentRead(BaseModel):
     """A document reference — the file itself lives on local disk; this is the DB record."""
 

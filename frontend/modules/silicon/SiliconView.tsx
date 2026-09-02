@@ -6,9 +6,14 @@ import { AcceleratorDetailView } from "./AcceleratorDetailView";
 import { SAMBANOVA_SN40L } from "./sambanova-data";
 import { CRESCENT_ISLAND } from "./crescent-island-data";
 import { ARC_PRO_B60 } from "./arc-b60-data";
+import { NVIDIA_H100, NVIDIA_RTX_PRO_6000, NVIDIA_GB200_NVL72, NVIDIA_GB300_NVL72 } from "./nvidia-gpu-data";
 import { StorageView } from "./StorageView";
+import { SiliconComparisonView } from "./SiliconComparisonView";
 
-const DETAIL_PAGE_IDS = new Set(["xeon6-sp", "sambanova", "crescent-island", "arc-b60", "storage"]);
+const DETAIL_PAGE_IDS = new Set([
+  "xeon6-sp", "sambanova", "crescent-island", "arc-b60", "storage",
+  "nvidia-h100", "nvidia-rtx-pro-6000", "nvidia-gb200-nvl72", "nvidia-gb300-nvl72",
+]);
 
 interface SpecRow { label: string; value: string }
 interface Chip {
@@ -16,6 +21,7 @@ interface Chip {
   name: string;
   codeName: string;
   category: "CPU" | "GPU" | "Accelerator";
+  vendor: "Intel" | "NVIDIA" | "SambaNova";
   tagline: string;
   description: string;
   accent: string;
@@ -29,12 +35,19 @@ interface Chip {
   tier: "Production" | "High-Performance" | "Next-Gen" | "Partner";
 }
 
+const VENDOR_STYLES: Record<Chip["vendor"], { bg: string; text: string }> = {
+  Intel:     { bg: "rgba(56,189,248,0.15)", text: "#7dd3fc" },
+  NVIDIA:    { bg: "rgba(118,185,0,0.18)",  text: "#a3e635" },
+  SambaNova: { bg: "rgba(251,146,60,0.15)", text: "#fdba74" },
+};
+
 const CHIPS: Chip[] = [
   {
     id: "xeon6-sp",
     name: "Intel® Xeon® 6 SP",
     codeName: "Granite Rapids — Scalable Performance",
     category: "CPU",
+    vendor: "Intel",
     tagline: "Mainstream AI inference at rack scale",
     description:
       "The 2-socket workhorse of the Xeon 6 family. Up to 64 P-cores per socket with AMX delivering native INT8/BF16 GEMM — covers the vast majority of SLM inference and embedding workloads without any discrete accelerator.",
@@ -74,6 +87,7 @@ const CHIPS: Chip[] = [
     name: "Intel® Xeon® 6 AP",
     codeName: "Granite Rapids — Advanced Performance",
     category: "CPU",
+    vendor: "Intel",
     tagline: "Maximum-core AI compute on x86",
     description:
       "The flagship P-core Xeon 6 variant — up to 128 cores per socket with a full 96-lane PCIe 5.0 fabric and CXL 2.0 for KV-cache offload. Targets dense inference clusters and AI-first datacenter nodes where raw throughput per rack unit matters.",
@@ -114,6 +128,7 @@ const CHIPS: Chip[] = [
     name: "Intel® Xeon® 6+",
     codeName: "Granite Rapids HBM",
     category: "CPU",
+    vendor: "Intel",
     tagline: "Bandwidth-optimised AI compute",
     description:
       "Xeon 6 with on-package HBM3 eliminates the DRAM bottleneck for memory-bandwidth-bound inference — large embedding tables, long-context attention, and sparse MoE models all benefit directly.",
@@ -154,6 +169,7 @@ const CHIPS: Chip[] = [
     name: "Intel® Arc™ Pro B70",
     codeName: "Xe2 \"Battlemage\" (BMG-G31)",
     category: "GPU",
+    vendor: "Intel",
     tagline: "VRAM-dense workstation & batch-inference GPU",
     description:
       "Xe2 \"Battlemage\" workstation GPU with 32 GB ECC GDDR6 — the play is VRAM capacity per dollar, not peak compute. Four cards pool 128 GB for roughly $3,800 list, and vLLM (via Intel's LLM-Scaler) serves Llama, Qwen, DeepSeek and Mistral at competitive batch-32 throughput.",
@@ -194,6 +210,7 @@ const CHIPS: Chip[] = [
     name: "Intel® Arc™ Pro B60",
     codeName: "Xe2 \"Battlemage\" — BMG-G21",
     category: "GPU",
+    vendor: "Intel",
     tagline: "Cost-effective AI inference with 24 GB VRAM",
     description:
       "The Arc Pro B60 is the full-die Battlemage professional part: 20 Xe2-HPG cores, 160 XMX matrix engines, 24 GB GDDR6 on a 192-bit bus, and PCIe 5.0 x8 electrical host link. Intel positions it explicitly as an inference product — capacity per dollar, not FLOPS per dollar.",
@@ -235,9 +252,10 @@ const CHIPS: Chip[] = [
     name: "Intel Crescent Island",
     codeName: "Xe3P — data-centre inference GPU",
     category: "GPU",
+    vendor: "Intel",
     tagline: "Memory capacity per dollar and per watt, built for agentic AI",
     description:
-      "Pre-launch Xe3P inference GPU that trades peak FLOPS for memory capacity — 160 GB reference / 480 GB partner-ceiling LPDDR5X in a 350 W air-cooled PCIe card. Intel has disclosed no throughput figures at this stage; every TFLOPS number below is a derived estimate, not a spec.",
+      "Pre-launch Xe3P inference GPU that trades peak FLOPS for memory capacity — 160 GB reference / 480 GB partner-ceiling LPDDR5X in a 350 W air-cooled PCIe card. Intel has since published throughput specs: 655.5 TFLOPS BF16, 1,311 TFLOPS FP8, 2,622 TFLOPS MXFP4.",
     accent: "#f472b6",
     glow: "rgba(244,114,182,0.14)",
     badge: { bg: "rgba(244,114,182,0.15)", text: "#f9a8d4" },
@@ -253,18 +271,179 @@ const CHIPS: Chip[] = [
       { label: "Architecture", value: "Xe3P (\"Celestial\" lineage)" },
       { label: "Memory type", value: "LPDDR5X — no HBM, no GDDR" },
       { label: "Memory capacity", value: "160 GB ref. / 480 GB ceiling" },
-      { label: "Memory bandwidth", value: "684 GB/s – 1.54 TB/s (disputed)" },
-      { label: "Board power", value: "350 W, air-cooled" },
+      { label: "Memory bandwidth", value: "1.5 TB/s" },
+      { label: "Board power (TDP)", value: "350 W, air-cooled" },
       { label: "Host interface", value: "PCIe Gen5 x16 (assumed)" },
-      { label: "BF16 (derived, CI-B)", value: "~393 TFLOPS" },
+      { label: "BF16 / FP8 / MXFP4", value: "655.5 / 1,311 / 2,622 TFLOPS" },
       { label: "Status", value: "Sampling H2 2026 · Volume 2027" },
     ],
     useCases: ["Sparse MoE serving", "Long-context agentic sessions", "High-concurrency batch inference", "Many co-resident small models", "Embedding / reranker serving"],
     highlights: [
       "160–480 GB LPDDR5X trades ~3–5× bandwidth for 1.7–3.3× capacity vs. HBM — a capacity-bound, not bandwidth-bound, bet",
-      "Intel confirms zero throughput specs pre-launch — every TFLOPS figure in circulation (including here) is derived, not published",
+      "Intel-published throughput specs: 10.2 TFLOPS FP64, 20.5 TFLOPS FP32, 655.5 TFLOPS BF16, 1,311 TFLOPS FP8, 2,622 TFLOPS MXFP4",
       "Dec 2025 Battlematrix testing: only MXFP4 models loaded successfully; INT4/FP8/AWQ failed — treat software maturity as the primary adoption risk",
       "No proprietary scale-up fabric — PCIe P2P makes host lane count (Xeon 6 6767P+) a first-order sizing constraint",
+    ],
+    tier: "Next-Gen",
+  },
+  {
+    id: "nvidia-h100",
+    name: "NVIDIA H100 SXM5",
+    codeName: "Hopper (GH100), TSMC 4N",
+    category: "GPU",
+    vendor: "NVIDIA",
+    tagline: "The incumbent datacenter GPU — largest installed base of any part on this page",
+    description:
+      "Still the most widely deployed high-end AI GPU as of 2026. The SXM5 module (HGX/DGX 8-GPU servers) is what this app's own Qwen sizing model defaults to — 989/990 TFLOPS dense BF16 and 3.35 TB/s HBM3 are reproduced exactly from that model.",
+    accent: "#76b900",
+    glow: "rgba(118,185,0,0.14)",
+    badge: { bg: "rgba(118,185,0,0.15)", text: "#a3e635" },
+    icon: (
+      <svg viewBox="0 0 44 44" fill="none" className="w-10 h-10">
+        <rect width="44" height="44" rx="10" fill="#76b900" fillOpacity="0.12" />
+        <circle cx="22" cy="22" r="12" stroke="#76b900" strokeWidth="2" />
+        <circle cx="22" cy="22" r="6" fill="#76b900" fillOpacity="0.25" />
+        <path d="M22 10v4M22 30v4M10 22h4M30 22h4" stroke="#76b900" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    ),
+    peakFigure: { value: "990", unit: "TFLOPS", label: "BF16 dense (SXM5) — this app's sizing default" },
+    specs: [
+      { label: "Architecture", value: "Hopper (GH100), TSMC 4N" },
+      { label: "Form factor", value: "SXM5 (HGX/DGX 8-GPU)" },
+      { label: "Memory", value: "80 GB HBM3" },
+      { label: "Memory bandwidth", value: "3.35 TB/s" },
+      { label: "BF16 Tensor (dense/sparse)", value: "990 / 1,979 TFLOPS" },
+      { label: "FP8 Tensor (dense/sparse)", value: "1,979 / 3,958 TFLOPS" },
+      { label: "NVLink", value: "900 GB/s (4th gen)" },
+      { label: "Board power", value: "Up to 700 W" },
+    ],
+    useCases: ["Large-scale LLM training", "High-throughput inference serving", "Multi-node distributed training", "Mixed training + inference clusters", "Existing HGX/DGX fleets"],
+    highlights: [
+      "Still the largest installed base of any high-end AI GPU — most customer environments already have H100 capacity to size against",
+      "SXM5's 700 W / 900 GB/s NVLink profile is materially higher-throughput than the PCIe H100 SKU already in this app's Comparisons tab — don't conflate the two",
+      "989/990 TFLOPS dense BF16 and 3.35 TB/s HBM3 are this app's own Qwen sizing-model defaults",
+      "Most mature software ecosystem of any accelerator on this page — CUDA, vLLM, TensorRT-LLM all target it first",
+    ],
+    tier: "Production",
+  },
+  {
+    id: "nvidia-rtx-pro-6000",
+    name: "NVIDIA RTX PRO 6000 Blackwell",
+    codeName: "Blackwell (GB202) — Workstation Edition",
+    category: "GPU",
+    vendor: "NVIDIA",
+    tagline: "96 GB GDDR7 workstation/inference card — the direct benchmark for Intel's B60/B70",
+    description:
+      "NVIDIA's Blackwell-generation professional card, and the card this app's own B70 entry already benchmarks itself against (~85% of its batch-32 throughput on Llama 3.1 8B). PCIe only, no NVLink — 96 GB GDDR7, 5th-gen Tensor Cores with native FP4.",
+    accent: "#76b900",
+    glow: "rgba(118,185,0,0.14)",
+    badge: { bg: "rgba(118,185,0,0.15)", text: "#a3e635" },
+    icon: (
+      <svg viewBox="0 0 44 44" fill="none" className="w-10 h-10">
+        <rect width="44" height="44" rx="10" fill="#76b900" fillOpacity="0.12" />
+        <circle cx="22" cy="22" r="12" stroke="#76b900" strokeWidth="2" />
+        <circle cx="22" cy="22" r="6" fill="#76b900" fillOpacity="0.25" />
+        <path d="M14.1 14.1l2.8 2.8M27.1 27.1l2.8 2.8M14.1 29.9l2.8-2.8M27.1 16.9l2.8-2.8" stroke="#76b900" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    peakFigure: { value: "96", unit: "GB", label: "GDDR7 — largest workstation-card VRAM here" },
+    specs: [
+      { label: "Architecture", value: "Blackwell (GB202), TSMC 4N" },
+      { label: "CUDA / Tensor / RT cores", value: "24,064 / 752 / 188" },
+      { label: "Memory", value: "96 GB GDDR7 ECC, 512-bit" },
+      { label: "Memory bandwidth", value: "1.79 TB/s" },
+      { label: "FP8 Tensor (dense/sparse)", value: "503.8 / 1,007.6 TFLOPS" },
+      { label: "FP4 Tensor (sparse)", value: "~4,000 TOPS" },
+      { label: "Host interface", value: "PCIe Gen5 x16 (no NVLink)" },
+      { label: "Board power", value: "600 W" },
+    ],
+    useCases: ["Single/multi-GPU inference serving", "AI workstation + graphics", "Fine-tuning mid-size models", "Batch inference at high concurrency", "Direct Intel B60/B70 comparison point"],
+    highlights: [
+      "96 GB GDDR7 is the largest VRAM of any single workstation-class card here — direct capacity comparison to Intel's B60 (24 GB) and B70 (32 GB)",
+      "This app's own B70 card already benchmarks against it: ~85% of this card's batch-32 Llama 3.1 8B throughput",
+      "5th-gen Tensor Cores add native FP4 — the same low-precision format Crescent Island targets, at a much higher absolute TOPS ceiling",
+      "No NVLink — PCIe Gen5 x16 only, the same single-card scaling constraint this app already flags for Intel's Arc Pro line",
+    ],
+    tier: "Production",
+  },
+  {
+    id: "nvidia-gb200-nvl72",
+    name: "NVIDIA GB200 NVL72",
+    codeName: "Grace Blackwell Superchip (Grace CPU + 2× B200 GPU)",
+    category: "GPU",
+    vendor: "NVIDIA",
+    tagline: "Rack-scale superchip — 72 Blackwell GPUs NVLink-fused into one domain",
+    description:
+      "Not a single GPU — a Superchip (1 Grace CPU + 2 Blackwell B200 GPUs) NVLink-fused with 17 others into a 72-GPU, 36-CPU rack sold and benchmarked as one unit. 13.4 TB of HBM3e at up to 576 TB/s aggregate in one coherent NVLink domain.",
+    accent: "#76b900",
+    glow: "rgba(118,185,0,0.14)",
+    badge: { bg: "rgba(118,185,0,0.15)", text: "#a3e635" },
+    icon: (
+      <svg viewBox="0 0 44 44" fill="none" className="w-10 h-10">
+        <rect width="44" height="44" rx="10" fill="#76b900" fillOpacity="0.12" />
+        <rect x="10" y="9" width="24" height="5" rx="1.5" fill="#76b900" fillOpacity="0.55" />
+        <rect x="10" y="19.5" width="24" height="5" rx="1.5" fill="#76b900" fillOpacity="0.4" />
+        <rect x="10" y="30" width="24" height="5" rx="1.5" fill="#76b900" fillOpacity="0.25" />
+      </svg>
+    ),
+    peakFigure: { value: "20", unit: "PFLOPS", label: "FP4 per GPU, with sparsity" },
+    specs: [
+      { label: "Configuration", value: "36 Grace CPU + 72 B200 GPU / rack" },
+      { label: "Grace CPU", value: "72 Arm Neoverse V2 cores each" },
+      { label: "GPU memory (per GPU)", value: "186 GB HBM3e @ 8 TB/s" },
+      { label: "GPU memory (rack total)", value: "13.4 TB @ 576 TB/s" },
+      { label: "FP4 Tensor (per GPU, sparse)", value: "20 PFLOPS" },
+      { label: "FP4 Tensor (rack, sparse)", value: "1,440 PFLOPS" },
+      { label: "NVLink", value: "1.8 TB/s/GPU · 130 TB/s/rack" },
+      { label: "Rack power", value: "~120 kW, liquid-cooled" },
+    ],
+    useCases: ["Frontier-scale LLM training", "Trillion-parameter MoE training", "Disaggregated prefill/decode inference", "Largest single-domain NVLink clusters", "Multi-rack AI factories"],
+    highlights: [
+      "Not a single GPU — a Superchip (Grace CPU + 2 B200 GPUs) NVLink-fused into a 72-GPU, 36-CPU rack sold and benchmarked as one unit",
+      "13.4 TB of HBM3e at up to 576 TB/s aggregate bandwidth in one NVLink domain — far beyond what any PCIe-connected multi-GPU config (Intel's B60/B70/Crescent Island included) can pool coherently",
+      "Grace CPU is Arm (Neoverse V2), not x86 — a real toolchain/OS consideration when comparing total cost against x86-hosted GPU nodes",
+      "GB300 NVL72 (also on this page) is the direct Blackwell Ultra successor on the same rack architecture",
+    ],
+    tier: "High-Performance",
+  },
+  {
+    id: "nvidia-gb300-nvl72",
+    name: "NVIDIA GB300 NVL72",
+    codeName: "Grace Blackwell Ultra Superchip (Grace CPU + 2× B300 GPU)",
+    category: "GPU",
+    vendor: "NVIDIA",
+    tagline: "Blackwell Ultra refresh — 50% more HBM3e per GPU, 2× per-GPU networking",
+    description:
+      "The Blackwell Ultra refresh of GB200 NVL72 on the same rack architecture: 288 GB HBM3e per GPU (up from 186 GB), same 8 TB/s per-GPU bandwidth, and ConnectX-8 SuperNICs doubling per-GPU networking to ~800 Gb/s.",
+    accent: "#76b900",
+    glow: "rgba(118,185,0,0.14)",
+    badge: { bg: "rgba(118,185,0,0.15)", text: "#a3e635" },
+    icon: (
+      <svg viewBox="0 0 44 44" fill="none" className="w-10 h-10">
+        <rect width="44" height="44" rx="10" fill="#76b900" fillOpacity="0.12" />
+        <rect x="10" y="9" width="24" height="5" rx="1.5" fill="#76b900" fillOpacity="0.55" />
+        <rect x="10" y="19.5" width="24" height="5" rx="1.5" fill="#76b900" fillOpacity="0.4" />
+        <rect x="10" y="30" width="24" height="5" rx="1.5" fill="#76b900" fillOpacity="0.25" />
+        <circle cx="34" cy="11.5" r="3" fill="#76b900" />
+      </svg>
+    ),
+    peakFigure: { value: "288", unit: "GB", label: "HBM3e per GPU (vs. 186 GB on GB200)" },
+    specs: [
+      { label: "Configuration", value: "36 Grace CPU + 72 B300 GPU / rack" },
+      { label: "Grace CPU", value: "72 Arm Neoverse V2 cores each" },
+      { label: "GPU memory (per GPU)", value: "288 GB HBM3e @ 8 TB/s" },
+      { label: "GPU memory (rack total)", value: "20.7 TB @ 576 TB/s" },
+      { label: "FP4 Tensor (per GPU, sparse/dense)", value: "20 / 15 PFLOPS" },
+      { label: "FP4 Tensor (rack, sparse/dense)", value: "1,440 / 1,080 PFLOPS" },
+      { label: "Networking", value: "ConnectX-8, ~800 Gb/s/GPU" },
+      { label: "Rack power", value: "~120 kW, liquid-cooled" },
+    ],
+    useCases: ["Reasoning-model / long-context inference", "Trillion-parameter MoE serving", "KV-cache-heavy agentic workloads", "Next-gen frontier training", "Multi-rack AI factories"],
+    highlights: [
+      "Same NVL72 rack architecture as GB200, with 288 GB HBM3e per GPU (vs. 186 GB) — the generational upgrade is capacity and networking, not a clean compute doubling",
+      "ConnectX-8 SuperNICs double per-GPU networking to ~800 Gb/s vs. GB200's ConnectX-7 — matters for disaggregated prefill/decode across racks",
+      "Third-party reporting on this generation's headline FP4 PFLOPS figure is inconsistent — verify the dense-vs-sparse convention before quoting a GB200-vs-GB300 comparison",
+      "Same Arm-based Grace CPU consideration as GB200 applies here",
     ],
     tier: "Next-Gen",
   },
@@ -273,6 +452,7 @@ const CHIPS: Chip[] = [
     name: "SambaNova SN40L",
     codeName: "Reconfigurable Dataflow Unit — Cerulean",
     category: "Accelerator",
+    vendor: "SambaNova",
     tagline: "Dataflow-native alternative to GPUs for agentic inference",
     description:
       "SambaNova's RDU maps dataflow graphs directly onto an array of Pattern Compute/Memory Units — no SIMT kernel dispatch. Current-gen SN40L (5nm, 102B transistors) pairs 64 GiB HBM3 with up to 1.5 TiB DDR per chip, natively serving Composition-of-Experts models up to 1.3T aggregate params.",
@@ -361,7 +541,11 @@ function ChipCard({ chip, onClick }: { chip: Chip; onClick?: () => void }) {
                 {chip.tier}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                style={{ background: VENDOR_STYLES[chip.vendor].bg, color: VENDOR_STYLES[chip.vendor].text }}>
+                {chip.vendor}
+              </span>
               <span className="text-xs font-mono text-white/30">{chip.codeName}</span>
               <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
                 style={{ background: chip.badge.bg, color: chip.badge.text }}>
@@ -449,7 +633,7 @@ const COMPUTE_GROUPS: ComputeGroup[] = [
   {
     category: "GPU",
     label: "GPU",
-    description: "Discrete GPUs for batch inference, AI workstations and next-gen datacenter serving — from shipping Arc Pro cards to pre-production Crescent Island.",
+    description: "Discrete GPUs for batch inference, AI workstations and next-gen datacenter serving — Intel's Arc Pro line and pre-production Crescent Island alongside NVIDIA's H100, RTX PRO 6000, and rack-scale GB200/GB300 NVL72, badged by vendor below.",
     accent: "#a78bfa",
     accentRgb: "167,139,250",
   },
@@ -515,8 +699,16 @@ function ComputeAccordion({ group, chips, expanded, onToggle, onChipClick }: {
   );
 }
 
+type SiliconSection = "specifications" | "comparisons";
+
+const SILICON_SECTIONS: { id: SiliconSection; label: string; description: string }[] = [
+  { id: "specifications", label: "Specifications", description: "Full catalog — CPU, GPU, and accelerator SKUs by category" },
+  { id: "comparisons", label: "Comparisons", description: "Side-by-side TFLOPS, memory, and PCIe across selected silicon" },
+];
+
 export function SiliconView() {
   const [drillDown, setDrillDown] = useState<string | null>(null);
+  const [section, setSection] = useState<SiliconSection>("specifications");
   const [activeTab, setActiveTab] = useState<SiliconCategory>("Compute");
   const [expanded, setExpanded] = useState<Set<Chip["category"]>>(new Set());
 
@@ -539,6 +731,18 @@ export function SiliconView() {
   }
   if (drillDown === "arc-b60") {
     return <AcceleratorDetailView detail={ARC_PRO_B60} onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "nvidia-h100") {
+    return <AcceleratorDetailView detail={NVIDIA_H100} onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "nvidia-rtx-pro-6000") {
+    return <AcceleratorDetailView detail={NVIDIA_RTX_PRO_6000} onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "nvidia-gb200-nvl72") {
+    return <AcceleratorDetailView detail={NVIDIA_GB200_NVL72} onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "nvidia-gb300-nvl72") {
+    return <AcceleratorDetailView detail={NVIDIA_GB300_NVL72} onBack={() => setDrillDown(null)} />;
   }
   if (drillDown === "storage") {
     return <StorageView onBack={() => setDrillDown(null)} />;
@@ -568,15 +772,45 @@ export function SiliconView() {
         </div>
 
         {activeTab === "Compute" ? (
-          <>
-            {COMPUTE_GROUPS.map(g => (
-              <ComputeAccordion key={g.category} group={g}
-                chips={CHIPS.filter(c => c.category === g.category)}
-                expanded={expanded.has(g.category)}
-                onToggle={() => toggleGroup(g.category)}
-                onChipClick={setDrillDown} />
-            ))}
-          </>
+          <div className="flex gap-6 items-start">
+            {/* ── vertical sub-tabs — scoped to Compute; a subset of that tab, not a page-level section ── */}
+            <div className="flex-shrink-0 w-48 flex flex-col gap-1">
+              {SILICON_SECTIONS.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setSection(s.id)}
+                  className="text-left px-4 py-3 rounded-xl transition-colors border-l-2"
+                  style={{
+                    background: section === s.id ? "rgba(56,189,248,0.08)" : "transparent",
+                    borderColor: section === s.id ? "#38bdf8" : "transparent",
+                  }}
+                >
+                  <div className="text-sm font-bold" style={{ color: section === s.id ? "#38bdf8" : "var(--dm-txt-body)" }}>
+                    {s.label}
+                  </div>
+                  <div className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--dm-txt-faint)" }}>
+                    {s.description}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              {section === "comparisons" ? (
+                <SiliconComparisonView />
+              ) : (
+                <>
+                  {COMPUTE_GROUPS.map(g => (
+                    <ComputeAccordion key={g.category} group={g}
+                      chips={CHIPS.filter(c => c.category === g.category)}
+                      expanded={expanded.has(g.category)}
+                      onToggle={() => toggleGroup(g.category)}
+                      onChipClick={setDrillDown} />
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
         ) : activeTab === "Storage" ? (
           <div
             className="relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] cursor-pointer group"

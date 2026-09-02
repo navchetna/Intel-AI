@@ -29,6 +29,7 @@ import { Fragment, useState } from "react";
 import Image from "next/image";
 import { mainLayers, sidePanels, type ClickableItem, type SubLayer } from "./layers";
 import { SIZING_MAP } from "./sizing-wiring";
+import { OPTIMIZATIONS } from "./optimizations-data";
 import { useTheme } from "@/contexts/ThemeContext";
 
 // One distinct color per top-level layer, in stack order top → bottom.
@@ -141,16 +142,18 @@ function HeroIcon({
 }) {
   const [hov, setHov] = useState(false);
   const tool = SIZING_MAP[icon.alt];
+  const hasOptimization = !!OPTIMIZATIONS[icon.alt];
+  const hasPanel = !!tool || hasOptimization;
   const dim = size >= 60 ? "w-[60px] h-[60px]" : size >= 56 ? "w-14 h-14" : size >= 52 ? "w-[52px] h-[52px]" : "w-12 h-12";
   const isSelected = selectedWorkloads.has(icon.alt);
 
   return (
     <div
-      className={`flex flex-col items-center gap-1.5 ${tool ? "cursor-pointer" : ""}`}
-      title={tool ? `Open ${icon.alt} sizing tool` : icon.alt}
+      className={`flex flex-col items-center gap-1.5 ${hasPanel ? "cursor-pointer" : ""}`}
+      title={tool ? `Open ${icon.alt} sizing tool` : hasOptimization ? `View ${icon.alt} optimization notes` : icon.alt}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
-      onClick={tool ? e => { e.stopPropagation(); onSizingClick(icon.alt); } : undefined}
+      onClick={hasPanel ? e => { e.stopPropagation(); onSizingClick(icon.alt); } : undefined}
     >
       <div className={`relative ${dim}`}>
         {/* Selection checkmark */}
@@ -176,12 +179,12 @@ function HeroIcon({
         <div
           className="w-full h-full rounded-xl overflow-hidden flex items-center justify-center transition-all duration-250"
           style={{
-            border: `1.5px solid rgba(${rgb},${tool && hov ? 0.7 : 0.35})`,
-            background: `linear-gradient(135deg, rgba(${rgb},${tool && hov ? 0.2 : 0.1}) 0%, rgba(${rgb},${tool && hov ? 0.12 : 0.06}) 100%)`,
-            boxShadow: tool && hov
+            border: `1.5px solid rgba(${rgb},${hasPanel && hov ? 0.7 : 0.35})`,
+            background: `linear-gradient(135deg, rgba(${rgb},${hasPanel && hov ? 0.2 : 0.1}) 0%, rgba(${rgb},${hasPanel && hov ? 0.12 : 0.06}) 100%)`,
+            boxShadow: hasPanel && hov
               ? `0 8px 24px rgba(${rgb},0.4), 0 0 0 1px rgba(${rgb},0.3), inset 0 1px 0 rgba(255,255,255,0.15)`
               : `0 4px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(${rgb},0.15), inset 0 1px 0 rgba(255,255,255,0.1)`,
-            transform: tool && hov ? "translateY(-2px) scale(1.02)" : undefined,
+            transform: hasPanel && hov ? "translateY(-2px) scale(1.02)" : undefined,
           }}
         >
           {/* White card backing with product image */}
@@ -200,8 +203,8 @@ function HeroIcon({
             />
           </div>
 
-          {/* Sizing hover overlay */}
-          {tool && (
+          {/* Sizing / optimizations hover overlay */}
+          {hasPanel && (
             <div
               className="absolute inset-0 flex items-center justify-center transition-opacity duration-200"
               style={{
@@ -216,7 +219,7 @@ function HeroIcon({
                   <path d="M3 3l18 18M8 16l2-2M13 11l2-2M18 6l-2 2" />
                 </svg>
                 <span className="text-[9px] font-black text-white tracking-[0.12em]" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}>
-                  SIZE
+                  {tool ? "SIZE" : "INFO"}
                 </span>
               </div>
             </div>
@@ -225,7 +228,7 @@ function HeroIcon({
       </div>
       <span
         className="text-[11px] font-semibold leading-none transition-colors duration-150 text-center max-w-[72px]"
-        style={{ color: tool && hov ? `rgba(${rgb},1)` : isDark ? "rgba(147,197,253,0.55)" : "#0f172a" }}
+        style={{ color: hasPanel && hov ? `rgba(${rgb},1)` : isDark ? "rgba(147,197,253,0.55)" : "#0f172a" }}
       >
         {icon.alt}
       </span>
@@ -347,7 +350,7 @@ function LayerRow({
               }}>
               {layer.title}
             </p>
-            <p className="text-blue-300/60 text-[13px] mt-1 font-medium">{layer.subtitle}</p>
+            <p className="text-[13px] mt-1 font-medium" style={{ color: isDark ? "rgba(147,197,253,0.6)" : "#1e3a8a" }}>{layer.subtitle}</p>
           </div>
           {chevron}
         </div>
@@ -408,7 +411,7 @@ function LayerRow({
           }}>
           {layer.title}
         </p>
-        <p className="text-blue-300/60 text-[13px] mt-1 font-medium">{layer.subtitle}</p>
+        <p className="text-[13px] mt-1 font-medium" style={{ color: isDark ? "rgba(147,197,253,0.6)" : "#1e3a8a" }}>{layer.subtitle}</p>
       </div>
       {/* Inline icons */}
       {layer.icons && layer.icons.length > 0 && (
@@ -459,7 +462,7 @@ export function AgenticStackView({
 
   return (
     <div>
-      <section className="mx-auto max-w-[1800px] px-6 py-4">
+      <section className="mx-auto max-w-[1400px] px-6 py-4">
         {/* ── Architecture diagram ── */}
         <div
           className="relative overflow-hidden rounded-2xl"
@@ -545,7 +548,7 @@ export function AgenticStackView({
 
       {/* Layer detail panel (conditionally shown) */}
       {SHOW_LAYER_DETAILS && selected && (
-        <section className="mx-auto max-w-[1800px] px-6 pb-6">
+        <section className="mx-auto max-w-[1400px] px-6 pb-6">
           <div
             className="rounded-2xl p-8"
             style={{

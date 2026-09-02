@@ -2,7 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
-  createProject as apiCreateProject, fetchProject, fetchProjects, renameProject as apiRenameProject, updateProjectData,
+  createProject as apiCreateProject, deleteProject as apiDeleteProject, fetchProject, fetchProjects,
+  renameProject as apiRenameProject, updateProjectData,
 } from "@/modules/projects/api";
 import { EMPTY_PROJECT_DATA, type ProjectData, type ProjectSummary } from "@/modules/projects/types";
 
@@ -18,6 +19,7 @@ interface ProjectCtx {
   refreshProjects: () => Promise<void>;
   createProject: (name: string) => Promise<void>;
   loadProject: (id: number) => Promise<void>;
+  deleteProject: (id: number) => Promise<void>;
   updateOverview: (patch: Partial<ProjectData["overview"]>) => void;
   updateAgenticStack: (patch: Partial<ProjectData["agenticStack"]>) => void;
   updateModels: (patch: Partial<ProjectData["models"]>) => void;
@@ -36,6 +38,7 @@ const Ctx = createContext<ProjectCtx>({
   refreshProjects: async () => {},
   createProject: async () => {},
   loadProject: async () => {},
+  deleteProject: async () => {},
   updateOverview: () => {},
   updateAgenticStack: () => {},
   updateModels: () => {},
@@ -142,7 +145,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function createProject(name: string) {
-    const project = await apiCreateProject(name, data);
+    const project = await apiCreateProject(name, EMPTY_PROJECT_DATA);
     projectIdRef.current = project.id;
     setCurrentProject({ id: project.id, name: project.name, updated_at: project.updated_at });
     setData(normalizeProjectData(project.data));
@@ -168,10 +171,22 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     setSaveStatus("saved");
   }
 
+  async function deleteProject(id: number) {
+    await apiDeleteProject(id);
+    if (projectIdRef.current === id) {
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      projectIdRef.current = null;
+      setCurrentProject(null);
+      setData(EMPTY_PROJECT_DATA);
+      setSaveStatus("idle");
+    }
+    setProjects(prev => prev.filter(p => p.id !== id));
+  }
+
   return (
     <Ctx.Provider value={{
       currentProject, data, projects, saveStatus, listError, projectsLoading,
-      refreshProjects, createProject, loadProject,
+      refreshProjects, createProject, loadProject, deleteProject,
       updateOverview, updateAgenticStack, updateModels, updateAgents, saveNow, renameProject,
     }}>
       {children}

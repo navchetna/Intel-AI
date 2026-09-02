@@ -8,6 +8,7 @@ import type { BusinessProcess, ProcessParticipant } from "@/modules/projects/typ
 import { TextAreaField } from "@/components/ui";
 import { calcRequiredConcurrency, TASK_TYPES } from "@/modules/workflows/task-sizing-calcs";
 import { withBase } from "@/lib/deployment";
+import { extractImplementationWorkflow } from "@/modules/projects/implementation-extract-api";
 import { AiSuggestedFlowPanel } from "./AiSuggestedFlowPanel";
 
 function fmt(n: number, d = 2): string {
@@ -32,6 +33,45 @@ function moveItem<T>(list: T[], index: number, dir: -1 | 1): T[] {
   const next = [...list];
   [next[index], next[target]] = [next[target], next[index]];
   return next;
+}
+
+/** Matches a suggested task_type to the fixed TASK_TYPES vocabulary case-insensitively — the
+ *  Agents table's task-type dropdown only renders as selected on an exact string match. */
+function normalizeTaskType(taskType: string): string {
+  return TASK_TYPES.find(t => t.toLowerCase() === taskType.trim().toLowerCase()) ?? taskType;
+}
+
+/** Upserts by (case-insensitive) name: an existing participant keeps its id and every other
+ *  field (callsPerCase, taskSizing, ...) and only has `role` (task-type for agents, role for
+ *  humans) refreshed from the suggestion; a name with no match is added as a new participant. */
+function upsertParticipantsByName(existing: ProcessParticipant[], suggested: { name: string; role: string }[]): ProcessParticipant[] {
+  let next = [...existing];
+  for (const s of suggested) {
+    if (!s.name.trim()) continue;
+    const idx = next.findIndex(p => p.name.trim().toLowerCase() === s.name.trim().toLowerCase());
+    if (idx === -1) {
+      next = [...next, { id: newId(), name: s.name, role: s.role }];
+    } else {
+      next[idx] = { ...next[idx], role: s.role };
+    }
+  }
+  return next;
+}
+
+/** Copies the AI-Suggested-Flow's agents/humans into the Business Process tab's rosters,
+ *  mapping each suggested agent's task_type onto the agent's role (task-type) field. */
+function copyFromAiSuggestedFlow(process: BusinessProcess): BusinessProcess {
+  const suggestion = process.aiSuggestedFlow;
+  if (!suggestion) return process;
+  const agents = upsertParticipantsByName(
+    process.agents,
+    suggestion.agents.map(a => ({ name: a.name, role: normalizeTaskType(a.task_type) }))
+  );
+  const humans = upsertParticipantsByName(
+    process.humans,
+    suggestion.humans.map(h => ({ name: h.name, role: h.role }))
+  );
+  return { ...process, agents, humans };
 }
 
 // ── participant roster (Humans) ─────────────────────────────────────────────────
@@ -294,43 +334,74 @@ function useReferenceFiles(): string[] {
   return files;
 }
 
-function ReferenceDocPanel({ filename }: { filename: string | undefined }) {
-  const [content, setContent] = useState<string | null>(null);
+/** The Implementation Workflow tab — on demand, asks GROQ to write up an implementation
+ *  approach for this business process from the project's documents, notes, and discussion
+ *  log (see Documents/Notes/Discussions on the project's summary page). Result is persisted
+ *  on the business process itself, same pattern as the AI-Suggested-Flow tab. */
+function ImplementationWorkflowPanel({ process, onChange }: {
+  process: BusinessProcess; onChange: (next: BusinessProcess) => void;
+}) {
+  const { currentProject } = useProject();
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const workflow = process.implementationWorkflow;
 
-  useEffect(() => {
-    if (!filename) return;
-    let cancelled = false;
-    setContent(null);
-    setError(null);
-    fetch(withBase(`/${filename}`))
-      .then(res => {
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        return res.text();
-      })
-      .then(text => { if (!cancelled) setContent(text); })
-      .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
-    return () => { cancelled = true; };
-  }, [filename]);
-
-  if (!filename) {
-    return (
-      <div className="rounded-xl border border-dashed border-white/10 py-16 text-center">
-        <p className="text-white/40 text-sm">No reference document found for this business process yet.</p>
-        <p className="text-white/25 text-xs mt-2">Add a numbered markdown file (e.g. 0N_....md) to the public folder to back it with source material.</p>
-      </div>
-    );
-  }
-  if (error) {
-    return <p className="text-sm text-danger py-8 text-center">Couldn&rsquo;t load reference document: {error}</p>;
-  }
-  if (content === null) {
-    return <p className="text-sm text-white/30 py-8 text-center">Loading…</p>;
+  async function handleExtract() {
+    if (!currentProject) return;
+    setLoading(true); setError(null);
+    try {
+      const result = await extractImplementationWorkflow(currentProject.id, process.name, process.description);
+      onChange({ ...process, implementationWorkflow: { content: result.content, generatedAt: new Date().toISOString() } });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <div className="md-reference rounded-xl border border-white/[0.07] bg-white/[0.02] p-5 max-h-[640px] overflow-y-auto">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <p className="text-[12px] max-w-xl leading-relaxed" style={{ color: "var(--dm-txt-faint)" }}>
+          Reads this project&rsquo;s Documents, Notes, and Discussion log and asks an LLM (via GROQ) to write up
+          an implementation approach for this business process, grounded in that material.
+        </p>
+        <button
+          type="button" onClick={handleExtract} disabled={loading}
+          className="flex-shrink-0 rounded-lg px-4 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
+          style={{ background: "#0891b2" }}
+        >
+          {loading ? "Extracting…" : workflow ? "Re-extract" : "Extract"}
+        </button>
+      </div>
+
+      {error && (
+        <p className="mb-4 text-[12px] rounded-lg px-3 py-2" style={{ color: "#f87171", background: "rgba(248,113,113,0.08)" }}>
+          {error}
+        </p>
+      )}
+
+      {!workflow && !loading && !error && (
+        <div className="rounded-2xl border border-dashed border-white/10 py-16 text-center">
+          <p className="text-sm" style={{ color: "var(--dm-txt-faint)" }}>No implementation workflow extracted yet.</p>
+          <p className="text-xs mt-1" style={{ color: "var(--dm-txt-muted)" }}>Click Extract to generate one from this project&rsquo;s documents, notes, and discussions.</p>
+        </div>
+      )}
+
+      {loading && (
+        <div className="rounded-2xl border border-white/[0.07] py-16 text-center" style={{ background: "var(--dm-card-bg)" }}>
+          <p className="text-sm" style={{ color: "var(--dm-txt-faint)" }}>Calling GROQ…</p>
+        </div>
+      )}
+
+      {workflow && !loading && (
+        <div>
+          <p className="text-[11px] mb-3" style={{ color: "var(--dm-txt-faint)" }}>Generated {new Date(workflow.generatedAt).toLocaleString()}</p>
+          <div className="md-reference rounded-xl border border-white/[0.07] bg-white/[0.02] p-5 max-h-[640px] overflow-y-auto">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{workflow.content}</ReactMarkdown>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -387,9 +458,9 @@ function BusinessProcessCard({ process, expanded, onToggleExpand, onChange, onDe
         <div className="px-5 pb-5">
           <div className="flex gap-1 mb-4 border-b border-white/[0.07]">
             {([
-              { key: "design" as const, label: "Design" },
-              { key: "reference" as const, label: "Reference" },
-              { key: "ai-suggested-flow" as const, label: "AI-Suggested-Flow" },
+              { key: "design" as const, label: "Business Process" },
+              { key: "ai-suggested-flow" as const, label: "AI Suggested Workflow" },
+              { key: "reference" as const, label: "Implementation Workflow" },
             ]).map(t => (
               <button
                 key={t.key}
@@ -416,6 +487,23 @@ function BusinessProcessCard({ process, expanded, onToggleExpand, onChange, onDe
                   rows={2}
                 />
               </div>
+
+              {process.aiSuggestedFlow && (
+                <div className="mb-4 flex items-center gap-3 flex-wrap rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
+                  <p className="text-[12px] flex-1 min-w-[220px]" style={{ color: "var(--dm-txt-faint)" }}>
+                    Copy the agents and humans from the AI Suggested Workflow tab into the rosters below,
+                    mapping each agent to its suggested task-type. Existing entries with a matching name are
+                    updated in place (task-type/role only) — nothing else is overwritten; new ones are added.
+                  </p>
+                  <button
+                    type="button" onClick={() => onChange(copyFromAiSuggestedFlow(process))}
+                    className="flex-shrink-0 rounded-lg px-4 py-2 text-xs font-semibold text-white transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
+                    style={{ background: "#0891b2" }}
+                  >
+                    Copy from AI Suggested Workflow
+                  </button>
+                </div>
+              )}
 
               <div className="mb-4 flex items-center gap-3 flex-wrap">
                 <label className="text-[11px] font-semibold uppercase tracking-widest text-white/40" htmlFor={`cases-per-day-${process.id}`}>
@@ -474,7 +562,7 @@ function BusinessProcessCard({ process, expanded, onToggleExpand, onChange, onDe
               />
             </>
           ) : tab === "reference" ? (
-            <ReferenceDocPanel filename={referenceFile} />
+            <ImplementationWorkflowPanel process={process} onChange={onChange} />
           ) : (
             <AiSuggestedFlowPanel process={process} referenceFile={referenceFile} onChange={onChange} />
           )}

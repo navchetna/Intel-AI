@@ -5,7 +5,12 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.projects.models import Project, ProjectDocument
+from app.projects.models import (
+    Project,
+    ProjectDiscussionMessage,
+    ProjectDocument,
+    ProjectNote,
+)
 
 
 async def list_projects(db: AsyncSession) -> list[Project]:
@@ -82,4 +87,74 @@ async def create_document(
 
 async def delete_document(db: AsyncSession, document: ProjectDocument) -> None:
     await db.delete(document)
+    await db.commit()
+
+
+async def list_notes(db: AsyncSession, project_id: int) -> list[ProjectNote]:
+    stmt = (
+        select(ProjectNote)
+        .where(ProjectNote.project_id == project_id)
+        .order_by(ProjectNote.updated_at.desc())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def get_note(db: AsyncSession, project_id: int, note_id: int) -> ProjectNote | None:
+    stmt = select(ProjectNote).where(ProjectNote.id == note_id, ProjectNote.project_id == project_id)
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def create_note(db: AsyncSession, *, project_id: int, title: str, body: str) -> ProjectNote:
+    note = ProjectNote(project_id=project_id, title=title, body=body)
+    db.add(note)
+    await db.commit()
+    await db.refresh(note)
+    return note
+
+
+async def update_note(db: AsyncSession, note: ProjectNote, *, title: str | None, body: str | None) -> ProjectNote:
+    if title is not None:
+        note.title = title
+    if body is not None:
+        note.body = body
+    await db.commit()
+    await db.refresh(note)
+    return note
+
+
+async def delete_note(db: AsyncSession, note: ProjectNote) -> None:
+    await db.delete(note)
+    await db.commit()
+
+
+async def list_discussion_messages(db: AsyncSession, project_id: int) -> list[ProjectDiscussionMessage]:
+    stmt = (
+        select(ProjectDiscussionMessage)
+        .where(ProjectDiscussionMessage.project_id == project_id)
+        .order_by(ProjectDiscussionMessage.created_at.asc())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def get_discussion_message(
+    db: AsyncSession, project_id: int, message_id: int
+) -> ProjectDiscussionMessage | None:
+    stmt = select(ProjectDiscussionMessage).where(
+        ProjectDiscussionMessage.id == message_id, ProjectDiscussionMessage.project_id == project_id
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def create_discussion_message(
+    db: AsyncSession, *, project_id: int, author: str, message: str
+) -> ProjectDiscussionMessage:
+    row = ProjectDiscussionMessage(project_id=project_id, author=author, message=message)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def delete_discussion_message(db: AsyncSession, row: ProjectDiscussionMessage) -> None:
+    await db.delete(row)
     await db.commit()
