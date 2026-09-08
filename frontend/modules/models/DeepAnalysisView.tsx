@@ -1,14 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { useTheme } from "@/contexts/ThemeContext";
 import { COMPARISON_CHIPS, type ComparisonChip } from "@/modules/silicon/comparison-data";
 import {
-  ABBR, QWEN_3_8_27B, DEFAULT_USECASE_INPUTS, WEIGHT_DTYPE_OPTIONS, KV_DTYPE_OPTIONS,
+  ABBR, TFLOPS, QWEN_3_8_27B, DEFAULT_USECASE_INPUTS, WEIGHT_DTYPE_OPTIONS, KV_DTYPE_OPTIONS,
   PREFILL_ROW_SYMBOLS, PREFILL_ROW_USECASE_FIELDS, PREFILL_ROW_USES_SILICON_PEAK,
-  INTERCONNECTS, DEFAULT_TP_CONFIG, TP_ROW_HIGHLIGHTS,
-  getSiliconPeak, calcPrefill, calcPrefillTp, calcPrefillTpSweep, updateUsecaseField, resetDecodeContextToAuto,
-  type UsecaseInputs, type PrefillRowKey, type TpConfig, type TpRowKey,
+  INTERCONNECTS, DEFAULT_TP_CONFIG, TP_ROW_HIGHLIGHTS, DECODE_ROW_HIGHLIGHTS,
+  DEFAULT_KV_CACHE_CONFIG, KV_CACHE_ROW_HIGHLIGHTS,
+  getSiliconPeak, getSiliconMemoryBandwidthGBs, getSiliconMemoryCapacityGB,
+  calcPrefill, calcPrefillTp, calcPrefillTpSweep, calcDecode, calcKvCacheBaseline, calcKvCacheAtContext, calcKvCacheSweep,
+  updateUsecaseField, resetDecodeContextToAuto,
+  type UsecaseInputs, type PrefillRowKey, type TpConfig, type TpRowKey, type DecodeRowKey,
+  type KvCacheConfig, type KvCacheRowKey,
 } from "./deep-analysis-data";
 
 // ── shared styling helpers (same conventions as KvOffloadView/ModelBenchmarksView) ─────
@@ -62,6 +67,10 @@ function CompactPanel({ title, subtitle, accent, children }: { title: string; su
  *  a glance across the Interconnect panel and the Prefill-TP breakdown. */
 const INTERCONNECT_GREEN = "#34d399";
 const INTERCONNECT_GREEN_RGB = "52,211,153";
+/** Memory concerns render in this orange when clicked — same "only on interaction" rule as
+ *  interconnect green, just a different color family for a different kind of dependency. */
+const MEMORY_ORANGE = "#fb923c";
+const MEMORY_ORANGE_RGB = "251,146,60";
 
 /** One compact label ↔ control/value row — striping and sizing match the Architecture panel's
  *  rows exactly. `hint` becomes a hover tooltip instead of always-rendered helper text. `lit`
@@ -201,24 +210,42 @@ function UsecasePanel({ usecase, onChange, highlightedFields }: {
       control: <input type="number" min={0} max={1} step={0.01} value={usecase.overheadFraction} onChange={e => set("overheadFraction", Math.min(1, Math.max(0, Number(e.target.value) || 0)))} className={compactNumberInput} style={compactInputStyle} />,
     },
     {
-      field: "achievableEfficiency", label: "Compute efficiency", hint: "Fraction of peak TFLOPS real kernels realistically achieve",
-      control: <input type="number" min={0} max={1} step={0.01} value={usecase.achievableEfficiency} onChange={e => set("achievableEfficiency", Math.min(1, Math.max(0, Number(e.target.value) || 0)))} className={compactNumberInput} style={compactInputStyle} />,
+      field: "gemmMfu", label: "GEMM MFU (best-case)", hint: "Peak achievable on a big dense matmul on this silicon — a microbenchmark number",
+      control: <input type="number" min={0} max={1} step={0.01} value={usecase.gemmMfu} onChange={e => set("gemmMfu", Math.min(1, Math.max(0, Number(e.target.value) || 0)))} className={compactNumberInput} style={compactInputStyle} />,
+    },
+    {
+      field: "hybridStackDerate", label: "Hybrid+stack derate", hint: "Everything a FLOP-only model misses on the compute side: memory-bound DeltaNet scan layers, convs, norms, gates, RoPE, kernel-launch + stack overhead. Fit to reproduce measured TTFT.",
+      control: <input type="number" min={0} max={1} step={0.01} value={usecase.hybridStackDerate} onChange={e => set("hybridStackDerate", Math.min(1, Math.max(0, Number(e.target.value) || 0)))} className={compactNumberInput} style={compactInputStyle} />,
+    },
+    {
+      field: "commEfficiency", label: "Comm efficiency", hint: "Fraction of theoretical link bandwidth the all-reduce collective actually realizes (oneCCL/NCCL over the selected fabric) — used by Prefill-TP's communication time.",
+      control: <input type="number" min={0} max={1} step={0.01} value={usecase.commEfficiency} onChange={e => set("commEfficiency", Math.min(1, Math.max(0, Number(e.target.value) || 0)))} className={compactNumberInput} style={compactInputStyle} />,
     },
   ];
+
+  const effectiveMfu = usecase.gemmMfu * usecase.hybridStackDerate;
 
   return (
     <CompactPanel title="Use Case" subtitle="Serving-workload parameters — shared by every section.">
       {rows.map((r, i) => (
         <CompactRow key={r.label} label={r.label} hint={r.hint} index={i} lit={highlightedFields?.has(r.field) ?? false}>{r.control}</CompactRow>
       ))}
+      <CompactRow
+        label="Effective compute MFU" index={rows.length}
+        hint="GEMM MFU × hybrid+stack derate — the fraction of peak TFLOPS the compute side actually sustains, used by Prefill's compute time."
+        lit={(highlightedFields?.has("gemmMfu") || highlightedFields?.has("hybridStackDerate")) ?? false}
+      >
+        <span className="text-xs font-mono font-semibold" style={{ color: "var(--dm-txt-primary)" }}>{(effectiveMfu * 100).toFixed(1)}%</span>
+      </CompactRow>
     </CompactPanel>
   );
 }
 
 // ── Silicon panel (selector — pulls specs from the Silicon module, doesn't redefine them) ──
 
-function SiliconPanel({ chip, onChange, highlightPeak }: {
-  chip: ComparisonChip | undefined; onChange: (id: string) => void; highlightPeak: boolean;
+function SiliconPanel({ chip, onChange, highlightPeak, highlightBandwidth, highlightCapacity }: {
+  chip: ComparisonChip | undefined; onChange: (id: string) => void;
+  highlightPeak: boolean; highlightBandwidth: boolean; highlightCapacity: boolean;
 }) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -252,11 +279,11 @@ function SiliconPanel({ chip, onChange, highlightPeak }: {
           <CompactRow label="Memory type" index={2}>
             <span className="text-xs" style={{ color: "var(--dm-txt-body)" }}>{chip.memory.type}</span>
           </CompactRow>
-          <CompactRow label="Memory bandwidth" index={3}>
-            <span className="text-xs font-mono" style={{ color: "var(--dm-txt-body)" }}>{chip.memory.bandwidth}</span>
+          <CompactRow label="Memory bandwidth" index={3} lit={highlightBandwidth} litRgb={MEMORY_ORANGE_RGB}>
+            <span className="text-xs font-mono" style={{ color: highlightBandwidth ? MEMORY_ORANGE : "var(--dm-txt-body)" }}>{chip.memory.bandwidth}</span>
           </CompactRow>
-          <CompactRow label="Memory capacity" index={4} hint={chip.sourceNote}>
-            <span className="text-xs font-mono" style={{ color: "var(--dm-txt-body)" }}>{chip.memory.capacity}</span>
+          <CompactRow label="Memory capacity" index={4} hint={chip.sourceNote} lit={highlightCapacity} litRgb={MEMORY_ORANGE_RGB}>
+            <span className="text-xs font-mono" style={{ color: highlightCapacity ? MEMORY_ORANGE : "var(--dm-txt-body)" }}>{chip.memory.capacity}</span>
           </CompactRow>
         </>
       )}
@@ -266,8 +293,8 @@ function SiliconPanel({ chip, onChange, highlightPeak }: {
 
 // ── Interconnect panel (selector — drives Prefill-TP's communication cost) ─────────────
 // First cut: this table is deliberately minimal (selection + the four specs Prefill-TP
-// actually reads). Everything in it renders in green — the interconnect color — to keep it
-// visually distinct from the cyan compute panels above.
+// actually reads). Neutral by default — a row only turns green when a clicked Prefill-TP
+// row's formula actually reads it (see the `highlighted` prop).
 
 function InterconnectPanel({ tp, onChange, highlighted }: {
   tp: TpConfig; onChange: (next: TpConfig) => void; highlighted: Set<"linkBw" | "latency"> | null;
@@ -276,8 +303,11 @@ function InterconnectPanel({ tp, onChange, highlighted }: {
   const isDark = theme === "dark";
   const link = INTERCONNECTS.find(i => i.id === tp.interconnectId);
 
+  const linkBwLit = highlighted?.has("linkBw") ?? false;
+  const latencyLit = highlighted?.has("latency") ?? false;
+
   return (
-    <CompactPanel title="Interconnect" subtitle="Drives tensor-parallel communication cost — used by Prefill-TP." accent={INTERCONNECT_GREEN}>
+    <CompactPanel title="Interconnect" subtitle="Drives tensor-parallel communication cost — used by Prefill-TP.">
       <CompactRow label="Selected interconnect" index={0}>
         <select
           value={tp.interconnectId} onChange={e => onChange({ ...tp, interconnectId: e.target.value })}
@@ -288,11 +318,11 @@ function InterconnectPanel({ tp, onChange, highlighted }: {
       </CompactRow>
       {link && (
         <>
-          <CompactRow label="Link bandwidth" index={1} lit={highlighted?.has("linkBw") ?? false} litRgb={INTERCONNECT_GREEN_RGB}>
-            <span className="text-xs font-mono font-semibold" style={{ color: INTERCONNECT_GREEN }}>{fmtInt(link.linkBwGBs)} GB/s</span>
+          <CompactRow label="Link bandwidth" index={1} lit={linkBwLit} litRgb={INTERCONNECT_GREEN_RGB}>
+            <span className="text-xs font-mono font-semibold" style={{ color: linkBwLit ? INTERCONNECT_GREEN : "var(--dm-txt-body)" }}>{fmtInt(link.linkBwGBs)} GB/s</span>
           </CompactRow>
-          <CompactRow label="Latency / hop" index={2} lit={highlighted?.has("latency") ?? false} litRgb={INTERCONNECT_GREEN_RGB}>
-            <span className="text-xs font-mono font-semibold" style={{ color: INTERCONNECT_GREEN }}>{link.latencyUsPerHop} µs</span>
+          <CompactRow label="Latency / hop" index={2} lit={latencyLit} litRgb={INTERCONNECT_GREEN_RGB}>
+            <span className="text-xs font-mono font-semibold" style={{ color: latencyLit ? INTERCONNECT_GREEN : "var(--dm-txt-body)" }}>{link.latencyUsPerHop} µs</span>
           </CompactRow>
           <CompactRow label="Fabric type" index={3} hint={link.notes}>
             <span className="text-xs" style={{ color: "var(--dm-txt-body)" }}>{link.fabricType}</span>
@@ -300,6 +330,34 @@ function InterconnectPanel({ tp, onChange, highlighted }: {
         </>
       )}
     </CompactPanel>
+  );
+}
+
+// ── Architecture diagram — the labeled block diagram, shown on Prefill step 1 ──────────
+// Static image rather than a re-drawn diagram: it's already labeled with the exact same
+// abbreviations as the Architecture panel and every formula elsewhere in this tab.
+
+function ArchitectureDiagram() {
+  return (
+    <div
+      className="rounded-2xl border border-[var(--dm-border-a)] overflow-hidden"
+      style={{ background: "var(--dm-table-bg)", boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}
+    >
+      <div className="px-4 pt-3 pb-2" style={{ borderBottom: "1px solid var(--dm-border-a)" }}>
+        <h2 className="text-sm font-bold text-[var(--dm-txt-primary)]">Qwen3.8-27B — Labeled Architecture</h2>
+        <p className="mt-0.5 text-[11px] text-[var(--dm-txt-muted)] leading-snug">
+          Layout after Sebastian Raschka. Abbreviations match the Architecture panel and every formula elsewhere in this tab.
+        </p>
+      </div>
+      <div className="p-3" style={{ background: "#f8fafc" }}>
+        <Image
+          src="/Qwen3.8-27B_labeled_architecture.svg"
+          alt="Qwen3.8-27B labeled architecture diagram — token embedding through Gated DeltaNet / Gated Attention hybrid layers to output logits, with every dimension and parameter abbreviation labeled"
+          width={1560} height={1600}
+          className="w-full h-auto rounded-lg"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -453,8 +511,11 @@ function PrefillSection({ usecase, chip, highlightedRow, onSelectRow }: {
 
       <p className="mt-4 text-[10.5px] leading-relaxed" style={{ color: "var(--dm-txt-faintest)" }}>
         Assumes prefill is compute-bound (high arithmetic intensity — every weight read from HBM is reused across
-        many tokens in one batched pass). Estimated compute time = Total TFLOPS ÷ (peak TFLOPS × Achievable
-        efficiency). The O(L²) full-attention term is what erodes efficiency as prompt length grows.
+        many tokens in one batched pass). Estimated compute time = Total TFLOPS ÷ (peak TFLOPS × Effective compute
+        MFU), where Effective compute MFU = GEMM MFU × Hybrid+stack derate — calibrated against measured TTFT
+        since a FLOP-only model badly underestimates wall-clock on this hybrid architecture (the 48 memory-bound
+        DeltaNet scan layers are 0.33% of FLOPs but a large share of time). The O(L²) full-attention term is what
+        erodes efficiency further as prompt length grows.
       </p>
     </SectionCard>
   );
@@ -463,7 +524,8 @@ function PrefillSection({ usecase, chip, highlightedRow, onSelectRow }: {
 // ── Prefill under Tensor Parallelism (from the "Prefill TP" sheet) ─────────────────────
 // First cut — TP degree/collective-ops/activation-dtype live here since they're specific to
 // this analysis; the Interconnect itself is selected in the rail (shared, in case other
-// sections need it later). Every communication-side figure renders in green.
+// sections need it later). Nothing is green by default — a row only turns green once
+// clicked, and only if its formula actually reads an interconnect spec (link BW/latency).
 
 function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelectRow }: {
   usecase: UsecaseInputs; chip: ComparisonChip | undefined; tp: TpConfig; onChangeTp: (next: TpConfig) => void;
@@ -491,6 +553,7 @@ function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
 
   const localLit = (field: keyof TpConfig): boolean =>
     !!highlightedRow && (TP_ROW_HIGHLIGHTS[highlightedRow].localFields?.includes(field) ?? false);
+  const interconnectRowActive = !!highlightedRow && !!TP_ROW_HIGHLIGHTS[highlightedRow].interconnectFields;
 
   const tpNumberInput = "rounded-lg px-2.5 py-1.5 text-sm focus:outline-none w-24";
   const glowWrap = (lit: boolean, rgb: string): React.CSSProperties => ({
@@ -500,11 +563,11 @@ function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
 
   type TpTableRow = { key: TpRowKey; label: string; formula: string; value: string; green?: boolean };
   const rows: TpTableRow[] = [
-    { key: "singleGpu", label: "Single-GPU compute time (TP=1)", formula: "Total prefill ÷ (P_peak × eff)", value: result.singleGpuTimeSec != null ? `${result.singleGpuTimeSec.toFixed(4)} s` : "—" },
-    { key: "perGpu", label: `Per-GPU compute time (TP=${tp.tpDegree})`, formula: "(Total prefill ÷ TP) ÷ (P_peak × eff)", value: result.perGpuComputeTimeSec != null ? `${result.perGpuComputeTimeSec.toFixed(4)} s` : "—" },
-    { key: "msgSize", label: "All-reduce message size", formula: `${ABBR.B} × ${ABBR.L} × ${ABBR.d_model} × act_bytes ÷ 1e9`, value: `${result.allReduceMsgGB.toFixed(4)} GB`, green: true },
-    { key: "numAllReduces", label: "Number of all-reduces", formula: `k_coll × ${ABBR.n_layers}`, value: fmtInt(result.numAllReduces), green: true },
-    { key: "bwTerm", label: "Bandwidth term (per all-reduce)", formula: "2×(TP−1)/TP × msg_GB ÷ link_BW", value: `${result.bwTermSec.toFixed(6)} s`, green: true },
+    { key: "singleGpu", label: "Single-GPU compute time (TP=1)", formula: "Total prefill ÷ (P_peak × eff_mfu)", value: result.singleGpuTimeSec != null ? `${result.singleGpuTimeSec.toFixed(4)} s` : "—" },
+    { key: "perGpu", label: `Per-GPU compute time (TP=${tp.tpDegree})`, formula: "(Total prefill ÷ TP) ÷ (P_peak × eff_mfu)", value: result.perGpuComputeTimeSec != null ? `${result.perGpuComputeTimeSec.toFixed(4)} s` : "—" },
+    { key: "msgSize", label: "All-reduce message size", formula: `${ABBR.B} × ${ABBR.L} × ${ABBR.d_model} × act_bytes ÷ 1e9`, value: `${result.allReduceMsgGB.toFixed(4)} GB` },
+    { key: "numAllReduces", label: "Number of all-reduces", formula: `k_coll × ${ABBR.n_layers}`, value: fmtInt(result.numAllReduces) },
+    { key: "bwTerm", label: "Bandwidth term (per all-reduce)", formula: "2×(TP−1)/TP × msg_GB ÷ (link_BW × comm_eff)", value: `${result.bwTermSec.toFixed(6)} s`, green: true },
     { key: "latencyTerm", label: "Latency term (per all-reduce)", formula: "2×(TP−1) × lat_hop ÷ 1e6", value: `${result.latencyTermSec.toFixed(6)} s`, green: true },
     { key: "commTime", label: `Communication time (Σ ${result.numAllReduces} all-reduces)`, formula: "n_allreduce × (bw_term + lat_term)", value: result.commTimeSec != null ? `${result.commTimeSec.toFixed(4)} s` : "—", green: true },
   ];
@@ -512,7 +575,7 @@ function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
   return (
     <SectionCard
       title="Prefill under Tensor Parallelism"
-      subtitle="Compute shards near-ideally across TP GPUs. Communication (green) is 2 all-reduces/layer on the [B×L×hidden] activation tensor, costed against the selected interconnect. Click a row to light up the parameters it uses."
+      subtitle="Compute shards near-ideally across TP GPUs. Communication is 2 all-reduces/layer on the [B×L×hidden] activation tensor, costed against the selected interconnect. Click a row to light up the parameters it uses — interconnect/network dependencies light up in green."
     >
       <div className="flex flex-wrap items-end gap-4 mb-4">
         <div>
@@ -522,8 +585,8 @@ function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
           </div>
         </div>
         <div>
-          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: INTERCONNECT_GREEN }}>Interconnect (set in rail)</label>
-          <p className="text-sm font-mono font-semibold px-2.5 py-1.5" style={{ color: INTERCONNECT_GREEN }}>{link?.name ?? "—"}</p>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Interconnect (set in rail)</label>
+          <p className="text-sm font-mono font-semibold px-2.5 py-1.5" style={{ color: interconnectRowActive ? INTERCONNECT_GREEN : "var(--dm-txt-body)" }}>{link?.name ?? "—"}</p>
         </div>
         <div>
           <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Collective ops / layer</label>
@@ -551,14 +614,14 @@ function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
           <tbody>
             {rows.map((r, i) => {
               const active = highlightedRow === r.key;
-              const baseColor = r.green ? INTERCONNECT_GREEN : "var(--dm-txt-body)";
+              const activeColor = r.green ? INTERCONNECT_GREEN : "#22d3ee";
               const activeBg = r.green ? "rgba(52,211,153,0.16)" : "rgba(34,211,238,0.14)";
-              const idleBg = r.green ? "rgba(52,211,153,0.08)" : i % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)";
+              const idleBg = i % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)";
               return (
                 <tr key={r.key} onClick={() => toggleRow(r.key)} className="cursor-pointer transition-colors duration-150" style={{ background: active ? activeBg : idleBg }}>
-                  <td className="px-4 py-2.5" style={{ color: active ? (r.green ? INTERCONNECT_GREEN : "#22d3ee") : baseColor }}>{r.label}</td>
+                  <td className="px-4 py-2.5" style={{ color: active ? activeColor : "var(--dm-txt-body)" }}>{r.label}</td>
                   <td className="px-4 py-2.5 text-left font-mono text-xs whitespace-nowrap" style={{ color: "var(--dm-txt-faint)" }}>{r.formula}</td>
-                  <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: active ? (r.green ? INTERCONNECT_GREEN : "#22d3ee") : baseColor }}>{r.value}</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: active ? activeColor : "var(--dm-txt-body)" }}>{r.value}</td>
                 </tr>
               );
             })}
@@ -568,7 +631,7 @@ function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
               style={{ borderTop: "2px solid var(--dm-border-a)", background: highlightedRow === "wallClock" ? "rgba(34,211,238,0.14)" : "transparent" }}
             >
               <td className="px-4 py-2.5 font-bold" style={{ color: "var(--dm-txt-primary)" }}>Wall-clock (compute + comm, no overlap)</td>
-              <td className="px-4 py-2.5 text-left font-mono text-xs whitespace-nowrap" style={{ color: "var(--dm-txt-faint)" }}>T_compute(TP) + T_comm(TP)</td>
+              <td className="px-4 py-2.5 text-left font-mono text-xs whitespace-nowrap" style={{ color: "var(--dm-txt-faint)" }}>(T_compute(TP) + T_comm(TP)) × (1 + overhead)</td>
               <td className="px-4 py-2.5 text-right font-mono font-bold" style={{ color: "#22d3ee" }}>{result.wallClockSec != null ? `${result.wallClockSec.toFixed(4)} s` : "—"}</td>
             </tr>
           </tbody>
@@ -586,7 +649,7 @@ function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
         </div>
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Regime</p>
-          <p className="text-sm font-bold" style={{ color: result.regime === "Communication-bound" ? INTERCONNECT_GREEN : "#22d3ee" }}>{result.regime ?? "Select a silicon"}</p>
+          <p className="text-sm font-bold" style={{ color: "var(--dm-txt-primary)" }}>{result.regime ?? "Select a silicon"}</p>
         </div>
       </div>
 
@@ -596,7 +659,7 @@ function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
             <tr style={{ background: "var(--dm-table-head)" }}>
               <th className="px-3 py-1.5 text-left font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>TP</th>
               <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Compute (s)</th>
-              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: INTERCONNECT_GREEN }}>Comm (s)</th>
+              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Comm (s)</th>
               <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Total (s)</th>
               <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Speedup</th>
               <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Efficiency</th>
@@ -610,11 +673,11 @@ function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
                 <tr key={row.tpDegree} style={{ background: isCurrent ? "rgba(34,211,238,0.10)" : i % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)" }}>
                   <td className="px-3 py-1.5 font-mono font-semibold" style={{ color: "var(--dm-txt-primary)" }}>{row.tpDegree}</td>
                   <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.perGpuComputeTimeSec != null ? row.perGpuComputeTimeSec.toFixed(4) : "—"}</td>
-                  <td className="px-3 py-1.5 text-right font-mono" style={{ color: INTERCONNECT_GREEN }}>{row.commTimeSec != null ? row.commTimeSec.toFixed(4) : "—"}</td>
+                  <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.commTimeSec != null ? row.commTimeSec.toFixed(4) : "—"}</td>
                   <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: "var(--dm-txt-primary)" }}>{row.wallClockSec != null ? row.wallClockSec.toFixed(4) : "—"}</td>
                   <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.speedup != null ? `${row.speedup.toFixed(2)}×` : "—"}</td>
                   <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.parallelEfficiency != null ? `${(row.parallelEfficiency * 100).toFixed(1)}%` : "—"}</td>
-                  <td className="px-3 py-1.5" style={{ color: row.regime === "Communication-bound" ? INTERCONNECT_GREEN : "var(--dm-txt-faint)" }}>{row.regime ?? "—"}</td>
+                  <td className="px-3 py-1.5" style={{ color: "var(--dm-txt-faint)" }}>{row.regime ?? "—"}</td>
                 </tr>
               );
             })}
@@ -625,9 +688,361 @@ function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
       {!chip && <p className="mt-3 text-xs" style={{ color: "var(--dm-txt-faintest)" }}>Select a silicon in the rail to compute times, speedup, and efficiency.</p>}
 
       <p className="mt-4 text-[10.5px] leading-relaxed" style={{ color: "var(--dm-txt-faintest)" }}>
-        Assumes a bandwidth-optimal ring all-reduce and no compute/comm overlap (a hard sync point,
-        so the two are additive) — real NCCL and fine-grained pipelining land the true number
-        between this wall-clock and the pure per-GPU compute time above.
+        Assumes a bandwidth-optimal ring all-reduce derated by the comm-efficiency fraction (real NCCL/oneCCL
+        realizes ~70–85% of theoretical link BW), and no compute/comm overlap — all-reduce is a hard sync point,
+        so the two are additive, then runtime/workspace overhead is applied on top. Real fine-grained pipelining
+        lands the true number between this wall-clock and the pure per-GPU compute time above.
+      </p>
+    </SectionCard>
+  );
+}
+
+// ── Decode — tensor-parallel, memory-bandwidth model ────────────────────────────────────
+// Ported from qwen_decode_prefill_calculator.xlsx's "Decode" sheet: t_token = MAX(t_mem,
+// t_compute) + t_comm. Reuses the same TP degree / interconnect / collective-ops-per-layer
+// inputs as Prefill-TP (Decode's "sync points per layer" is the same Megatron all-reduce
+// count) rather than introducing a second, parallel set of TP controls.
+
+function DecodeSection({ usecase, chip, tp, onChangeTp, highlightedRow, onSelectRow }: {
+  usecase: UsecaseInputs; chip: ComparisonChip | undefined; tp: TpConfig; onChangeTp: (next: TpConfig) => void;
+  highlightedRow: DecodeRowKey | null; onSelectRow: (key: DecodeRowKey | null) => void;
+}) {
+  const peak = chip ? getSiliconPeak(chip) : null;
+  const memBandwidthGBs = chip ? getSiliconMemoryBandwidthGBs(chip) : null;
+  const link = INTERCONNECTS.find(i => i.id === tp.interconnectId);
+  const result = useMemo(
+    () => calcDecode(QWEN_3_8_27B, usecase, tp, peak?.teraflops ?? null, memBandwidthGBs, link?.linkBwGBs ?? null),
+    [usecase, tp, peak?.teraflops, memBandwidthGBs, link?.linkBwGBs],
+  );
+
+  function toggleRow(key: DecodeRowKey) {
+    onSelectRow(highlightedRow === key ? null : key);
+  }
+
+  function setTp<K extends keyof TpConfig>(key: K, value: TpConfig[K]) {
+    onChangeTp({ ...tp, [key]: value });
+  }
+
+  const localLit = (field: keyof TpConfig): boolean =>
+    !!highlightedRow && (DECODE_ROW_HIGHLIGHTS[highlightedRow].localFields?.includes(field) ?? false);
+  const interconnectRowActive = !!highlightedRow && !!DECODE_ROW_HIGHLIGHTS[highlightedRow].interconnectFields;
+  const tpNumberInput = "rounded-lg px-2.5 py-1.5 text-sm focus:outline-none w-24";
+  const glowWrap = (lit: boolean): React.CSSProperties => ({
+    display: "inline-block", borderRadius: "0.5rem", transition: "box-shadow 200ms",
+    boxShadow: lit ? "0 0 0 1px rgb(34,211,238), 0 0 8px rgba(34,211,238,0.5)" : "none",
+  });
+
+  type Row = { key: DecodeRowKey; label: string; formula: string; value: string; color?: "green" | "orange" };
+  const rows: Row[] = [
+    { key: "totalWeightBytes", label: "Total weight bytes", formula: `${ABBR.N} × bytes_per_param`, value: `${fmtInt(result.totalWeightBytes / 1e9)} GB` },
+    { key: "weightBytesPerDevice", label: "Weight bytes per device", formula: "TotalWeightBytes ÷ TP", value: `${result.weightGBPerDevice.toFixed(2)} GB` },
+    { key: "tMem", label: "t_mem — weight read time", formula: "WeightBytesPerDevice ÷ mem_BW × 1000", value: result.tMemMs != null ? `${result.tMemMs.toFixed(4)} ms` : "—", color: "orange" },
+    { key: "totalFlops", label: "Total decode FLOPs", formula: `2 × ${ABBR.N} × ${ABBR.B}`, value: `${fmtTflops(result.totalDecodeFlops / TFLOPS)} TFLOP` },
+    { key: "flopsPerDevice", label: "FLOPs per device", formula: "TotalDecodeFLOPs ÷ TP", value: `${fmtTflops(result.flopsPerDevice / TFLOPS)} TFLOP` },
+    { key: "tCompute", label: "t_compute — matmul time", formula: "FLOPsPerDevice ÷ (P_peak × 1e12) × 1000", value: result.tComputeMs != null ? `${result.tComputeMs.toFixed(4)} ms` : "—" },
+    { key: "msgBytes", label: "All-reduce message size", formula: `${ABBR.B} × ${ABBR.d_model} × bytes_per_param`, value: `${fmtInt(result.allReduceMsgBytes)} bytes` },
+    { key: "ringFactor", label: "Ring factor", formula: "2×(TP−1) ÷ TP", value: result.ringFactor.toFixed(4) },
+    { key: "timePerAllReduce", label: "Time per all-reduce", formula: "ring_factor × msg_bytes ÷ link_BW × 1000", value: result.timePerAllReduceMs != null ? `${result.timePerAllReduceMs.toFixed(6)} ms` : "—", color: "green" },
+    { key: "syncPoints", label: "Total sync points / token", formula: `k_coll × ${ABBR.n_layers}`, value: fmtInt(result.totalSyncPoints) },
+    { key: "tComm", label: "t_comm — total communication time", formula: "sync_points × time_per_all_reduce", value: result.tCommMs != null ? `${result.tCommMs.toFixed(4)} ms` : "—", color: "green" },
+  ];
+
+  return (
+    <SectionCard
+      title="Decode — Tensor-Parallel, Memory-Bandwidth Model"
+      subtitle="t_token = MAX(t_mem, t_compute) + t_comm. KV-cache traffic is excluded here — negligible at low batch size with only 16 full-attention layers / 4 KV heads (see KV Cache once built). Click a row to light up the parameters it uses."
+    >
+      <div className="flex flex-wrap items-end gap-4 mb-4">
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Tensor-parallel degree (TP)</label>
+          <div style={glowWrap(localLit("tpDegree"))}>
+            <input type="number" min={1} value={tp.tpDegree} onChange={e => setTp("tpDegree", Math.max(1, Number(e.target.value) || 1))} className={tpNumberInput} style={inputStyle} />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Interconnect (set in rail)</label>
+          <p className="text-sm font-mono font-semibold px-2.5 py-1.5" style={{ color: interconnectRowActive ? INTERCONNECT_GREEN : "var(--dm-txt-body)" }}>{link?.name ?? "—"}</p>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Sync points / layer</label>
+          <div style={glowWrap(localLit("collectiveOpsPerLayer"))}>
+            <input type="number" min={1} value={tp.collectiveOpsPerLayer} onChange={e => setTp("collectiveOpsPerLayer", Math.max(1, Number(e.target.value) || 1))} className={tpNumberInput} style={inputStyle} />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl overflow-hidden border mb-4" style={{ borderColor: "var(--dm-border-a)" }}>
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr style={{ background: "var(--dm-table-head)" }}>
+              <th className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Component</th>
+              <th className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Formula</th>
+              <th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const active = highlightedRow === r.key;
+              const activeColor = r.color === "green" ? INTERCONNECT_GREEN : r.color === "orange" ? MEMORY_ORANGE : "#22d3ee";
+              const activeBg = r.color === "green" ? "rgba(52,211,153,0.16)" : r.color === "orange" ? "rgba(251,146,60,0.16)" : "rgba(34,211,238,0.14)";
+              const idleBg = i % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)";
+              return (
+                <tr key={r.key} onClick={() => toggleRow(r.key)} className="cursor-pointer transition-colors duration-150" style={{ background: active ? activeBg : idleBg }}>
+                  <td className="px-4 py-2.5" style={{ color: active ? activeColor : "var(--dm-txt-body)" }}>{r.label}</td>
+                  <td className="px-4 py-2.5 text-left font-mono text-xs whitespace-nowrap" style={{ color: "var(--dm-txt-faint)" }}>{r.formula}</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: active ? activeColor : "var(--dm-txt-body)" }}>{r.value}</td>
+                </tr>
+              );
+            })}
+            <tr
+              onClick={() => toggleRow("totalTimePerToken")}
+              className="cursor-pointer transition-colors duration-150"
+              style={{ borderTop: "2px solid var(--dm-border-a)", background: highlightedRow === "totalTimePerToken" ? "rgba(34,211,238,0.14)" : "transparent" }}
+            >
+              <td className="px-4 py-2.5 font-bold" style={{ color: "var(--dm-txt-primary)" }}>Total time per token</td>
+              <td className="px-4 py-2.5 text-left font-mono text-xs whitespace-nowrap" style={{ color: "var(--dm-txt-faint)" }}>MAX(t_mem, t_compute) + t_comm</td>
+              <td className="px-4 py-2.5 text-right font-mono font-bold" style={{ color: "#22d3ee" }}>{result.totalTimePerTokenMs != null ? `${result.totalTimePerTokenMs.toFixed(4)} ms` : "—"}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Bound regime</p>
+          <p className="text-sm font-bold" style={{ color: "var(--dm-txt-primary)" }}>{result.boundRegime ?? "Select a silicon"}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Total time / token</p>
+          <p className="text-lg font-mono font-bold" style={{ color: "var(--dm-txt-primary)" }}>{result.totalTimePerTokenMs != null ? `${result.totalTimePerTokenMs.toFixed(2)} ms` : "—"}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Tokens/sec — per stream</p>
+          <p className="text-lg font-mono font-bold" style={{ color: "var(--dm-txt-primary)" }}>{result.tokensPerSecPerStream != null ? fmtTflops(result.tokensPerSecPerStream) : "—"}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Tokens/sec — aggregate</p>
+          <p className="text-lg font-mono font-bold" style={{ color: "#22d3ee" }}>{result.tokensPerSecAggregate != null ? fmtTflops(result.tokensPerSecAggregate) : "—"}</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <span
+          className="text-[11px] font-semibold rounded-full px-2.5 py-1"
+          style={{
+            background: result.kvHeadShardingOk ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)",
+            color: result.kvHeadShardingOk ? "#34d399" : "#f87171",
+          }}
+        >
+          KV-head sharding (TP ≤ {QWEN_3_8_27B.fullAttn.kvHeads}): {result.kvHeadShardingOk ? "OK" : "replicated"}
+        </span>
+        <span
+          className="text-[11px] font-semibold rounded-full px-2.5 py-1"
+          style={{
+            background: result.qkHeadShardingOk ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)",
+            color: result.qkHeadShardingOk ? "#34d399" : "#f87171",
+          }}
+        >
+          DeltaNet QK-head sharding (TP ≤ {QWEN_3_8_27B.deltaNet.qkHeads}): {result.qkHeadShardingOk ? "OK" : "replicated"}
+        </span>
+      </div>
+
+      {!chip && <p className="mt-3 text-xs" style={{ color: "var(--dm-txt-faintest)" }}>Select a silicon in the rail for weight-read time, matmul time, and throughput.</p>}
+    </SectionCard>
+  );
+}
+
+// ── KV Cache — capacity & eviction model ────────────────────────────────────────────────
+// Ported from kv_capacity_eviction_model.xlsx: how many concurrent requests' KV cache fits in
+// VRAM after weights + reserve, and whether evicting a resident request to an offload tier
+// beats recomputing it from scratch on resume. "Cards" reuses the same TP degree as
+// Prefill-TP/Decode; the reserve fraction and per-tier bandwidths are new, KV-Cache-only inputs.
+
+function KvCacheSection({ usecase, chip, tp, onChangeTp, kv, onChangeKv, highlightedRow, onSelectRow }: {
+  usecase: UsecaseInputs; chip: ComparisonChip | undefined; tp: TpConfig; onChangeTp: (next: TpConfig) => void;
+  kv: KvCacheConfig; onChangeKv: (next: KvCacheConfig) => void;
+  highlightedRow: KvCacheRowKey | null; onSelectRow: (key: KvCacheRowKey | null) => void;
+}) {
+  const peak = chip ? getSiliconPeak(chip) : null;
+  const vramPerCardGB = chip ? getSiliconMemoryCapacityGB(chip) : null;
+  const baseline = useMemo(
+    () => calcKvCacheBaseline(QWEN_3_8_27B, usecase, tp, kv, vramPerCardGB),
+    [usecase, tp, kv, vramPerCardGB],
+  );
+  const current = useMemo(
+    () => calcKvCacheAtContext(QWEN_3_8_27B, usecase, tp, baseline, usecase.decodeContextLen, peak?.teraflops ?? null),
+    [usecase, tp, baseline, peak?.teraflops],
+  );
+  const sweep = useMemo(
+    () => calcKvCacheSweep(QWEN_3_8_27B, usecase, tp, baseline, peak?.teraflops ?? null),
+    [usecase, tp, baseline, peak?.teraflops],
+  );
+
+  function toggleRow(key: KvCacheRowKey) {
+    onSelectRow(highlightedRow === key ? null : key);
+  }
+  function setTp<K extends keyof TpConfig>(key: K, value: TpConfig[K]) {
+    onChangeTp({ ...tp, [key]: value });
+  }
+  function setKv<K extends keyof KvCacheConfig>(key: K, value: KvCacheConfig[K]) {
+    onChangeKv({ ...kv, [key]: value });
+  }
+
+  const rowHighlights = highlightedRow ? KV_CACHE_ROW_HIGHLIGHTS[highlightedRow] : null;
+  const localLit = (field: keyof TpConfig): boolean => field === "tpDegree" && !!rowHighlights?.tpDegreeField;
+  const kvConfigLit = (field: keyof KvCacheConfig): boolean => !!rowHighlights?.kvConfigFields?.includes(field);
+  const smallNumberInput = "rounded-lg px-2.5 py-1.5 text-sm focus:outline-none w-24";
+  const glowWrap = (lit: boolean, rgb: string): React.CSSProperties => ({
+    display: "inline-block", borderRadius: "0.5rem", transition: "box-shadow 200ms",
+    boxShadow: lit ? `0 0 0 1px rgb(${rgb}), 0 0 8px rgba(${rgb},0.5)` : "none",
+  });
+
+  type Row = { key: KvCacheRowKey; label: string; formula: string; value: string; color?: "orange" };
+  const rows: Row[] = [
+    { key: "kvPerToken", label: "KV per token", formula: `2 × ${ABBR.n_fa} × ${ABBR.n_kv} × ${ABBR.d_head} × kv_bytes`, value: `${fmtInt(baseline.kvPerTokenBytes)} bytes` },
+    { key: "weights", label: "Weights", formula: `${ABBR.N} × bytes_per_param`, value: `${baseline.weightsGB.toFixed(1)} GB` },
+    { key: "vramTotal", label: "VRAM total", formula: "cards × VRAM_card", value: `${fmtInt(baseline.vramTotalGB)} GB`, color: "orange" },
+    { key: "reserve", label: "Reserve", formula: "VRAM_total × reserve%", value: `${baseline.reserveGB.toFixed(1)} GB`, color: "orange" },
+    { key: "kvBudget", label: "KV budget", formula: "VRAM_total − weights − reserve", value: `${baseline.kvBudgetGB.toFixed(1)} GB`, color: "orange" },
+    { key: "minCardsForWeights", label: "Min cards for weights", formula: "⌈ weights ÷ VRAM_card ⌉", value: baseline.minCardsForWeights > 0 ? `${fmtInt(baseline.minCardsForWeights)} cards` : "—", color: "orange" },
+    { key: "ddrEgress", label: "DDR egress (aggregate)", formula: "ddr_per_card × cards", value: `${fmtInt(baseline.ddrEgressAggGBs)} GB/s`, color: "orange" },
+    { key: "cxlEgress", label: "CXL egress (aggregate)", formula: "cxl_per_card × cards", value: `${fmtInt(baseline.cxlEgressAggGBs)} GB/s`, color: "orange" },
+    { key: "flashEgress", label: "Flash egress (aggregate)", formula: "flash_per_card × cards", value: `${fmtInt(baseline.flashEgressAggGBs)} GB/s`, color: "orange" },
+  ];
+
+  return (
+    <SectionCard
+      title="KV Cache — Capacity & Eviction"
+      subtitle="How many concurrent requests' KV cache fits in VRAM after weights + reserve, and whether evicting to an offload tier beats recomputing on resume. Click a row to light up the parameters it uses — memory/VRAM dependencies light up in orange."
+    >
+      <div className="flex flex-wrap items-end gap-4 mb-4">
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Cards (TP group)</label>
+          <div style={glowWrap(localLit("tpDegree"), "34,211,238")}>
+            <input type="number" min={1} value={tp.tpDegree} onChange={e => setTp("tpDegree", Math.max(1, Number(e.target.value) || 1))} className={smallNumberInput} style={inputStyle} />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>Reserve %</label>
+          <div style={glowWrap(kvConfigLit("reserveFraction"), MEMORY_ORANGE_RGB)}>
+            <input
+              type="number" min={0} max={1} step={0.01} value={kv.reserveFraction}
+              onChange={e => setKv("reserveFraction", Math.min(1, Math.max(0, Number(e.target.value) || 0)))}
+              className={smallNumberInput} style={inputStyle}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>DDR GB/s · card</label>
+          <div style={glowWrap(kvConfigLit("ddrBWGBs"), MEMORY_ORANGE_RGB)}>
+            <input type="number" min={0} value={kv.ddrBWGBs} onChange={e => setKv("ddrBWGBs", Math.max(0, Number(e.target.value) || 0))} className={smallNumberInput} style={inputStyle} />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>CXL GB/s · card</label>
+          <div style={glowWrap(kvConfigLit("cxlBWGBs"), MEMORY_ORANGE_RGB)}>
+            <input type="number" min={0} value={kv.cxlBWGBs} onChange={e => setKv("cxlBWGBs", Math.max(0, Number(e.target.value) || 0))} className={smallNumberInput} style={inputStyle} />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>Flash GB/s · card</label>
+          <div style={glowWrap(kvConfigLit("flashBWGBs"), MEMORY_ORANGE_RGB)}>
+            <input type="number" min={0} value={kv.flashBWGBs} onChange={e => setKv("flashBWGBs", Math.max(0, Number(e.target.value) || 0))} className={smallNumberInput} style={inputStyle} />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl overflow-hidden border mb-4" style={{ borderColor: "var(--dm-border-a)" }}>
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr style={{ background: "var(--dm-table-head)" }}>
+              <th className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Component</th>
+              <th className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Formula</th>
+              <th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const active = highlightedRow === r.key;
+              const activeColor = r.color === "orange" ? MEMORY_ORANGE : "#22d3ee";
+              const activeBg = r.color === "orange" ? "rgba(251,146,60,0.16)" : "rgba(34,211,238,0.14)";
+              const idleBg = i % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)";
+              return (
+                <tr key={r.key} onClick={() => toggleRow(r.key)} className="cursor-pointer transition-colors duration-150" style={{ background: active ? activeBg : idleBg }}>
+                  <td className="px-4 py-2.5" style={{ color: active ? activeColor : "var(--dm-txt-body)" }}>{r.label}</td>
+                  <td className="px-4 py-2.5 text-left font-mono text-xs whitespace-nowrap" style={{ color: "var(--dm-txt-faint)" }}>{r.formula}</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: active ? activeColor : "var(--dm-txt-body)" }}>{r.value}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--dm-txt-faint)" }}>
+        At the current Use Case context ({fmtInt(usecase.decodeContextLen)} tokens)
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-4">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>KV / request</p>
+          <p className="text-lg font-mono font-bold" style={{ color: "var(--dm-txt-primary)" }}>{current.kvPerReqGB.toFixed(2)} GB</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Max concurrency</p>
+          <p className="text-lg font-mono font-bold" style={{ color: "#22d3ee" }}>{fmtInt(current.maxConcurrency)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Recompute</p>
+          <p className="text-lg font-mono font-bold" style={{ color: "var(--dm-txt-primary)" }}>{current.recomputeSec != null ? `${current.recomputeSec.toFixed(2)} s` : "—"}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>DDR / CXL read-back</p>
+          <p className="text-lg font-mono font-bold" style={{ color: MEMORY_ORANGE }}>{current.ddrMs.toFixed(2)} / {current.cxlMs.toFixed(2)} ms</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>Flash read-back</p>
+          <p className="text-lg font-mono font-bold" style={{ color: MEMORY_ORANGE }}>{current.flashMs.toFixed(2)} ms</p>
+        </div>
+      </div>
+
+      <div className="rounded-xl overflow-hidden border" style={{ borderColor: "var(--dm-border-a)" }}>
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr style={{ background: "var(--dm-table-head)" }}>
+              <th className="px-3 py-1.5 text-left font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Context</th>
+              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>KV / req (GB)</th>
+              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Max concurrency</th>
+              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Recompute (s)</th>
+              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: MEMORY_ORANGE }}>DDR ↔ (ms)</th>
+              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: MEMORY_ORANGE }}>CXL ↔ (ms)</th>
+              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: MEMORY_ORANGE }}>Flash ↔ (ms)</th>
+              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Recompute ÷ flash</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sweep.map((row, i) => (
+              <tr key={row.contextTokens} style={{ background: i % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)" }}>
+                <td className="px-3 py-1.5 font-mono font-semibold" style={{ color: "var(--dm-txt-primary)" }}>{fmtInt(row.contextTokens / 1000)}K</td>
+                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.kvPerReqGB.toFixed(2)}</td>
+                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{fmtInt(row.maxConcurrency)}</td>
+                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.recomputeSec != null ? row.recomputeSec.toFixed(2) : "—"}</td>
+                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.ddrMs.toFixed(1)}</td>
+                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.cxlMs.toFixed(1)}</td>
+                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.flashMs.toFixed(1)}</td>
+                <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: "var(--dm-txt-primary)" }}>{row.recomputeOverFlash != null ? `${fmtInt(row.recomputeOverFlash)}×` : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {!chip && <p className="mt-3 text-xs" style={{ color: "var(--dm-txt-faintest)" }}>Select a silicon in the rail for VRAM capacity, KV budget, and recompute time.</p>}
+
+      <p className="mt-4 text-[10.5px] leading-relaxed" style={{ color: "var(--dm-txt-faintest)" }}>
+        Read-back beats recompute at every context here — re-prefilling this model is roughly two
+        orders of magnitude slower per token than reading its KV cache back from any offload tier.
+        So the real eviction decision is which tier to use, not whether to recompute; tier choice
+        is set by aggregate egress bandwidth under concurrent eviction.
       </p>
     </SectionCard>
   );
@@ -657,46 +1072,103 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: "persistent-memory", label: "Persistent Memory" },
 ];
 
-const COMING_SOON_BLURB: Record<Exclude<Section, "prefill">, string> = {
-  "decode": "Per-token decode TFLOPS and the bandwidth-bound roofline verdict, from the workbook's Decode TFLOPs and Decode BW sheets.",
-  "kv-cache": "Growing KV-cache memory footprint (full-attention layers) and the fixed-size DeltaNet recurrent-state memory, in GiB, from the VRAM Calculation sheet.",
+const COMING_SOON_BLURB: Record<Exclude<Section, "prefill" | "decode" | "kv-cache">, string> = {
   "routing": "Reserved for MoE expert-routing overhead once a routed model is added — Qwen3.8-27B is dense, so this section doesn't apply to it yet.",
   "persistent-memory": "Constant, concurrency-independent memory — model weights, in GiB — plus GPU capacity fit-checks, from the VRAM Calculation sheet.",
 };
+
+type PrefillStep = 1 | 2 | 3 | 4 | 5;
+
+const PREFILL_STEPS: { step: PrefillStep; label: string }[] = [
+  { step: 1, label: "Architecture" },
+  { step: 2, label: "Use Case & Silicon" },
+  { step: 3, label: "Prefill TFLOPS" },
+  { step: 4, label: "Interconnect" },
+  { step: 5, label: "Prefill under Tensor Parallelism" },
+];
 
 export function DeepAnalysisView() {
   const [usecase, setUsecase] = useState<UsecaseInputs>(DEFAULT_USECASE_INPUTS);
   const [siliconId, setSiliconId] = useState<string>("");
   const [tpConfig, setTpConfig] = useState<TpConfig>(DEFAULT_TP_CONFIG);
+  const [kvCacheConfig, setKvCacheConfig] = useState<KvCacheConfig>(DEFAULT_KV_CACHE_CONFIG);
   const [section, setSection] = useState<Section>("prefill");
+  const [revealedSteps, setRevealedSteps] = useState<Set<PrefillStep>>(new Set([1]));
   const [highlightedRow, setHighlightedRow] = useState<PrefillRowKey | null>(null);
   const [highlightedTpRow, setHighlightedTpRow] = useState<TpRowKey | null>(null);
+  const [highlightedDecodeRow, setHighlightedDecodeRow] = useState<DecodeRowKey | null>(null);
+  const [highlightedKvCacheRow, setHighlightedKvCacheRow] = useState<KvCacheRowKey | null>(null);
 
   const chip = COMPARISON_CHIPS.find(c => c.id === siliconId);
   const rowActive = section === "prefill" ? highlightedRow : null;
   const tpRowActive = section === "prefill" ? highlightedTpRow : null;
+  const decodeRowActive = section === "decode" ? highlightedDecodeRow : null;
+  const kvCacheRowActive = section === "kv-cache" ? highlightedKvCacheRow : null;
   const tpHighlights = tpRowActive ? TP_ROW_HIGHLIGHTS[tpRowActive] : null;
+  const decodeHighlights = decodeRowActive ? DECODE_ROW_HIGHLIGHTS[decodeRowActive] : null;
+  const kvCacheHighlights = kvCacheRowActive ? KV_CACHE_ROW_HIGHLIGHTS[kvCacheRowActive] : null;
 
-  const highlightedAbbrevs = rowActive || tpHighlights?.archAbbrevs
-    ? new Set([...(rowActive ? PREFILL_ROW_SYMBOLS[rowActive] : []), ...(tpHighlights?.archAbbrevs ?? [])])
+  const highlightedAbbrevs = rowActive || tpHighlights?.archAbbrevs || decodeHighlights?.archAbbrevs || kvCacheHighlights?.archAbbrevs
+    ? new Set([
+        ...(rowActive ? PREFILL_ROW_SYMBOLS[rowActive] : []),
+        ...(tpHighlights?.archAbbrevs ?? []),
+        ...(decodeHighlights?.archAbbrevs ?? []),
+        ...(kvCacheHighlights?.archAbbrevs ?? []),
+      ])
     : null;
-  const highlightedUsecaseFields = rowActive || tpHighlights?.usecaseFields
-    ? new Set([...(rowActive ? PREFILL_ROW_USECASE_FIELDS[rowActive] : []), ...(tpHighlights?.usecaseFields ?? [])])
+  const highlightedUsecaseFields = rowActive || tpHighlights?.usecaseFields || decodeHighlights?.usecaseFields || kvCacheHighlights?.usecaseFields
+    ? new Set([
+        ...(rowActive ? PREFILL_ROW_USECASE_FIELDS[rowActive] : []),
+        ...(tpHighlights?.usecaseFields ?? []),
+        ...(decodeHighlights?.usecaseFields ?? []),
+        ...(kvCacheHighlights?.usecaseFields ?? []),
+      ])
     : null;
-  const highlightSiliconPeak = (rowActive ? PREFILL_ROW_USES_SILICON_PEAK[rowActive] : false) || (tpHighlights?.siliconPeak ?? false);
-  const highlightedInterconnectFields = tpHighlights?.interconnectFields ? new Set(tpHighlights.interconnectFields) : null;
+  const highlightSiliconPeak =
+    (rowActive ? PREFILL_ROW_USES_SILICON_PEAK[rowActive] : false) ||
+    (tpHighlights?.siliconPeak ?? false) ||
+    (decodeHighlights?.siliconPeak ?? false);
+  const highlightSiliconBandwidth = decodeHighlights?.siliconBandwidth ?? false;
+  const highlightSiliconCapacity = kvCacheHighlights?.siliconCapacity ?? false;
+  const highlightedInterconnectFields = tpHighlights?.interconnectFields || decodeHighlights?.interconnectFields
+    ? new Set([...(tpHighlights?.interconnectFields ?? []), ...(decodeHighlights?.interconnectFields ?? [])])
+    : null;
+
+  /** Clicking the next step in order builds on what's already revealed (the "story"); clicking
+   *  anything else — a step already reached, or one out of order — breaks the sequence and
+   *  shows only that step. */
+  function revealStep(step: PrefillStep) {
+    setRevealedSteps(prev => {
+      // Continuing right after the highest step reached so far builds on the story; anything
+      // else — including re-clicking an earlier step that's already shown — breaks it and
+      // shows only the step just clicked.
+      const maxRevealed = Math.max(...prev);
+      return step === maxRevealed + 1 ? new Set([...prev, step]) : new Set([step]);
+    });
+  }
+
+  const show1 = revealedSteps.has(1);
+  const show2 = revealedSteps.has(2);
+  const show3 = revealedSteps.has(3);
+  const show4 = revealedSteps.has(4);
+  const show5 = revealedSteps.has(5);
+  /** The labeled architecture diagram is a lot of screen real estate — only worth it when
+   *  step 1 is the sole thing revealed. As soon as anything else joins the story, drop it and
+   *  keep just the compact Architecture panel (still needed for click-to-highlight). */
+  const showArchitectureDiagram = show1 && revealedSteps.size === 1;
 
   return (
     <div className="mx-auto max-w-screen-2xl px-6 pb-12">
       <div className="mb-6">
         <p className="text-sm max-w-3xl leading-relaxed" style={{ color: "var(--dm-txt-muted)" }}>
           A sizing deep-dive for Qwen3.8-27B (hybrid Gated DeltaNet / Gated Attention), ported from the
-          Qwen3.8-27B sizing-model workbook. Pick a section above; Architecture, Use Case, and Silicon
-          in the right-hand rail drive every one of them and stay pinned as you switch.
+          Qwen3.8-27B sizing-model workbook. Pick a section above. On Prefill, walk through the
+          computation step by step with the numbered buttons below — each one reveals only that
+          step&rsquo;s panel. Other sections show Architecture, Use Case, Silicon, and Interconnect together.
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6" role="radiogroup" aria-label="Deep Analysis section">
+      <div className="flex flex-wrap gap-2 mb-3" role="radiogroup" aria-label="Deep Analysis section">
         {SECTIONS.map(s => {
           const active = section === s.key;
           return (
@@ -720,35 +1192,106 @@ export function DeepAnalysisView() {
         })}
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
-        <div className="flex-1 min-w-0">
-          {section === "prefill" && (
-            <>
-              <PrefillSection usecase={usecase} chip={chip} highlightedRow={highlightedRow} onSelectRow={setHighlightedRow} />
-              <PrefillTpCard
-                usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
-                highlightedRow={highlightedTpRow} onSelectRow={setHighlightedTpRow}
-              />
-            </>
+      {section === "prefill" && (
+        <div className="flex items-center gap-2 mb-6 flex-wrap" role="group" aria-label="Prefill reveal step">
+          <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Reveal step</span>
+          {PREFILL_STEPS.map(s => {
+            const active = revealedSteps.has(s.step);
+            return (
+              <button
+                key={s.step} type="button" onClick={() => revealStep(s.step)}
+                title={s.label} aria-pressed={active}
+                className="w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center transition-colors border flex-shrink-0"
+                style={{
+                  background: active ? "rgba(34,211,238,0.15)" : "var(--dm-surface-a)",
+                  borderColor: active ? "#22d3ee" : "var(--dm-border-a)",
+                  color: active ? "#22d3ee" : "var(--dm-txt-secondary)",
+                }}
+              >
+                {s.step}
+              </button>
+            );
+          })}
+          <span className="text-xs" style={{ color: "var(--dm-txt-secondary)" }}>
+            {PREFILL_STEPS.filter(s => revealedSteps.has(s.step)).map(s => s.label).join(" + ")}
+          </span>
+        </div>
+      )}
+
+      {section === "prefill" ? (
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+          {(show3 || show5) && (
+            <div className="flex-1 min-w-0 flex flex-col gap-6">
+              {show3 && (
+                <PrefillSection usecase={usecase} chip={chip} highlightedRow={highlightedRow} onSelectRow={setHighlightedRow} />
+              )}
+              {show5 && (
+                <PrefillTpCard
+                  usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
+                  highlightedRow={highlightedTpRow} onSelectRow={setHighlightedTpRow}
+                />
+              )}
+            </div>
           )}
-          {section !== "prefill" && (
-            <ComingSoonSection title={SECTIONS.find(s => s.key === section)!.label} blurb={COMING_SOON_BLURB[section]} />
+          {(show1 || show2 || show4) && (
+            <div className={showArchitectureDiagram ? "w-full flex flex-col gap-6" : "w-full lg:w-[420px] flex-shrink-0 flex flex-col gap-6 lg:sticky lg:top-6 lg:self-start"}>
+              {show1 && (
+                showArchitectureDiagram ? (
+                  <div className="flex flex-col md:flex-row gap-6 items-start">
+                    <div className="flex-1 min-w-0">
+                      <ArchitectureDiagram />
+                    </div>
+                    <div className="w-full md:w-[340px] flex-shrink-0 md:sticky md:top-6 md:self-start">
+                      <ArchitecturePanel highlighted={highlightedAbbrevs} />
+                    </div>
+                  </div>
+                ) : (
+                  <ArchitecturePanel highlighted={highlightedAbbrevs} />
+                )
+              )}
+              {show2 && (
+                <>
+                  <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
+                  <SiliconPanel chip={chip} onChange={setSiliconId} highlightPeak={highlightSiliconPeak} highlightBandwidth={highlightSiliconBandwidth} highlightCapacity={highlightSiliconCapacity} />
+                </>
+              )}
+              {show4 && <InterconnectPanel tp={tpConfig} onChange={setTpConfig} highlighted={highlightedInterconnectFields} />}
+            </div>
           )}
         </div>
+      ) : (
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+          <div className="flex-1 min-w-0">
+            {section === "decode" ? (
+              <DecodeSection
+                usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
+                highlightedRow={highlightedDecodeRow} onSelectRow={setHighlightedDecodeRow}
+              />
+            ) : section === "kv-cache" ? (
+              <KvCacheSection
+                usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
+                kv={kvCacheConfig} onChangeKv={setKvCacheConfig}
+                highlightedRow={highlightedKvCacheRow} onSelectRow={setHighlightedKvCacheRow}
+              />
+            ) : (
+              <ComingSoonSection title={SECTIONS.find(s => s.key === section)!.label} blurb={COMING_SOON_BLURB[section as Exclude<Section, "prefill" | "decode" | "kv-cache">]} />
+            )}
+          </div>
 
-        <div className="w-full lg:w-[680px] flex-shrink-0 lg:sticky lg:top-6 lg:self-start">
-          <div className="flex flex-col sm:flex-row gap-6">
-            <div className="sm:w-[300px] flex-shrink-0">
-              <ArchitecturePanel highlighted={highlightedAbbrevs} />
-            </div>
-            <div className="flex-1 min-w-0 flex flex-col gap-6">
-              <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
-              <SiliconPanel chip={chip} onChange={setSiliconId} highlightPeak={highlightSiliconPeak} />
-              <InterconnectPanel tp={tpConfig} onChange={setTpConfig} highlighted={highlightedInterconnectFields} />
+          <div className="w-full lg:w-[680px] flex-shrink-0 lg:sticky lg:top-6 lg:self-start">
+            <div className="flex flex-col sm:flex-row gap-6">
+              <div className="sm:w-[300px] flex-shrink-0">
+                <ArchitecturePanel highlighted={highlightedAbbrevs} />
+              </div>
+              <div className="flex-1 min-w-0 flex flex-col gap-6">
+                <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
+                <SiliconPanel chip={chip} onChange={setSiliconId} highlightPeak={highlightSiliconPeak} highlightBandwidth={highlightSiliconBandwidth} highlightCapacity={highlightSiliconCapacity} />
+                <InterconnectPanel tp={tpConfig} onChange={setTpConfig} highlighted={highlightedInterconnectFields} />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
