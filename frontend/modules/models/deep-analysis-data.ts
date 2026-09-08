@@ -58,6 +58,9 @@ export interface ModelArchitecture {
   deltaNet: { vHeads: number; qkHeads: number; headDim: number };
   multiTokenPrediction: boolean;
   deltaNetKernelConstant: number;
+  /** Fixed-size recurrent state per DeltaNet layer's resident sequence — O(1) in context length,
+   *  unlike the full-attention KV cache. From kv_capacity_eviction_model.xlsx's Inputs sheet. */
+  deltaNetFixedStateMB: number;
 }
 
 export const QWEN_3_8_27B: ModelArchitecture = {
@@ -78,6 +81,7 @@ export const QWEN_3_8_27B: ModelArchitecture = {
   // Approximates the extra matmuls in the chunked delta-rule update (correction/beta gate,
   // chunk-local state, output readout). Kernel-dependent — validate against a profiled kernel.
   deltaNetKernelConstant: 5,
+  deltaNetFixedStateMB: 75,
 };
 
 // ── use-case / serving-workload inputs (shared across every section) ───────────────────
@@ -94,7 +98,19 @@ export interface UsecaseInputs {
   weightDtypeBytes: number;
   kvDtypeBytes: number;
   overheadFraction: number;
-  achievableEfficiency: number;
+  /** Prefill Efficiency Stack (calibrated against measured TTFT — see Qwen3.8-27B_Sizing_Model_Calliberated.xlsx's
+   *  "Prefill Calibration" sheet). Replaces the old single flat "achievable efficiency": a FLOP-only
+   *  model badly underestimates prefill wall-clock on this hybrid architecture because the 48
+   *  memory-bound / low-MFU Gated DeltaNet layers, convs, norms, gates and RoPE burn far more
+   *  wall-clock than their tiny FLOP share. */
+  /** Best-case dense-GEMM MFU on the selected silicon — a microbenchmark number. */
+  gemmMfu: number;
+  /** Everything a FLOP-only model misses on the compute side beyond the GEMM ceiling (DeltaNet
+   *  scan layers, norms, gates, RoPE, kernel-launch + stack overhead). Fit to reproduce measured TTFT. */
+  hybridStackDerate: number;
+  /** Fraction of theoretical link bandwidth the all-reduce collective actually realizes — applies
+   *  to Prefill-TP's communication time only, separate from the compute-side derate above. */
+  commEfficiency: number;
 }
 
 export const DEFAULT_USECASE_INPUTS: UsecaseInputs = {
@@ -106,8 +122,17 @@ export const DEFAULT_USECASE_INPUTS: UsecaseInputs = {
   weightDtypeBytes: 2,
   kvDtypeBytes: 1,
   overheadFraction: 0.12,
-  achievableEfficiency: 0.45,
+  gemmMfu: 0.7,
+  hybridStackDerate: 0.64,
+  commEfficiency: 0.85,
 };
+
+/** GEMM MFU × hybrid+stack derate — the fraction of peak TFLOPS the compute side actually
+ *  sustains before communication/overhead, used everywhere the old flat `achievableEfficiency`
+ *  used to be (Prefill compute time, Prefill-TP compute time, KV-Cache eviction recompute). */
+export function getEffectiveComputeMfu(usecase: UsecaseInputs): number {
+  return usecase.gemmMfu * usecase.hybridStackDerate;
+}
 
 /** Applies one field edit to a UsecaseInputs, keeping decodeContextLen in sync with
  *  inputTokens+outputTokens whenever decodeContextLenAuto is still true. Editing
@@ -168,6 +193,34 @@ export function getSiliconPeak(chip: ComparisonChip): SiliconPeak | null {
   return null;
 }
 
+/** Pulls a plain GB/s number out of a chip's free-text memory bandwidth string, for Decode's
+ *  weight-read-bandwidth formula. Prefers an explicit "GB/s" figure if the string states one
+ *  (e.g. "1.79 TB/s (1,792 GB/s)" → 1792); otherwise converts the first "TB/s" figure ×1000.
+ *  Where a string lists both a per-device and an aggregate figure (e.g. GB200's "8 TB/s per
+ *  GPU (576 TB/s aggregate...)"), the per-device one is always written first, so a first-match
+ *  regex picks the right one. */
+export function getSiliconMemoryBandwidthGBs(chip: ComparisonChip): number | null {
+  const text = chip.memory.bandwidth.replace(/,/g, "");
+  const gbMatch = text.match(/([\d.]+)\s*GB\/s/);
+  if (gbMatch) return parseFloat(gbMatch[1]);
+  const tbMatch = text.match(/([\d.]+)\s*TB\/s/);
+  if (tbMatch) return parseFloat(tbMatch[1]) * 1000;
+  return null;
+}
+
+/** Same idea as getSiliconMemoryBandwidthGBs, for capacity — used by the KV Cache section's
+ *  VRAM-per-card figure. Picks the first "GB"/"TB" figure in the string, which is always the
+ *  per-device one by this app's own authoring convention (aggregate/rack figures, where they
+ *  exist, are always stated second). */
+export function getSiliconMemoryCapacityGB(chip: ComparisonChip): number | null {
+  const text = chip.memory.capacity.replace(/,/g, "");
+  const gbMatch = text.match(/([\d.]+)\s*GB\b/);
+  if (gbMatch) return parseFloat(gbMatch[1]);
+  const tbMatch = text.match(/([\d.]+)\s*TB\b/);
+  if (tbMatch) return parseFloat(tbMatch[1]) * 1000;
+  return null;
+}
+
 // ── prefill FLOPs / TFLOPS calculation (from the "Prefill TFLOPs" sheet) ───────────────
 
 export type PrefillRowKey = "dense" | "fullAttn" | "deltaNet" | "total";
@@ -189,7 +242,7 @@ export const PREFILL_ROW_USECASE_FIELDS: Record<PrefillRowKey, (keyof UsecaseInp
   dense: ["concurrency", "inputTokens"],
   fullAttn: ["concurrency", "inputTokens"],
   deltaNet: ["concurrency", "inputTokens"],
-  total: ["concurrency", "inputTokens", "achievableEfficiency"],
+  total: ["concurrency", "inputTokens", "gemmMfu", "hybridStackDerate"],
 };
 
 /** Only the Total row's compute-time/achieved-TFLOPS figures depend on the selected silicon's
@@ -211,8 +264,9 @@ export interface PrefillResult {
   achievedTflops: number | null;
 }
 
-/** `peakTflops` comes from the selected Silicon; `usecase.achievableEfficiency` is the fraction
- *  of it real kernels hit. Pass `peakTflops: null` (no silicon selected, or its peak figure
+/** `peakTflops` comes from the selected Silicon; `getEffectiveComputeMfu(usecase)` (GEMM MFU ×
+ *  hybrid+stack derate) is the fraction of it real kernels hit — see UsecaseInputs' Prefill
+ *  Efficiency Stack fields. Pass `peakTflops: null` (no silicon selected, or its peak figure
  *  didn't parse) to still get the FLOPS breakdown with time/achieved-throughput left unset. */
 export function calcPrefill(arch: ModelArchitecture, usecase: UsecaseInputs, peakTflops: number | null): PrefillResult {
   const N = arch.totalParamsB * 1e9;
@@ -230,7 +284,7 @@ export function calcPrefill(arch: ModelArchitecture, usecase: UsecaseInputs, pea
   let estimatedComputeTimeSec: number | null = null;
   let achievedTflops: number | null = null;
   if (peakTflops && peakTflops > 0) {
-    estimatedComputeTimeSec = totalTflops / (peakTflops * usecase.achievableEfficiency);
+    estimatedComputeTimeSec = totalTflops / (peakTflops * getEffectiveComputeMfu(usecase));
     achievedTflops = totalTflops / estimatedComputeTimeSec;
   }
 
@@ -299,7 +353,7 @@ export function calcPrefillTp(
 ): PrefillTpResult {
   const B = usecase.concurrency;
   const L = usecase.inputTokens;
-  const eff = usecase.achievableEfficiency;
+  const eff = getEffectiveComputeMfu(usecase);
   const link = INTERCONNECTS.find(i => i.id === tp.interconnectId);
   const linkBwGBs = link?.linkBwGBs ?? null;
   const latencyUs = link?.latencyUsPerHop ?? 0;
@@ -317,11 +371,17 @@ export function calcPrefillTp(
   let latencyTermSec = 0;
   if (tp.tpDegree > 1) {
     latencyTermSec = (2 * (tp.tpDegree - 1) * latencyUs) / 1e6;
-    if (linkBwGBs) bwTermSec = ((2 * (tp.tpDegree - 1)) / tp.tpDegree) * (allReduceMsgGB / linkBwGBs);
+    // Effective link BW is derated by the realized comm efficiency (real NCCL/oneCCL achieves
+    // ~70-85% of theoretical), not the full theoretical link bandwidth.
+    if (linkBwGBs) bwTermSec = ((2 * (tp.tpDegree - 1)) / tp.tpDegree) * (allReduceMsgGB / (linkBwGBs * usecase.commEfficiency));
   }
   const commTimeSec = tp.tpDegree > 1 && !linkBwGBs ? null : numAllReduces * (bwTermSec + latencyTermSec);
 
-  const wallClockSec = perGpuComputeTimeSec != null && commTimeSec != null ? perGpuComputeTimeSec + commTimeSec : null;
+  // All-reduce is a hard sync point in vanilla TP (compute + comm additive), then runtime/workspace
+  // overhead is applied on top — previously omitted from the Prefill-TP wall-clock.
+  const wallClockSec = perGpuComputeTimeSec != null && commTimeSec != null
+    ? (perGpuComputeTimeSec + commTimeSec) * (1 + usecase.overheadFraction)
+    : null;
   const speedup = singleGpuTimeSec != null && wallClockSec != null && wallClockSec > 0 ? singleGpuTimeSec / wallClockSec : null;
   const parallelEfficiency = speedup != null ? speedup / tp.tpDegree : null;
   const regime = commTimeSec != null && perGpuComputeTimeSec != null
@@ -366,15 +426,267 @@ export interface TpRowHighlights {
 }
 
 export const TP_ROW_HIGHLIGHTS: Record<TpRowKey, TpRowHighlights> = {
-  singleGpu: { siliconPeak: true, usecaseFields: ["achievableEfficiency"] },
-  perGpu: { siliconPeak: true, usecaseFields: ["achievableEfficiency"], localFields: ["tpDegree"] },
+  singleGpu: { siliconPeak: true, usecaseFields: ["gemmMfu", "hybridStackDerate"] },
+  perGpu: { siliconPeak: true, usecaseFields: ["gemmMfu", "hybridStackDerate"], localFields: ["tpDegree"] },
   msgSize: { archAbbrevs: [ABBR.d_model], usecaseFields: ["concurrency", "inputTokens"], localFields: ["activationDtypeBytes"] },
   numAllReduces: { archAbbrevs: [ABBR.n_layers], localFields: ["collectiveOpsPerLayer"] },
-  bwTerm: { localFields: ["tpDegree"], interconnectFields: ["linkBw"] },
+  bwTerm: { localFields: ["tpDegree"], interconnectFields: ["linkBw"], usecaseFields: ["commEfficiency"] },
   latencyTerm: { localFields: ["tpDegree"], interconnectFields: ["latency"] },
-  commTime: { localFields: ["collectiveOpsPerLayer"], interconnectFields: ["linkBw", "latency"] },
+  commTime: { localFields: ["collectiveOpsPerLayer"], interconnectFields: ["linkBw", "latency"], usecaseFields: ["commEfficiency"] },
   wallClock: {
-    siliconPeak: true, usecaseFields: ["achievableEfficiency"],
+    siliconPeak: true, usecaseFields: ["gemmMfu", "hybridStackDerate", "commEfficiency", "overheadFraction"],
     localFields: ["tpDegree", "collectiveOpsPerLayer"], interconnectFields: ["linkBw", "latency"],
   },
+};
+
+// ── Decode — tensor-parallel, memory-bandwidth model (from qwen_decode_prefill_calculator.xlsx,
+// "Decode" sheet) — t_token = MAX(t_mem, t_compute) + t_comm. KV-cache read traffic is
+// intentionally excluded, per that workbook's own README: negligible at low batch size with
+// only 16 full-attention layers / 4 KV heads; a worse approximation at large batch × long
+// context, where KV bytes scale with B×T (see the KV Cache section once it's built). ─────────
+
+export interface DecodeResult {
+  totalWeightBytes: number;
+  weightBytesPerDevice: number;
+  weightGBPerDevice: number;
+  /** ms to read this device's weight shard once — null if no silicon memory bandwidth is known. */
+  tMemMs: number | null;
+  totalDecodeFlops: number;
+  flopsPerDevice: number;
+  /** ms for this device's matmul share — null if no silicon peak TFLOPS is known. */
+  tComputeMs: number | null;
+  allReduceMsgBytes: number;
+  ringFactor: number;
+  /** ms per all-reduce — null if no interconnect link bandwidth is known. */
+  timePerAllReduceMs: number | null;
+  totalSyncPoints: number;
+  tCommMs: number | null;
+  boundRegime: "Memory-bound" | "Compute-bound" | null;
+  totalTimePerTokenMs: number | null;
+  tokensPerSecPerStream: number | null;
+  tokensPerSecAggregate: number | null;
+  /** TP-sharding sanity flags — real overhead beyond what the formulas above capture if false. */
+  kvHeadShardingOk: boolean;
+  qkHeadShardingOk: boolean;
+}
+
+export function calcDecode(
+  arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig,
+  peakTflops: number | null, memBandwidthGBs: number | null, linkBwGBs: number | null,
+): DecodeResult {
+  const N = arch.totalParamsB * 1e9;
+  const B = usecase.concurrency;
+  const bytesPerParam = usecase.weightDtypeBytes;
+  const X = tp.tpDegree;
+
+  const totalWeightBytes = N * bytesPerParam;
+  const weightBytesPerDevice = totalWeightBytes / X;
+  const weightGBPerDevice = weightBytesPerDevice / 1e9;
+  const tMemMs = memBandwidthGBs && memBandwidthGBs > 0 ? (weightBytesPerDevice / (memBandwidthGBs * 1e9)) * 1000 : null;
+
+  const totalDecodeFlops = 2 * N * B;
+  const flopsPerDevice = totalDecodeFlops / X;
+  const tComputeMs = peakTflops && peakTflops > 0 ? (flopsPerDevice / (peakTflops * 1e12)) * 1000 : null;
+
+  const allReduceMsgBytes = B * arch.hiddenDim * bytesPerParam;
+  const ringFactor = X > 1 ? (2 * (X - 1)) / X : 0;
+  const timePerAllReduceMs =
+    X <= 1 ? 0 : linkBwGBs && linkBwGBs > 0 ? ((ringFactor * allReduceMsgBytes) / (linkBwGBs * 1e9)) * 1000 : null;
+  const totalSyncPoints = tp.collectiveOpsPerLayer * arch.totalLayers;
+  const tCommMs = timePerAllReduceMs != null ? totalSyncPoints * timePerAllReduceMs : null;
+
+  const boundRegime = tMemMs != null && tComputeMs != null ? (tMemMs >= tComputeMs ? "Memory-bound" : "Compute-bound") : null;
+  const matmulBoundMs = tMemMs != null && tComputeMs != null ? Math.max(tMemMs, tComputeMs) : null;
+  const totalTimePerTokenMs = matmulBoundMs != null && tCommMs != null ? matmulBoundMs + tCommMs : null;
+  const tokensPerSecPerStream = totalTimePerTokenMs && totalTimePerTokenMs > 0 ? 1000 / totalTimePerTokenMs : null;
+  const tokensPerSecAggregate = tokensPerSecPerStream != null ? tokensPerSecPerStream * B : null;
+
+  return {
+    totalWeightBytes, weightBytesPerDevice, weightGBPerDevice, tMemMs,
+    totalDecodeFlops, flopsPerDevice, tComputeMs,
+    allReduceMsgBytes, ringFactor, timePerAllReduceMs, totalSyncPoints, tCommMs,
+    boundRegime, totalTimePerTokenMs, tokensPerSecPerStream, tokensPerSecAggregate,
+    kvHeadShardingOk: X <= arch.fullAttn.kvHeads,
+    qkHeadShardingOk: X <= arch.deltaNet.qkHeads,
+  };
+}
+
+// ── click-to-highlight for Decode — mirrors TP_ROW_HIGHLIGHTS above, plus a new
+// `siliconBandwidth` flag since Decode (unlike Prefill) is bandwidth- as well as compute-bound. ──
+
+export type DecodeRowKey =
+  | "totalWeightBytes" | "weightBytesPerDevice" | "tMem"
+  | "totalFlops" | "flopsPerDevice" | "tCompute"
+  | "msgBytes" | "ringFactor" | "timePerAllReduce" | "syncPoints" | "tComm"
+  | "totalTimePerToken";
+
+export interface DecodeRowHighlights {
+  archAbbrevs?: string[];
+  usecaseFields?: (keyof UsecaseInputs)[];
+  siliconPeak?: boolean;
+  siliconBandwidth?: boolean;
+  interconnectFields?: ("linkBw" | "latency")[];
+  localFields?: (keyof TpConfig)[];
+}
+
+export const DECODE_ROW_HIGHLIGHTS: Record<DecodeRowKey, DecodeRowHighlights> = {
+  totalWeightBytes: { archAbbrevs: [ABBR.N], usecaseFields: ["weightDtypeBytes"] },
+  weightBytesPerDevice: { localFields: ["tpDegree"] },
+  tMem: { siliconBandwidth: true },
+  totalFlops: { archAbbrevs: [ABBR.N], usecaseFields: ["concurrency"] },
+  flopsPerDevice: { localFields: ["tpDegree"] },
+  tCompute: { siliconPeak: true },
+  msgBytes: { archAbbrevs: [ABBR.d_model], usecaseFields: ["concurrency", "weightDtypeBytes"] },
+  ringFactor: { localFields: ["tpDegree"] },
+  timePerAllReduce: { localFields: ["tpDegree"], interconnectFields: ["linkBw"] },
+  syncPoints: { archAbbrevs: [ABBR.n_layers], localFields: ["collectiveOpsPerLayer"] },
+  tComm: { localFields: ["collectiveOpsPerLayer"], interconnectFields: ["linkBw"] },
+  totalTimePerToken: {
+    siliconPeak: true, siliconBandwidth: true, usecaseFields: ["concurrency", "weightDtypeBytes"],
+    localFields: ["tpDegree", "collectiveOpsPerLayer"], interconnectFields: ["linkBw"],
+  },
+};
+
+// ── KV Cache — capacity & eviction model (from kv_capacity_eviction_model.xlsx) ─────────
+// Two questions: (1) how many concurrent requests' KV cache fits in VRAM after weights and a
+// reserve, at a given context length; (2) when a resident request has to be evicted to admit
+// a new one, is it faster to write its KV out to an offload tier and read it back later, or
+// just recompute it from scratch on resume. Every figure here is verified against the
+// workbook's own displayed values (both its 8K and 64K context rows) before being ported.
+
+export interface OffloadMedium {
+  id: string;
+  name: string;
+  perCardBWGBs: number;
+}
+
+/** Reference per-card egress bandwidths from the workbook's Inputs sheet — editable in the UI,
+ *  these are just the shipped defaults. Memory/storage-tier concerns, so rendered in orange. */
+export const OFFLOAD_MEDIA: OffloadMedium[] = [
+  { id: "ddr", name: "DDR (host)", perCardBWGBs: 50 },
+  { id: "cxl", name: "CXL pool", perCardBWGBs: 40 },
+  { id: "flash", name: "All-flash", perCardBWGBs: 10 },
+];
+
+export interface KvCacheConfig {
+  /** Fraction of total VRAM reserved for activations/fragmentation, not available for KV. */
+  reserveFraction: number;
+  ddrBWGBs: number;
+  cxlBWGBs: number;
+  flashBWGBs: number;
+}
+
+export const DEFAULT_KV_CACHE_CONFIG: KvCacheConfig = {
+  reserveFraction: 0.10,
+  ddrBWGBs: OFFLOAD_MEDIA[0].perCardBWGBs,
+  cxlBWGBs: OFFLOAD_MEDIA[1].perCardBWGBs,
+  flashBWGBs: OFFLOAD_MEDIA[2].perCardBWGBs,
+};
+
+export interface KvCacheBaseline {
+  kvPerTokenBytes: number;
+  weightsGB: number;
+  vramTotalGB: number;
+  reserveGB: number;
+  kvBudgetGB: number;
+  minCardsForWeights: number;
+  ddrEgressAggGBs: number;
+  cxlEgressAggGBs: number;
+  flashEgressAggGBs: number;
+}
+
+/** `vramPerCardGB` comes from the selected Silicon; pass null (no silicon selected, or its
+ *  capacity didn't parse) to still get the weight/token-size math with VRAM-dependent fields
+ *  left at 0 — callers should treat a null-VRAM baseline as "select a silicon" territory. */
+export function calcKvCacheBaseline(
+  arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig, kv: KvCacheConfig, vramPerCardGB: number | null,
+): KvCacheBaseline {
+  const kvPerTokenBytes = 2 * arch.fullAttnLayers * arch.fullAttn.kvHeads * arch.fullAttn.headDim * usecase.kvDtypeBytes;
+  const weightsGB = arch.totalParamsB * usecase.weightDtypeBytes;
+  const vramTotalGB = (vramPerCardGB ?? 0) * tp.tpDegree;
+  const reserveGB = vramTotalGB * kv.reserveFraction;
+  const kvBudgetGB = vramTotalGB - weightsGB - reserveGB;
+  const minCardsForWeights = vramPerCardGB && vramPerCardGB > 0 ? Math.ceil(weightsGB / vramPerCardGB) : 0;
+
+  return {
+    kvPerTokenBytes, weightsGB, vramTotalGB, reserveGB, kvBudgetGB, minCardsForWeights,
+    ddrEgressAggGBs: kv.ddrBWGBs * tp.tpDegree,
+    cxlEgressAggGBs: kv.cxlBWGBs * tp.tpDegree,
+    flashEgressAggGBs: kv.flashBWGBs * tp.tpDegree,
+  };
+}
+
+export interface KvCacheAtContext {
+  contextTokens: number;
+  kvPerReqGB: number;
+  maxConcurrency: number;
+  recomputeSec: number | null;
+  ddrMs: number;
+  cxlMs: number;
+  flashMs: number;
+  recomputeOverFlash: number | null;
+}
+
+/** `peakTflops` comes from the selected Silicon; pass null to still get capacity/concurrency
+ *  (VRAM-only math) with the recompute-side fields left unset. */
+export function calcKvCacheAtContext(
+  arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig,
+  baseline: KvCacheBaseline, contextTokens: number, peakTflops: number | null,
+): KvCacheAtContext {
+  const kvPerReqBytes = baseline.kvPerTokenBytes * contextTokens + arch.deltaNetFixedStateMB * 1e6;
+  const kvPerReqGB = kvPerReqBytes / 1e9;
+  const maxConcurrency = kvPerReqGB > 0 ? Math.max(0, Math.floor(baseline.kvBudgetGB / kvPerReqGB)) : 0;
+
+  const N = arch.totalParamsB * 1e9;
+  const prefillFlop =
+    2 * N * contextTokens + 4 * arch.fullAttnLayers * (arch.fullAttn.qHeads * arch.fullAttn.headDim) * contextTokens ** 2;
+  const recomputeSec = peakTflops && peakTflops > 0
+    ? prefillFlop / (tp.tpDegree * peakTflops * 1e12 * getEffectiveComputeMfu(usecase))
+    : null;
+
+  const ddrMs = (kvPerReqGB / baseline.ddrEgressAggGBs) * 1000;
+  const cxlMs = (kvPerReqGB / baseline.cxlEgressAggGBs) * 1000;
+  const flashMs = (kvPerReqGB / baseline.flashEgressAggGBs) * 1000;
+  const recomputeOverFlash = recomputeSec != null && flashMs > 0 ? (recomputeSec * 1000) / flashMs : null;
+
+  return { contextTokens, kvPerReqGB, maxConcurrency, recomputeSec, ddrMs, cxlMs, flashMs, recomputeOverFlash };
+}
+
+/** The reference context-length ladder the workbook itself sweeps (in thousands of tokens). */
+export const KV_CACHE_CONTEXT_SWEEP_K = [8, 16, 32, 64];
+
+export function calcKvCacheSweep(
+  arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig, baseline: KvCacheBaseline, peakTflops: number | null,
+): KvCacheAtContext[] {
+  return KV_CACHE_CONTEXT_SWEEP_K.map(k => calcKvCacheAtContext(arch, usecase, tp, baseline, k * 1000, peakTflops));
+}
+
+// ── click-to-highlight for KV Cache — mirrors DECODE_ROW_HIGHLIGHTS above. Silicon memory
+// capacity is a new highlight target (Decode only ever needed bandwidth), so it gets its own
+// `siliconCapacity` flag alongside the existing `siliconBandwidth`/`siliconPeak`. ─────────────
+
+export type KvCacheRowKey =
+  | "kvPerToken" | "weights" | "vramTotal" | "reserve" | "kvBudget" | "minCardsForWeights"
+  | "ddrEgress" | "cxlEgress" | "flashEgress";
+
+export interface KvCacheRowHighlights {
+  archAbbrevs?: string[];
+  usecaseFields?: (keyof UsecaseInputs)[];
+  siliconCapacity?: boolean;
+  /** TP-degree ("Cards") — the one TpConfig field the KV Cache math reads. */
+  tpDegreeField?: boolean;
+  /** Reserve fraction / per-tier bandwidth — the inline inputs on the KV Cache card itself. */
+  kvConfigFields?: (keyof KvCacheConfig)[];
+}
+
+export const KV_CACHE_ROW_HIGHLIGHTS: Record<KvCacheRowKey, KvCacheRowHighlights> = {
+  kvPerToken: { archAbbrevs: [ABBR.n_fa, ABBR.n_kv, ABBR.d_head], usecaseFields: ["kvDtypeBytes"] },
+  weights: { archAbbrevs: [ABBR.N], usecaseFields: ["weightDtypeBytes"] },
+  vramTotal: { siliconCapacity: true, tpDegreeField: true },
+  reserve: { siliconCapacity: true, tpDegreeField: true, kvConfigFields: ["reserveFraction"] },
+  kvBudget: { siliconCapacity: true, tpDegreeField: true },
+  minCardsForWeights: { siliconCapacity: true },
+  ddrEgress: { tpDegreeField: true, kvConfigFields: ["ddrBWGBs"] },
+  cxlEgress: { tpDegreeField: true, kvConfigFields: ["cxlBWGBs"] },
+  flashEgress: { tpDegreeField: true, kvConfigFields: ["flashBWGBs"] },
 };
