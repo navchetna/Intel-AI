@@ -1,13 +1,14 @@
-/** Data + formulas backing the Models → Deep Analysis tab. Ported 1:1 from the Qwen3.8-27B
- *  sizing-model workbook (public/Qwen3.8-27B_Sizing_Model.xlsx) — every constant and formula
- *  below is reproduced exactly from that file's "Model Architecture" / "Prefill TFLOPs" sheets,
- *  so results here should match the workbook cell-for-cell given the same inputs. */
+/** Data + formulas backing the Models → Deep Analysis tab. Every model's constants are pulled
+ *  from its own published config.json / model card (see each `sourceUrl`) rather than guessed.
+ *  Two families of hybrid architecture are supported, generically, by every formula below:
+ *  Gated DeltaNet linear-attention (Qwen3.8-27B, Qwen3.5-9B) and sliding-window local attention
+ *  (Gemma4-31B, Gemma4-26B-A4B) — see `SecondaryAttn` below. */
 
 import type { ComparisonChip, DataType } from "@/modules/silicon/comparison-data";
 
 // ── symbol abbreviations — the single source of truth for every element's short form, so the
-// Architecture panel and every formula elsewhere (Prefill today; Decode/KV Cache/Persistent
-// Memory as they're built) always reference the model in the same notation. ───────────────
+// Architecture panel and every formula elsewhere always reference the model in the same
+// notation. `w` (window size) only applies to sliding-window hybrid models. ────────────────
 
 export const ABBR = {
   N: "N",
@@ -30,6 +31,14 @@ export const ABBR = {
   n_v: "n_v",
   n_qk: "n_qk",
   d_dn: "d_dn",
+  /** Sliding-window secondary group's own head config — distinct symbols from n_q/n_kv/d_head
+   *  because a windowed hybrid (e.g. Gemma4) publishes DIFFERENT head counts/dims for its
+   *  global vs. windowed layers (unified KV + wider head_dim on the global layers) — reusing
+   *  n_q/n_kv/d_head for both would make two different numbers show the same symbol. */
+  n_q_sw: "n_q_sw",
+  n_kv_sw: "n_kv_sw",
+  d_head_sw: "d_head_sw",
+  w: "w",
   MTP: "MTP",
   c: "c",
 } as const;
@@ -40,49 +49,158 @@ export const TFLOPS = 1e12;
 export const GIB = 1024 ** 3;
 export function bytesToGiB(bytes: number): number { return bytes / GIB; }
 
-// ── model architecture (static — specific to Qwen3.8-27B) ──────────────────────────────
+// ── model architecture (one entry per model in MODEL_CATALOG, each sourced from its own
+// published config.json / model card) ───────────────────────────────────────────────────
+
+/** Gated DeltaNet linear-attention layers (Qwen hybrid family): O(1) recurrent state per
+ *  sequence — independent of context length — and a chunked-parallel-scan compute cost that's
+ *  linear in context length. */
+export interface DeltaNetSecondary {
+  kind: "deltaNet";
+  vHeads: number;
+  qkHeads: number;
+  headDim: number;
+  /** Approximates the extra matmuls in the chunked delta-rule update (correction/beta gate,
+   *  chunk-local state, output readout). Kernel-dependent — validate against a profiled kernel. */
+  kernelConstant: number;
+  /** Fixed-size recurrent state per layer's resident sequence, in MB — O(1) in context length,
+   *  unlike a full-attention KV cache. Derived as layers × vHeads × headDim² × 2 bytes (bf16
+   *  state) — this reproduces Qwen3.8-27B's published 75MB almost exactly (75.50MB), so the
+   *  same derivation is used for every DeltaNet model rather than re-guessing per model. */
+  fixedStateMB: number;
+}
+
+/** Local sliding-window attention layers (Gemma hybrid family): ordinary multi-head attention
+ *  restricted to the most recent `window` tokens — so, unlike full attention, both its KV cache
+ *  and its prefill compute are capped once context exceeds the window, rather than growing/
+ *  scaling quadratically without bound. */
+export interface WindowedSecondary {
+  kind: "windowed";
+  qHeads: number;
+  kvHeads: number;
+  headDim: number;
+  window: number;
+}
+
+export type SecondaryAttn = DeltaNetSecondary | WindowedSecondary;
 
 export interface ModelArchitecture {
+  id: string;
   name: string;
   sourceUrl: string;
   totalParamsB: number;
+  /** MoE only: parameters actually touched per token. Compute-bound formulas (Prefill/Decode
+   *  FLOPs) use this; weight-loading/VRAM formulas (Decode's t_mem, KV Cache's weights) always
+   *  use `totalParamsB`, since every expert must still be resident even if only some activate.
+   *  Undefined for a dense model, where totalParamsB is used for both. */
+  activeParamsB?: number;
   totalLayers: number;
+  /** Layers running ordinary full (unbounded, global) causal attention — the O(L²) term. */
   fullAttnLayers: number;
-  deltaNetLayers: number;
+  /** Layers running the model's secondary/high-frequency attention variant (DeltaNet or
+   *  sliding-window) — 0 for a plain dense transformer, where `secondary` is null. */
+  secondaryLayers: number;
   hiddenDim: number;
   ffnIntermediateDim: number;
   vocabSize: number;
   nativeContextLen: number;
   extendedContextLen: number;
   fullAttn: { qHeads: number; kvHeads: number; headDim: number; ropeDim: number };
-  deltaNet: { vHeads: number; qkHeads: number; headDim: number };
+  secondary: SecondaryAttn | null;
   multiTokenPrediction: boolean;
-  deltaNetKernelConstant: number;
-  /** Fixed-size recurrent state per DeltaNet layer's resident sequence — O(1) in context length,
-   *  unlike the full-attention KV cache. From kv_capacity_eviction_model.xlsx's Inputs sheet. */
-  deltaNetFixedStateMB: number;
+  moe?: { totalExperts: number; activeExperts: number; sharedExperts?: number };
 }
 
 export const QWEN_3_8_27B: ModelArchitecture = {
+  id: "qwen3.8-27b",
   name: "Qwen3.8-27B",
   sourceUrl: "huggingface.co/Qwen/Qwen3.8-27B",
   totalParamsB: 27.8,
   totalLayers: 64,
   fullAttnLayers: 16,
-  deltaNetLayers: 48,
+  secondaryLayers: 48,
   hiddenDim: 5120,
   ffnIntermediateDim: 17408,
   vocabSize: 248320,
   nativeContextLen: 262144,
   extendedContextLen: 1000000,
   fullAttn: { qHeads: 24, kvHeads: 4, headDim: 256, ropeDim: 64 },
-  deltaNet: { vHeads: 48, qkHeads: 16, headDim: 128 },
+  secondary: { kind: "deltaNet", vHeads: 48, qkHeads: 16, headDim: 128, kernelConstant: 5, fixedStateMB: 75 },
   multiTokenPrediction: true,
-  // Approximates the extra matmuls in the chunked delta-rule update (correction/beta gate,
-  // chunk-local state, output readout). Kernel-dependent — validate against a profiled kernel.
-  deltaNetKernelConstant: 5,
-  deltaNetFixedStateMB: 75,
 };
+
+/** Same hybrid pattern as Qwen3.8-27B (8 × (3× Gated DeltaNet → FFN → 1× Gated Attention →
+ *  FFN)), per the model card's own "Hidden Layout" line. `fixedStateMB` uses the same
+ *  layers×vHeads×headDim²×2-bytes derivation validated against Qwen3.8-27B's published figure. */
+export const QWEN_3_5_9B: ModelArchitecture = {
+  id: "qwen3.5-9b",
+  name: "Qwen3.5-9B",
+  sourceUrl: "huggingface.co/Qwen/Qwen3.5-9B",
+  totalParamsB: 9,
+  totalLayers: 32,
+  fullAttnLayers: 8,
+  secondaryLayers: 24,
+  hiddenDim: 4096,
+  ffnIntermediateDim: 12288,
+  vocabSize: 248320,
+  nativeContextLen: 262144,
+  extendedContextLen: 1010000,
+  fullAttn: { qHeads: 16, kvHeads: 4, headDim: 256, ropeDim: 64 },
+  secondary: { kind: "deltaNet", vHeads: 32, qkHeads: 16, headDim: 128, kernelConstant: 5, fixedStateMB: 25.17 },
+  multiTokenPrediction: true,
+};
+
+/** Dense model. Global (full-attention) layers use unified KV heads + a wider head_dim than the
+ *  sliding-window layers (config's `num_global_key_value_heads`/`global_head_dim`, vs.
+ *  `num_key_value_heads`/`head_dim` for the sliding layers) — a real, published asymmetry, not
+ *  an approximation. Global-layer RoPE dim derived as head_dim × partial_rotary_factor (0.25). */
+export const GEMMA4_31B: ModelArchitecture = {
+  id: "gemma4-31b",
+  name: "Gemma4-31B",
+  sourceUrl: "huggingface.co/google/gemma-4-31B",
+  totalParamsB: 30.7,
+  totalLayers: 60,
+  fullAttnLayers: 10,
+  secondaryLayers: 50,
+  hiddenDim: 5376,
+  ffnIntermediateDim: 21504,
+  vocabSize: 262144,
+  nativeContextLen: 262144,
+  extendedContextLen: 262144,
+  fullAttn: { qHeads: 32, kvHeads: 4, headDim: 512, ropeDim: 128 },
+  secondary: { kind: "windowed", qHeads: 32, kvHeads: 16, headDim: 256, window: 1024 },
+  multiTokenPrediction: false,
+};
+
+/** Same global/sliding-window split as Gemma4-31B, plus a 128-expert MoE FFN (8 routed + 1
+ *  shared active per token) — `activeParamsB` is the vendor-published "Active Parameters"
+ *  figure, used everywhere a compute-bound formula would otherwise use totalParamsB. */
+export const GEMMA4_26B_A4B: ModelArchitecture = {
+  id: "gemma4-26b-a4b",
+  name: "Gemma4-26B-A4B",
+  sourceUrl: "huggingface.co/google/gemma-4-26B-A4B",
+  totalParamsB: 25.2,
+  activeParamsB: 3.8,
+  totalLayers: 30,
+  fullAttnLayers: 5,
+  secondaryLayers: 25,
+  hiddenDim: 2816,
+  ffnIntermediateDim: 2112,
+  vocabSize: 262144,
+  nativeContextLen: 262144,
+  extendedContextLen: 262144,
+  fullAttn: { qHeads: 16, kvHeads: 2, headDim: 512, ropeDim: 128 },
+  secondary: { kind: "windowed", qHeads: 16, kvHeads: 8, headDim: 256, window: 1024 },
+  multiTokenPrediction: false,
+  moe: { totalExperts: 128, activeExperts: 8, sharedExperts: 1 },
+};
+
+export const MODEL_CATALOG: ModelArchitecture[] = [QWEN_3_8_27B, QWEN_3_5_9B, GEMMA4_31B, GEMMA4_26B_A4B];
+export const DEFAULT_MODEL_ID = QWEN_3_8_27B.id;
+
+export function getModelArchitecture(id: string): ModelArchitecture {
+  return MODEL_CATALOG.find(m => m.id === id) ?? QWEN_3_8_27B;
+}
 
 // ── use-case / serving-workload inputs (shared across every section) ───────────────────
 
@@ -223,25 +341,33 @@ export function getSiliconMemoryCapacityGB(chip: ComparisonChip): number | null 
 
 // ── prefill FLOPs / TFLOPS calculation (from the "Prefill TFLOPs" sheet) ───────────────
 
-export type PrefillRowKey = "dense" | "fullAttn" | "deltaNet" | "total";
+export type PrefillRowKey = "dense" | "fullAttn" | "secondary" | "total";
 
 /** Which Architecture symbols each Prefill row's formula actually reads — drives the
- *  click-to-highlight link from the Prefill table back to the Architecture panel. */
-export const PREFILL_ROW_SYMBOLS: Record<PrefillRowKey, string[]> = {
-  dense: [ABBR.N, ABBR.L, ABBR.B],
-  fullAttn: [ABBR.n_q, ABBR.d_head, ABBR.L, ABBR.B, ABBR.n_fa],
-  deltaNet: [ABBR.c, ABBR.n_v, ABBR.d_dn, ABBR.L, ABBR.B, ABBR.n_dn],
-  total: [ABBR.N, ABBR.L, ABBR.B, ABBR.n_q, ABBR.d_head, ABBR.n_fa, ABBR.c, ABBR.n_v, ABBR.d_dn, ABBR.n_dn],
-};
+ *  click-to-highlight link from the Prefill table back to the Architecture panel. Depends on
+ *  the model's secondary attention kind (DeltaNet vs. sliding-window use different symbols),
+ *  so this is a function of the selected architecture rather than a static table. */
+export function getPrefillRowSymbols(arch: ModelArchitecture, key: PrefillRowKey): string[] {
+  const secondarySymbols: string[] =
+    arch.secondary?.kind === "deltaNet" ? [ABBR.c, ABBR.n_v, ABBR.d_dn, ABBR.L, ABBR.B, ABBR.n_dn]
+    : arch.secondary?.kind === "windowed" ? [ABBR.n_q_sw, ABBR.d_head_sw, ABBR.w, ABBR.L, ABBR.B, ABBR.n_dn]
+    : [];
+  switch (key) {
+    case "dense": return [ABBR.N, ABBR.L, ABBR.B];
+    case "fullAttn": return [ABBR.n_q, ABBR.d_head, ABBR.L, ABBR.B, ABBR.n_fa];
+    case "secondary": return secondarySymbols;
+    case "total": return [ABBR.N, ABBR.L, ABBR.B, ABBR.n_q, ABBR.d_head, ABBR.n_fa, ...secondarySymbols];
+  }
+}
 
 /** Which Use Case inputs each Prefill row's formula actually reads — same click-to-highlight
- *  link as PREFILL_ROW_SYMBOLS, but into the Use Case panel instead of Architecture. Every term
+ *  link as getPrefillRowSymbols, but into the Use Case panel instead of Architecture. Every term
  *  reads concurrency/input tokens; only the Total row's compute-time/achieved-TFLOPS figures
- *  additionally depend on the achievable-efficiency input. */
+ *  additionally depend on the Prefill Efficiency Stack inputs. Model-independent. */
 export const PREFILL_ROW_USECASE_FIELDS: Record<PrefillRowKey, (keyof UsecaseInputs)[]> = {
   dense: ["concurrency", "inputTokens"],
   fullAttn: ["concurrency", "inputTokens"],
-  deltaNet: ["concurrency", "inputTokens"],
+  secondary: ["concurrency", "inputTokens"],
   total: ["concurrency", "inputTokens", "gemmMfu", "hybridStackDerate"],
 };
 
@@ -250,7 +376,7 @@ export const PREFILL_ROW_USECASE_FIELDS: Record<PrefillRowKey, (keyof UsecaseInp
 export const PREFILL_ROW_USES_SILICON_PEAK: Record<PrefillRowKey, boolean> = {
   dense: false,
   fullAttn: false,
-  deltaNet: false,
+  secondary: false,
   total: true,
 };
 
@@ -258,7 +384,8 @@ export interface PrefillResult {
   /** All *Tflops fields are in TFLOPS (i.e. already divided by 1e12) — see the TFLOPS constant above. */
   denseTermTflops: number;
   fullAttnTermTflops: number;
-  deltaNetTermTflops: number;
+  /** 0 for a plain dense transformer (arch.secondary === null). */
+  secondaryTermTflops: number;
   totalTflops: number;
   estimatedComputeTimeSec: number | null;
   achievedTflops: number | null;
@@ -267,19 +394,33 @@ export interface PrefillResult {
 /** `peakTflops` comes from the selected Silicon; `getEffectiveComputeMfu(usecase)` (GEMM MFU ×
  *  hybrid+stack derate) is the fraction of it real kernels hit — see UsecaseInputs' Prefill
  *  Efficiency Stack fields. Pass `peakTflops: null` (no silicon selected, or its peak figure
- *  didn't parse) to still get the FLOPS breakdown with time/achieved-throughput left unset. */
+ *  didn't parse) to still get the FLOPS breakdown with time/achieved-throughput left unset.
+ *
+ *  The dense term uses `activeParamsB` when the model is MoE (only active experts + the
+ *  always-on attention/projection weights are touched per token) — weight-loading formulas
+ *  elsewhere (Decode's t_mem, KV Cache's weights) always use the full `totalParamsB` instead,
+ *  since every expert must still be resident in VRAM. The secondary term is 0 for a plain dense
+ *  transformer; for a DeltaNet hybrid it's the chunked-scan cost (linear in L); for a
+ *  sliding-window hybrid it's ordinary attention capped at L×min(L,window) instead of L². */
 export function calcPrefill(arch: ModelArchitecture, usecase: UsecaseInputs, peakTflops: number | null): PrefillResult {
-  const N = arch.totalParamsB * 1e9;
+  const N = (arch.activeParamsB ?? arch.totalParamsB) * 1e9;
   const L = usecase.inputTokens;
   const B = usecase.concurrency;
   const { qHeads, headDim } = arch.fullAttn;
 
   const denseTermTflops = (2 * N * L * B) / TFLOPS;
   const fullAttnTermTflops = (2 * qHeads * headDim * L * L * B * arch.fullAttnLayers) / TFLOPS;
-  const deltaNetTermTflops =
-    (arch.deltaNetKernelConstant * arch.deltaNet.vHeads * arch.deltaNet.headDim ** 2 * L * B * arch.deltaNetLayers) / TFLOPS;
 
-  const totalTflops = denseTermTflops + fullAttnTermTflops + deltaNetTermTflops;
+  let secondaryTermTflops = 0;
+  if (arch.secondary?.kind === "deltaNet") {
+    const s = arch.secondary;
+    secondaryTermTflops = (s.kernelConstant * s.vHeads * s.headDim ** 2 * L * B * arch.secondaryLayers) / TFLOPS;
+  } else if (arch.secondary?.kind === "windowed") {
+    const s = arch.secondary;
+    secondaryTermTflops = (2 * s.qHeads * s.headDim * L * Math.min(L, s.window) * B * arch.secondaryLayers) / TFLOPS;
+  }
+
+  const totalTflops = denseTermTflops + fullAttnTermTflops + secondaryTermTflops;
 
   let estimatedComputeTimeSec: number | null = null;
   let achievedTflops: number | null = null;
@@ -288,7 +429,7 @@ export function calcPrefill(arch: ModelArchitecture, usecase: UsecaseInputs, pea
     achievedTflops = totalTflops / estimatedComputeTimeSec;
   }
 
-  return { denseTermTflops, fullAttnTermTflops, deltaNetTermTflops, totalTflops, estimatedComputeTimeSec, achievedTflops };
+  return { denseTermTflops, fullAttnTermTflops, secondaryTermTflops, totalTflops, estimatedComputeTimeSec, achievedTflops };
 }
 
 // ── interconnect reference (from the "Silicon" sheet's Interconnect Reference table) ───
@@ -323,8 +464,8 @@ export interface TpConfig {
 }
 
 export const DEFAULT_TP_CONFIG: TpConfig = {
-  tpDegree: 8,
-  interconnectId: "nvlink4",
+  tpDegree: 4,
+  interconnectId: "pcie-gen5",
   collectiveOpsPerLayer: 2,
   activationDtypeBytes: 2,
 };
@@ -409,7 +550,7 @@ export function calcPrefillTpSweep(
 }
 
 // ── click-to-highlight: which inputs each Prefill-TP row's formula actually reads ──────
-// Mirrors PREFILL_ROW_SYMBOLS/PREFILL_ROW_USECASE_FIELDS above, but for the Prefill-TP
+// Mirrors getPrefillRowSymbols/PREFILL_ROW_USECASE_FIELDS above, but for the Prefill-TP
 // table, and split out by WHERE each dependency lives so the UI can color interconnect
 // dependencies green and everything else the usual cyan.
 
@@ -474,7 +615,10 @@ export function calcDecode(
   arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig,
   peakTflops: number | null, memBandwidthGBs: number | null, linkBwGBs: number | null,
 ): DecodeResult {
+  // Weight-loading (t_mem) always reads the full resident parameter count — every expert must
+  // be in VRAM even if only some activate. Compute (t_compute) uses only active params for MoE.
   const N = arch.totalParamsB * 1e9;
+  const N_active = (arch.activeParamsB ?? arch.totalParamsB) * 1e9;
   const B = usecase.concurrency;
   const bytesPerParam = usecase.weightDtypeBytes;
   const X = tp.tpDegree;
@@ -484,7 +628,7 @@ export function calcDecode(
   const weightGBPerDevice = weightBytesPerDevice / 1e9;
   const tMemMs = memBandwidthGBs && memBandwidthGBs > 0 ? (weightBytesPerDevice / (memBandwidthGBs * 1e9)) * 1000 : null;
 
-  const totalDecodeFlops = 2 * N * B;
+  const totalDecodeFlops = 2 * N_active * B;
   const flopsPerDevice = totalDecodeFlops / X;
   const tComputeMs = peakTflops && peakTflops > 0 ? (flopsPerDevice / (peakTflops * 1e12)) * 1000 : null;
 
@@ -507,7 +651,9 @@ export function calcDecode(
     allReduceMsgBytes, ringFactor, timePerAllReduceMs, totalSyncPoints, tCommMs,
     boundRegime, totalTimePerTokenMs, tokensPerSecPerStream, tokensPerSecAggregate,
     kvHeadShardingOk: X <= arch.fullAttn.kvHeads,
-    qkHeadShardingOk: X <= arch.deltaNet.qkHeads,
+    // The secondary attention variant's own head-sharding ceiling — DeltaNet's QK heads, or a
+    // windowed hybrid's KV heads. No extra ceiling for a plain dense transformer (secondary null).
+    qkHeadShardingOk: !arch.secondary || (arch.secondary.kind === "deltaNet" ? X <= arch.secondary.qkHeads : X <= arch.secondary.kvHeads),
   };
 }
 
@@ -618,6 +764,11 @@ export function calcKvCacheBaseline(
 
 export interface KvCacheAtContext {
   contextTokens: number;
+  /** The secondary attention variant's own KV contribution at this context — 0 for a plain
+   *  dense transformer; the DeltaNet fixed state (O(1), constant across every context) for a
+   *  DeltaNet hybrid; the capped sliding-window KV (grows until `window`, then flat) for a
+   *  windowed hybrid. Broken out so the breakdown table can show it as its own row. */
+  secondaryKvGB: number;
   kvPerReqGB: number;
   maxConcurrency: number;
   recomputeSec: number | null;
@@ -633,7 +784,16 @@ export function calcKvCacheAtContext(
   arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig,
   baseline: KvCacheBaseline, contextTokens: number, peakTflops: number | null,
 ): KvCacheAtContext {
-  const kvPerReqBytes = baseline.kvPerTokenBytes * contextTokens + arch.deltaNetFixedStateMB * 1e6;
+  let secondaryKvBytes = 0;
+  if (arch.secondary?.kind === "deltaNet") {
+    secondaryKvBytes = arch.secondary.fixedStateMB * 1e6;
+  } else if (arch.secondary?.kind === "windowed") {
+    const s = arch.secondary;
+    secondaryKvBytes = 2 * arch.secondaryLayers * s.kvHeads * s.headDim * usecase.kvDtypeBytes * Math.min(contextTokens, s.window);
+  }
+  const secondaryKvGB = secondaryKvBytes / 1e9;
+
+  const kvPerReqBytes = baseline.kvPerTokenBytes * contextTokens + secondaryKvBytes;
   const kvPerReqGB = kvPerReqBytes / 1e9;
   const maxConcurrency = kvPerReqGB > 0 ? Math.max(0, Math.floor(baseline.kvBudgetGB / kvPerReqGB)) : 0;
 
@@ -649,7 +809,7 @@ export function calcKvCacheAtContext(
   const flashMs = (kvPerReqGB / baseline.flashEgressAggGBs) * 1000;
   const recomputeOverFlash = recomputeSec != null && flashMs > 0 ? (recomputeSec * 1000) / flashMs : null;
 
-  return { contextTokens, kvPerReqGB, maxConcurrency, recomputeSec, ddrMs, cxlMs, flashMs, recomputeOverFlash };
+  return { contextTokens, secondaryKvGB, kvPerReqGB, maxConcurrency, recomputeSec, ddrMs, cxlMs, flashMs, recomputeOverFlash };
 }
 
 /** The reference context-length ladder the workbook itself sweeps (in thousands of tokens). */

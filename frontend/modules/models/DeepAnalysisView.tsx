@@ -5,15 +5,16 @@ import Image from "next/image";
 import { useTheme } from "@/contexts/ThemeContext";
 import { COMPARISON_CHIPS, type ComparisonChip } from "@/modules/silicon/comparison-data";
 import {
-  ABBR, TFLOPS, QWEN_3_8_27B, DEFAULT_USECASE_INPUTS, WEIGHT_DTYPE_OPTIONS, KV_DTYPE_OPTIONS,
-  PREFILL_ROW_SYMBOLS, PREFILL_ROW_USECASE_FIELDS, PREFILL_ROW_USES_SILICON_PEAK,
+  ABBR, TFLOPS, MODEL_CATALOG, DEFAULT_MODEL_ID, getModelArchitecture,
+  DEFAULT_USECASE_INPUTS, WEIGHT_DTYPE_OPTIONS, KV_DTYPE_OPTIONS,
+  getPrefillRowSymbols, PREFILL_ROW_USECASE_FIELDS, PREFILL_ROW_USES_SILICON_PEAK,
   INTERCONNECTS, DEFAULT_TP_CONFIG, TP_ROW_HIGHLIGHTS, DECODE_ROW_HIGHLIGHTS,
   DEFAULT_KV_CACHE_CONFIG, KV_CACHE_ROW_HIGHLIGHTS,
   getSiliconPeak, getSiliconMemoryBandwidthGBs, getSiliconMemoryCapacityGB,
   calcPrefill, calcPrefillTp, calcPrefillTpSweep, calcDecode, calcKvCacheBaseline, calcKvCacheAtContext, calcKvCacheSweep,
   updateUsecaseField, resetDecodeContextToAuto,
   type UsecaseInputs, type PrefillRowKey, type TpConfig, type TpRowKey, type DecodeRowKey,
-  type KvCacheConfig, type KvCacheRowKey,
+  type KvCacheConfig, type KvCacheRowKey, type ModelArchitecture,
 } from "./deep-analysis-data";
 
 // ── shared styling helpers (same conventions as KvOffloadView/ModelBenchmarksView) ─────
@@ -365,27 +366,38 @@ function ArchitectureDiagram() {
 
 interface ArchRow { label: string; abbrev: string; value: string; note?: string }
 
-function ArchitecturePanel({ highlighted }: { highlighted: Set<string> | null }) {
-  const a = QWEN_3_8_27B;
+function ArchitecturePanel({ arch: a, highlighted }: { arch: ModelArchitecture; highlighted: Set<string> | null }) {
+  const secondaryLabel = a.secondary?.kind === "deltaNet" ? "Gated DeltaNet" : a.secondary?.kind === "windowed" ? "Sliding-window attention" : "—";
   const rows: ArchRow[] = [
-    { label: "Total parameters", abbrev: ABBR.N, value: `${a.totalParamsB}B`, note: "Dense (non-MoE), BF16 safetensors" },
-    { label: "Total layers", abbrev: ABBR.n_layers, value: fmtInt(a.totalLayers), note: "16 × (3× Gated DeltaNet + 1× Gated Attention)" },
-    { label: "Full-attention layers", abbrev: ABBR.n_fa, value: fmtInt(a.fullAttnLayers), note: "1 of every 4 layers" },
-    { label: "Gated DeltaNet layers", abbrev: ABBR.n_dn, value: fmtInt(a.deltaNetLayers), note: "3 of every 4 layers" },
+    { label: "Total parameters", abbrev: ABBR.N, value: `${a.totalParamsB}B`, note: a.moe ? "Total resident (all experts) — every expert must be in VRAM even if only some activate" : "Dense, safetensors" },
+    ...(a.activeParamsB != null ? [{ label: "Active parameters", abbrev: `${ABBR.N}_active`, value: `${a.activeParamsB}B`, note: "MoE — parameters actually touched per token; drives compute-bound formulas" }] : []),
+    { label: "Total layers", abbrev: ABBR.n_layers, value: fmtInt(a.totalLayers) },
+    { label: "Full-attention layers", abbrev: ABBR.n_fa, value: fmtInt(a.fullAttnLayers) },
+    ...(a.secondary ? [{ label: `${secondaryLabel} layers`, abbrev: ABBR.n_dn, value: fmtInt(a.secondaryLayers) }] : []),
     { label: "Hidden dimension", abbrev: ABBR.d_model, value: fmtInt(a.hiddenDim) },
     { label: "FFN intermediate dimension", abbrev: ABBR.d_ffn, value: fmtInt(a.ffnIntermediateDim) },
+    ...(a.moe ? [{ label: "MoE experts (active / total)", abbrev: "—", value: `${a.moe.activeExperts} / ${a.moe.totalExperts}`, note: a.moe.sharedExperts ? `+ ${a.moe.sharedExperts} always-on shared expert` : undefined }] : []),
     { label: "Vocabulary size", abbrev: ABBR.V, value: fmtInt(a.vocabSize), note: "Padded token embedding" },
     { label: "Native context length", abbrev: ABBR.L_native, value: fmtInt(a.nativeContextLen) },
-    { label: "Extended context length (YaRN)", abbrev: ABBR.L_ext, value: fmtInt(a.extendedContextLen) },
+    { label: "Extended context length", abbrev: ABBR.L_ext, value: fmtInt(a.extendedContextLen) },
     { label: "Full-attention: Q heads", abbrev: ABBR.n_q, value: fmtInt(a.fullAttn.qHeads), note: "GQA" },
     { label: "Full-attention: KV heads", abbrev: ABBR.n_kv, value: fmtInt(a.fullAttn.kvHeads), note: `GQA, ${a.fullAttn.qHeads / a.fullAttn.kvHeads}:1 Q:KV ratio` },
     { label: "Full-attention: head dimension", abbrev: ABBR.d_head, value: fmtInt(a.fullAttn.headDim) },
     { label: "Full-attention: RoPE dimension", abbrev: ABBR.d_rope, value: fmtInt(a.fullAttn.ropeDim) },
-    { label: "DeltaNet: V heads", abbrev: ABBR.n_v, value: fmtInt(a.deltaNet.vHeads) },
-    { label: "DeltaNet: QK heads", abbrev: ABBR.n_qk, value: fmtInt(a.deltaNet.qkHeads) },
-    { label: "DeltaNet: head dimension", abbrev: ABBR.d_dn, value: fmtInt(a.deltaNet.headDim), note: "Used for both K and V dims of the recurrent state matrix — distinct from d_head above" },
+    ...(a.secondary?.kind === "deltaNet" ? [
+      { label: "DeltaNet: V heads", abbrev: ABBR.n_v, value: fmtInt(a.secondary.vHeads) },
+      { label: "DeltaNet: QK heads", abbrev: ABBR.n_qk, value: fmtInt(a.secondary.qkHeads) },
+      { label: "DeltaNet: head dimension", abbrev: ABBR.d_dn, value: fmtInt(a.secondary.headDim), note: "Used for both K and V dims of the recurrent state matrix — distinct from d_head above" },
+      { label: "DeltaNet kernel constant", abbrev: ABBR.c, value: fmtInt(a.secondary.kernelConstant), note: "Approximates extra matmuls in the chunked delta-rule update — kernel-dependent, validate against a profiled kernel" },
+      { label: "DeltaNet fixed state (per sequence)", abbrev: "—", value: `${a.secondary.fixedStateMB.toFixed(1)} MB`, note: "O(1) in context length — unlike a full-attention KV cache" },
+    ] : []),
+    ...(a.secondary?.kind === "windowed" ? [
+      { label: "Sliding-window: Q heads", abbrev: ABBR.n_q_sw, value: fmtInt(a.secondary.qHeads) },
+      { label: "Sliding-window: KV heads", abbrev: ABBR.n_kv_sw, value: fmtInt(a.secondary.kvHeads) },
+      { label: "Sliding-window: head dimension", abbrev: ABBR.d_head_sw, value: fmtInt(a.secondary.headDim) },
+      { label: "Window size", abbrev: ABBR.w, value: `${fmtInt(a.secondary.window)} tokens`, note: "Attention span — both KV cache and compute are capped here, not O(context)" },
+    ] : []),
     { label: "Multi-token prediction", abbrev: ABBR.MTP, value: a.multiTokenPrediction ? "Yes" : "No", note: "Not modeled in the formulas — inference-time speculative use is a separate calculation" },
-    { label: "DeltaNet kernel constant", abbrev: ABBR.c, value: fmtInt(a.deltaNetKernelConstant), note: "Approximates extra matmuls in the chunked delta-rule update — kernel-dependent, validate against a profiled kernel" },
   ];
 
   return (
@@ -427,17 +439,23 @@ function ArchitecturePanel({ highlighted }: { highlighted: Set<string> | null })
 
 // ── Prefill section ──────────────────────────────────────────────────────────────────────
 
-function PrefillSection({ usecase, chip, highlightedRow, onSelectRow }: {
-  usecase: UsecaseInputs; chip: ComparisonChip | undefined;
+function PrefillSection({ arch, usecase, chip, highlightedRow, onSelectRow }: {
+  arch: ModelArchitecture; usecase: UsecaseInputs; chip: ComparisonChip | undefined;
   highlightedRow: PrefillRowKey | null; onSelectRow: (key: PrefillRowKey | null) => void;
 }) {
   const peak = chip ? getSiliconPeak(chip) : null;
-  const result = useMemo(() => calcPrefill(QWEN_3_8_27B, usecase, peak?.teraflops ?? null), [usecase, peak?.teraflops]);
+  const result = useMemo(() => calcPrefill(arch, usecase, peak?.teraflops ?? null), [arch, usecase, peak?.teraflops]);
+
+  const secondaryRow = arch.secondary?.kind === "deltaNet"
+    ? { label: "DeltaNet term — O(L)", formula: `${ABBR.c} × ${ABBR.n_v} × ${ABBR.d_dn}² × ${ABBR.L} × ${ABBR.B} × ${ABBR.n_dn}` }
+    : arch.secondary?.kind === "windowed"
+    ? { label: "Sliding-window term — O(L·min(L,w))", formula: `2 × ${ABBR.n_q_sw} × ${ABBR.d_head_sw} × ${ABBR.L} × min(${ABBR.L},${ABBR.w}) × ${ABBR.B} × ${ABBR.n_dn}` }
+    : null;
 
   const rows: { key: PrefillRowKey; label: string; formula: string; value: number }[] = [
-    { key: "dense", label: "Dense term (all layers)", formula: `2 × ${ABBR.N} × ${ABBR.L} × ${ABBR.B}`, value: result.denseTermTflops },
+    { key: "dense", label: "Dense term (all layers)", formula: `2 × ${arch.activeParamsB != null ? `${ABBR.N}_active` : ABBR.N} × ${ABBR.L} × ${ABBR.B}`, value: result.denseTermTflops },
     { key: "fullAttn", label: "Full-attention term — O(L²)", formula: `2 × ${ABBR.n_q} × ${ABBR.d_head} × ${ABBR.L}² × ${ABBR.B} × ${ABBR.n_fa}`, value: result.fullAttnTermTflops },
-    { key: "deltaNet", label: "DeltaNet term — O(L)", formula: `${ABBR.c} × ${ABBR.n_v} × ${ABBR.d_dn}² × ${ABBR.L} × ${ABBR.B} × ${ABBR.n_dn}`, value: result.deltaNetTermTflops },
+    ...(secondaryRow ? [{ key: "secondary" as PrefillRowKey, label: secondaryRow.label, formula: secondaryRow.formula, value: result.secondaryTermTflops }] : []),
   ];
 
   function toggleRow(key: PrefillRowKey) {
@@ -447,7 +465,7 @@ function PrefillSection({ usecase, chip, highlightedRow, onSelectRow }: {
   return (
     <SectionCard
       title="Prefill TFLOPS"
-      subtitle={`Prefill processes the full prompt (${ABBR.L}) in one pass across ${ABBR.B} sequences. Full-attention layers cost O(L²); DeltaNet layers cost O(L). All figures in TFLOPS. Click a row to light up the Architecture parameters it uses.`}
+      subtitle={`Prefill processes the full prompt (${ABBR.L}) in one pass across ${ABBR.B} sequences. Full-attention layers cost O(L²)${arch.secondary?.kind === "deltaNet" ? "; DeltaNet layers cost O(L)" : arch.secondary?.kind === "windowed" ? "; sliding-window layers are capped at the window size" : ""}. All figures in TFLOPS. Click a row to light up the Architecture parameters it uses.`}
     >
       <div className="rounded-xl overflow-hidden border mb-4" style={{ borderColor: "var(--dm-border-a)" }}>
         <table className="w-full text-sm border-collapse">
@@ -513,9 +531,8 @@ function PrefillSection({ usecase, chip, highlightedRow, onSelectRow }: {
         Assumes prefill is compute-bound (high arithmetic intensity — every weight read from HBM is reused across
         many tokens in one batched pass). Estimated compute time = Total TFLOPS ÷ (peak TFLOPS × Effective compute
         MFU), where Effective compute MFU = GEMM MFU × Hybrid+stack derate — calibrated against measured TTFT
-        since a FLOP-only model badly underestimates wall-clock on this hybrid architecture (the 48 memory-bound
-        DeltaNet scan layers are 0.33% of FLOPs but a large share of time). The O(L²) full-attention term is what
-        erodes efficiency further as prompt length grows.
+        since a FLOP-only model badly underestimates wall-clock on a hybrid architecture{arch.secondary?.kind === "deltaNet" ? " (the memory-bound DeltaNet scan layers are a tiny share of FLOPs but a large share of time)" : ""}.
+        The O(L²) full-attention term is what erodes efficiency further as prompt length grows.
       </p>
     </SectionCard>
   );
@@ -527,19 +544,19 @@ function PrefillSection({ usecase, chip, highlightedRow, onSelectRow }: {
 // sections need it later). Nothing is green by default — a row only turns green once
 // clicked, and only if its formula actually reads an interconnect spec (link BW/latency).
 
-function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelectRow }: {
-  usecase: UsecaseInputs; chip: ComparisonChip | undefined; tp: TpConfig; onChangeTp: (next: TpConfig) => void;
+function PrefillTpCard({ arch, usecase, chip, tp, onChangeTp, highlightedRow, onSelectRow }: {
+  arch: ModelArchitecture; usecase: UsecaseInputs; chip: ComparisonChip | undefined; tp: TpConfig; onChangeTp: (next: TpConfig) => void;
   highlightedRow: TpRowKey | null; onSelectRow: (key: TpRowKey | null) => void;
 }) {
   const peak = chip ? getSiliconPeak(chip) : null;
-  const prefill = useMemo(() => calcPrefill(QWEN_3_8_27B, usecase, peak?.teraflops ?? null), [usecase, peak?.teraflops]);
+  const prefill = useMemo(() => calcPrefill(arch, usecase, peak?.teraflops ?? null), [arch, usecase, peak?.teraflops]);
   const result = useMemo(
-    () => calcPrefillTp(QWEN_3_8_27B, usecase, tp, peak?.teraflops ?? null, prefill.totalTflops),
-    [usecase, tp, peak?.teraflops, prefill.totalTflops],
+    () => calcPrefillTp(arch, usecase, tp, peak?.teraflops ?? null, prefill.totalTflops),
+    [arch, usecase, tp, peak?.teraflops, prefill.totalTflops],
   );
   const sweep = useMemo(
-    () => calcPrefillTpSweep(QWEN_3_8_27B, usecase, tp, peak?.teraflops ?? null, prefill.totalTflops),
-    [usecase, tp, peak?.teraflops, prefill.totalTflops],
+    () => calcPrefillTpSweep(arch, usecase, tp, peak?.teraflops ?? null, prefill.totalTflops),
+    [arch, usecase, tp, peak?.teraflops, prefill.totalTflops],
   );
   const link = INTERCONNECTS.find(i => i.id === tp.interconnectId);
 
@@ -703,16 +720,16 @@ function PrefillTpCard({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
 // inputs as Prefill-TP (Decode's "sync points per layer" is the same Megatron all-reduce
 // count) rather than introducing a second, parallel set of TP controls.
 
-function DecodeSection({ usecase, chip, tp, onChangeTp, highlightedRow, onSelectRow }: {
-  usecase: UsecaseInputs; chip: ComparisonChip | undefined; tp: TpConfig; onChangeTp: (next: TpConfig) => void;
+function DecodeSection({ arch, usecase, chip, tp, onChangeTp, highlightedRow, onSelectRow }: {
+  arch: ModelArchitecture; usecase: UsecaseInputs; chip: ComparisonChip | undefined; tp: TpConfig; onChangeTp: (next: TpConfig) => void;
   highlightedRow: DecodeRowKey | null; onSelectRow: (key: DecodeRowKey | null) => void;
 }) {
   const peak = chip ? getSiliconPeak(chip) : null;
   const memBandwidthGBs = chip ? getSiliconMemoryBandwidthGBs(chip) : null;
   const link = INTERCONNECTS.find(i => i.id === tp.interconnectId);
   const result = useMemo(
-    () => calcDecode(QWEN_3_8_27B, usecase, tp, peak?.teraflops ?? null, memBandwidthGBs, link?.linkBwGBs ?? null),
-    [usecase, tp, peak?.teraflops, memBandwidthGBs, link?.linkBwGBs],
+    () => calcDecode(arch, usecase, tp, peak?.teraflops ?? null, memBandwidthGBs, link?.linkBwGBs ?? null),
+    [arch, usecase, tp, peak?.teraflops, memBandwidthGBs, link?.linkBwGBs],
   );
 
   function toggleRow(key: DecodeRowKey) {
@@ -834,17 +851,21 @@ function DecodeSection({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
             color: result.kvHeadShardingOk ? "#34d399" : "#f87171",
           }}
         >
-          KV-head sharding (TP ≤ {QWEN_3_8_27B.fullAttn.kvHeads}): {result.kvHeadShardingOk ? "OK" : "replicated"}
+          KV-head sharding (TP ≤ {arch.fullAttn.kvHeads}): {result.kvHeadShardingOk ? "OK" : "replicated"}
         </span>
-        <span
-          className="text-[11px] font-semibold rounded-full px-2.5 py-1"
-          style={{
-            background: result.qkHeadShardingOk ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)",
-            color: result.qkHeadShardingOk ? "#34d399" : "#f87171",
-          }}
-        >
-          DeltaNet QK-head sharding (TP ≤ {QWEN_3_8_27B.deltaNet.qkHeads}): {result.qkHeadShardingOk ? "OK" : "replicated"}
-        </span>
+        {arch.secondary && (
+          <span
+            className="text-[11px] font-semibold rounded-full px-2.5 py-1"
+            style={{
+              background: result.qkHeadShardingOk ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)",
+              color: result.qkHeadShardingOk ? "#34d399" : "#f87171",
+            }}
+          >
+            {arch.secondary.kind === "deltaNet"
+              ? `DeltaNet QK-head sharding (TP ≤ ${arch.secondary.qkHeads})`
+              : `Sliding-window KV-head sharding (TP ≤ ${arch.secondary.kvHeads})`}: {result.qkHeadShardingOk ? "OK" : "replicated"}
+          </span>
+        )}
       </div>
 
       {!chip && <p className="mt-3 text-xs" style={{ color: "var(--dm-txt-faintest)" }}>Select a silicon in the rail for weight-read time, matmul time, and throughput.</p>}
@@ -858,24 +879,24 @@ function DecodeSection({ usecase, chip, tp, onChangeTp, highlightedRow, onSelect
 // beats recomputing it from scratch on resume. "Cards" reuses the same TP degree as
 // Prefill-TP/Decode; the reserve fraction and per-tier bandwidths are new, KV-Cache-only inputs.
 
-function KvCacheSection({ usecase, chip, tp, onChangeTp, kv, onChangeKv, highlightedRow, onSelectRow }: {
-  usecase: UsecaseInputs; chip: ComparisonChip | undefined; tp: TpConfig; onChangeTp: (next: TpConfig) => void;
+function KvCacheSection({ arch, usecase, chip, tp, onChangeTp, kv, onChangeKv, highlightedRow, onSelectRow }: {
+  arch: ModelArchitecture; usecase: UsecaseInputs; chip: ComparisonChip | undefined; tp: TpConfig; onChangeTp: (next: TpConfig) => void;
   kv: KvCacheConfig; onChangeKv: (next: KvCacheConfig) => void;
   highlightedRow: KvCacheRowKey | null; onSelectRow: (key: KvCacheRowKey | null) => void;
 }) {
   const peak = chip ? getSiliconPeak(chip) : null;
   const vramPerCardGB = chip ? getSiliconMemoryCapacityGB(chip) : null;
   const baseline = useMemo(
-    () => calcKvCacheBaseline(QWEN_3_8_27B, usecase, tp, kv, vramPerCardGB),
-    [usecase, tp, kv, vramPerCardGB],
+    () => calcKvCacheBaseline(arch, usecase, tp, kv, vramPerCardGB),
+    [arch, usecase, tp, kv, vramPerCardGB],
   );
   const current = useMemo(
-    () => calcKvCacheAtContext(QWEN_3_8_27B, usecase, tp, baseline, usecase.decodeContextLen, peak?.teraflops ?? null),
-    [usecase, tp, baseline, peak?.teraflops],
+    () => calcKvCacheAtContext(arch, usecase, tp, baseline, usecase.decodeContextLen, peak?.teraflops ?? null),
+    [arch, usecase, tp, baseline, peak?.teraflops],
   );
   const sweep = useMemo(
-    () => calcKvCacheSweep(QWEN_3_8_27B, usecase, tp, baseline, peak?.teraflops ?? null),
-    [usecase, tp, baseline, peak?.teraflops],
+    () => calcKvCacheSweep(arch, usecase, tp, baseline, peak?.teraflops ?? null),
+    [arch, usecase, tp, baseline, peak?.teraflops],
   );
 
   function toggleRow(key: KvCacheRowKey) {
@@ -1088,8 +1109,12 @@ const PREFILL_STEPS: { step: PrefillStep; label: string }[] = [
 ];
 
 export function DeepAnalysisView() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const [modelId, setModelId] = useState<string>(DEFAULT_MODEL_ID);
+  const arch = getModelArchitecture(modelId);
   const [usecase, setUsecase] = useState<UsecaseInputs>(DEFAULT_USECASE_INPUTS);
-  const [siliconId, setSiliconId] = useState<string>("");
+  const [siliconId, setSiliconId] = useState<string>("b70");
   const [tpConfig, setTpConfig] = useState<TpConfig>(DEFAULT_TP_CONFIG);
   const [kvCacheConfig, setKvCacheConfig] = useState<KvCacheConfig>(DEFAULT_KV_CACHE_CONFIG);
   const [section, setSection] = useState<Section>("prefill");
@@ -1110,7 +1135,7 @@ export function DeepAnalysisView() {
 
   const highlightedAbbrevs = rowActive || tpHighlights?.archAbbrevs || decodeHighlights?.archAbbrevs || kvCacheHighlights?.archAbbrevs
     ? new Set([
-        ...(rowActive ? PREFILL_ROW_SYMBOLS[rowActive] : []),
+        ...(rowActive ? getPrefillRowSymbols(arch, rowActive) : []),
         ...(tpHighlights?.archAbbrevs ?? []),
         ...(decodeHighlights?.archAbbrevs ?? []),
         ...(kvCacheHighlights?.archAbbrevs ?? []),
@@ -1154,18 +1179,21 @@ export function DeepAnalysisView() {
   const show5 = revealedSteps.has(5);
   /** The labeled architecture diagram is a lot of screen real estate — only worth it when
    *  step 1 is the sole thing revealed. As soon as anything else joins the story, drop it and
-   *  keep just the compact Architecture panel (still needed for click-to-highlight). */
-  const showArchitectureDiagram = show1 && revealedSteps.size === 1;
+   *  keep just the compact Architecture panel (still needed for click-to-highlight). It's also
+   *  a static asset drawn for Qwen3.8-27B specifically, so it only applies to that model. */
+  const showArchitectureDiagram = show1 && revealedSteps.size === 1 && modelId === DEFAULT_MODEL_ID;
 
   return (
     <div className="mx-auto max-w-screen-2xl px-6 pb-12">
-      <div className="mb-6">
-        <p className="text-sm max-w-3xl leading-relaxed" style={{ color: "var(--dm-txt-muted)" }}>
-          A sizing deep-dive for Qwen3.8-27B (hybrid Gated DeltaNet / Gated Attention), ported from the
-          Qwen3.8-27B sizing-model workbook. Pick a section above. On Prefill, walk through the
-          computation step by step with the numbered buttons below — each one reveals only that
-          step&rsquo;s panel. Other sections show Architecture, Use Case, Silicon, and Interconnect together.
-        </p>
+      <div className="mb-6 flex items-center gap-3">
+        <label className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Model</label>
+        <select
+          value={modelId} onChange={e => setModelId(e.target.value)}
+          className="rounded-lg px-3 py-1.5 text-sm font-semibold focus:outline-none"
+          style={{ ...selectStyle(isDark), width: "14rem" }}
+        >
+          {MODEL_CATALOG.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-3" role="radiogroup" aria-label="Deep Analysis section">
@@ -1223,11 +1251,11 @@ export function DeepAnalysisView() {
           {(show3 || show5) && (
             <div className="flex-1 min-w-0 flex flex-col gap-6">
               {show3 && (
-                <PrefillSection usecase={usecase} chip={chip} highlightedRow={highlightedRow} onSelectRow={setHighlightedRow} />
+                <PrefillSection arch={arch} usecase={usecase} chip={chip} highlightedRow={highlightedRow} onSelectRow={setHighlightedRow} />
               )}
               {show5 && (
                 <PrefillTpCard
-                  usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
+                  arch={arch} usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
                   highlightedRow={highlightedTpRow} onSelectRow={setHighlightedTpRow}
                 />
               )}
@@ -1242,11 +1270,11 @@ export function DeepAnalysisView() {
                       <ArchitectureDiagram />
                     </div>
                     <div className="w-full md:w-[340px] flex-shrink-0 md:sticky md:top-6 md:self-start">
-                      <ArchitecturePanel highlighted={highlightedAbbrevs} />
+                      <ArchitecturePanel arch={arch} highlighted={highlightedAbbrevs} />
                     </div>
                   </div>
                 ) : (
-                  <ArchitecturePanel highlighted={highlightedAbbrevs} />
+                  <ArchitecturePanel arch={arch} highlighted={highlightedAbbrevs} />
                 )
               )}
               {show2 && (
@@ -1264,12 +1292,12 @@ export function DeepAnalysisView() {
           <div className="flex-1 min-w-0">
             {section === "decode" ? (
               <DecodeSection
-                usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
+                arch={arch} usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
                 highlightedRow={highlightedDecodeRow} onSelectRow={setHighlightedDecodeRow}
               />
             ) : section === "kv-cache" ? (
               <KvCacheSection
-                usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
+                arch={arch} usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
                 kv={kvCacheConfig} onChangeKv={setKvCacheConfig}
                 highlightedRow={highlightedKvCacheRow} onSelectRow={setHighlightedKvCacheRow}
               />
@@ -1281,7 +1309,7 @@ export function DeepAnalysisView() {
           <div className="w-full lg:w-[680px] flex-shrink-0 lg:sticky lg:top-6 lg:self-start">
             <div className="flex flex-col sm:flex-row gap-6">
               <div className="sm:w-[300px] flex-shrink-0">
-                <ArchitecturePanel highlighted={highlightedAbbrevs} />
+                <ArchitecturePanel arch={arch} highlighted={highlightedAbbrevs} />
               </div>
               <div className="flex-1 min-w-0 flex flex-col gap-6">
                 <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
