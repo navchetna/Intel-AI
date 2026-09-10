@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 // Lightweight dependency-free SVG stacked-area chart — same "no charting library" convention
 // as modules/inference/benchmarks/LineChart.tsx, but theme-aware (uses the --dm-* tokens the
 // rest of Deep Analysis is built on) and click-driven for drill-down instead of static.
@@ -36,9 +38,12 @@ const M = { top: 16, right: 20, bottom: 44, left: 64 };
 const PLOT_W = W - M.left - M.right;
 const PLOT_H = H - M.top - M.bottom;
 
+let chartIdCounter = 0;
+
 export function StackedAreaChart({ xValues, xLabel, yLabel, series, formatValue, stacked = true }: StackedAreaChartProps) {
   const fmt = formatValue ?? ((ms: number) => (ms >= 100 ? ms.toFixed(0) : ms.toFixed(2)));
   const n = xValues.length;
+  const uid = useMemo(() => `chart-${++chartIdCounter}`, []);
 
   // Stacked: cumulative sum per x-index, in the order `series` is given (bottom-to-top).
   // Overlay: each series' own band runs from 0 to its own value — no summing.
@@ -61,27 +66,43 @@ export function StackedAreaChart({ xValues, xLabel, yLabel, series, formatValue,
   return (
     <div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Time breakdown vs. concurrency">
+        <defs>
+          <filter id={`${uid}-shadow`} x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" floodOpacity="0.28" />
+          </filter>
+          {series.map(s => (
+            <linearGradient key={s.key} id={`${uid}-grad-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={s.color} stopOpacity={stacked ? 0.95 : 0.32} />
+              <stop offset="100%" stopColor={s.color} stopOpacity={stacked ? 0.55 : 0.06} />
+            </linearGradient>
+          ))}
+        </defs>
+
+        {/* Plot-area canvas so the grid/data reads as a distinct surface, not floating on the page bg. */}
+        <rect x={M.left} y={M.top} width={PLOT_W} height={PLOT_H} fill="var(--dm-surface-a)" rx={6} />
+
         {Array.from({ length: yTicks + 1 }).map((_, i) => {
           const val = (yMax / yTicks) * i;
           const y = yPos(val);
           return (
             <g key={i}>
-              <line x1={M.left} y1={y} x2={W - M.right} y2={y} stroke="var(--dm-border-a)" strokeWidth={0.5} />
-              <text x={M.left - 8} y={y + 4} textAnchor="end" className="text-[10px]" fill="var(--dm-txt-faint)">{fmt(val)}</text>
+              <line x1={M.left} y1={y} x2={W - M.right} y2={y} stroke="var(--dm-border-a)" strokeWidth={i === 0 ? 1.25 : 0.75} />
+              <text x={M.left - 8} y={y + 4} textAnchor="end" className="text-[10px] font-medium" fill="var(--dm-txt-muted)">{fmt(val)}</text>
             </g>
           );
         })}
 
         {xValues.map((x, i) => (
-          <text key={x} x={xPos(i)} y={H - M.bottom + 18} textAnchor="middle" className="text-[10px]" fill="var(--dm-txt-faint)">{x}</text>
+          <text key={x} x={xPos(i)} y={H - M.bottom + 18} textAnchor="middle" className="text-[10px] font-semibold" fill="var(--dm-txt-muted)">{x}</text>
         ))}
 
-        <text x={M.left + PLOT_W / 2} y={H - 8} textAnchor="middle" className="text-[11px]" fill="var(--dm-txt-muted)">{xLabel}</text>
-        <text x={-(M.top + PLOT_H / 2)} y={16} textAnchor="middle" transform="rotate(-90)" className="text-[11px]" fill="var(--dm-txt-muted)">{yLabel}</text>
+        <text x={M.left + PLOT_W / 2} y={H - 8} textAnchor="middle" className="text-[11px] font-semibold" fill="var(--dm-txt-secondary)">{xLabel}</text>
+        <text x={-(M.top + PLOT_H / 2)} y={16} textAnchor="middle" transform="rotate(-90)" className="text-[11px] font-semibold" fill="var(--dm-txt-secondary)">{yLabel}</text>
 
         {/* Stacked: bottom-of-band is the previous series' cumulative line, so bands sum to the
-            total. Overlay: every band starts at 0, drawn with more transparency so overlaps
-            between series are visible rather than one fully occluding another. */}
+            total — filled with a top-lit gradient and a crisp top edge for depth. Overlay: every
+            band starts at 0, drawn with a light fill (so overlaps stay legible) but a bold,
+            saturated stroke + point markers, so each line reads sharply against the others. */}
         {series.map((s, sIdx) => {
           const topPts = cumulative[sIdx].map((v, i) => [xPos(i), yPos(v)] as const);
           const bottomBase = stacked ? (sIdx === 0 ? new Array(n).fill(0) : cumulative[sIdx - 1]) : new Array(n).fill(0);
@@ -91,31 +112,42 @@ export function StackedAreaChart({ xValues, xLabel, yLabel, series, formatValue,
             " " +
             [...bottomPts].reverse().map((p) => `L ${p[0]} ${p[1]}`).join(" ") +
             " Z";
+          const topLine = topPts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" ");
           return (
-            <path
-              key={s.key} d={d} fill={s.color} fillOpacity={stacked ? 0.75 : 0.35}
-              stroke={s.color} strokeWidth={stacked ? 1 : 1.5}
-              className={s.onClick ? "cursor-pointer transition-opacity duration-150 hover:opacity-90" : undefined}
-              onClick={s.onClick}
-            >
-              <title>{s.label}</title>
-            </path>
+            <g key={s.key}>
+              <path
+                d={d} fill={`url(#${uid}-grad-${s.key})`}
+                stroke="none"
+                className={s.onClick ? "cursor-pointer transition-opacity duration-150 hover:opacity-95" : undefined}
+                onClick={s.onClick}
+              >
+                <title>{s.label}</title>
+              </path>
+              <path
+                d={topLine} fill="none" stroke={s.color} strokeWidth={stacked ? 2 : 2.75}
+                strokeLinejoin="round" strokeLinecap="round" filter={`url(#${uid}-shadow)`}
+                className={s.onClick ? "cursor-pointer" : undefined} onClick={s.onClick}
+              />
+              {!stacked && topPts.map(([x, y], i) => (
+                <circle key={i} cx={x} cy={y} r={3} fill={s.color} stroke="var(--dm-surface-a)" strokeWidth={1.25} />
+              ))}
+            </g>
           );
         })}
       </svg>
 
-      <div className="mt-2 flex flex-wrap gap-3">
+      <div className="mt-3 flex flex-wrap gap-2">
         {series.map(s => (
           <button
             key={s.key} type="button" onClick={s.onClick} disabled={!s.onClick}
-            className="flex items-center gap-1.5 text-xs rounded px-1.5 py-0.5 transition-colors"
-            style={{ color: "var(--dm-txt-secondary)", cursor: s.onClick ? "pointer" : "default" }}
+            className="flex items-center gap-2 text-xs font-semibold rounded-full pl-1.5 pr-3 py-1 transition-colors"
+            style={{ color: "var(--dm-txt-primary)", background: "var(--dm-surface-a)", cursor: s.onClick ? "pointer" : "default" }}
             title={s.disabledNote}
           >
-            <span className="inline-block h-2.5 w-3.5 rounded-sm flex-shrink-0" style={{ background: s.color }} />
+            <span className="inline-block h-3 w-3 rounded-full flex-shrink-0" style={{ background: s.color, boxShadow: `0 0 6px ${s.color}` }} />
             {s.label}
             {s.onClick && <span style={{ color: "var(--dm-txt-faint)" }}>›</span>}
-            {s.disabledNote && <span className="text-[10px]" style={{ color: "var(--dm-txt-faintest)" }}>({s.disabledNote})</span>}
+            {s.disabledNote && <span className="text-[10px] font-normal" style={{ color: "var(--dm-txt-faintest)" }}>({s.disabledNote})</span>}
           </button>
         ))}
       </div>

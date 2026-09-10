@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Image from "next/image";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useRegisterExport } from "@/contexts/ExportContext";
 import { COMPARISON_CHIPS, type ComparisonChip } from "@/modules/silicon/comparison-data";
 import { StackedAreaChart, type StackedAreaSeries } from "./AnalysisChart";
+import { exportDeepAnalysisToExcel, type ExportScenario } from "./deep-analysis-export";
 import {
   ABBR, TFLOPS, MODEL_CATALOG, DEFAULT_MODEL_ID, getModelArchitecture,
   DEFAULT_USECASE_INPUTS, WEIGHT_DTYPE_OPTIONS, KV_DTYPE_OPTIONS,
@@ -1206,21 +1208,90 @@ function KvCacheSection({ arch, usecase, chip, tp, onChangeTp, kv, onChangeKv, h
 // / DeltaNet. Stage colors are deliberately distinct from the Compute=cyan/Memory=orange/
 // Interconnect=green convention used one level down, so the two levels never look like the same axis.
 
+/** A hardware what-if combination — one of the 3 slots at the top of the page. Deliberately
+ *  just silicon + TP + interconnect (not model or use-case): the point is comparing hardware
+ *  choices for the SAME model/workload you're already studying, not switching workloads.
+ *  "Active" (driving the whole page) means this combo's three fields match the page's current
+ *  siliconId/tpConfig exactly — there's no separate stored "is active" flag. */
+export interface WhatIfCombo {
+  siliconId: string;
+  tpDegree: number;
+  interconnectId: string;
+}
+
+function comboMatchesCurrent(combo: WhatIfCombo, siliconId: string, tp: TpConfig): boolean {
+  return combo.siliconId === siliconId && combo.tpDegree === tp.tpDegree && combo.interconnectId === tp.interconnectId;
+}
+
 type AnalysisStageKey = "prefill" | "decode" | "kvCache";
 
 const STAGE_COLORS: Record<AnalysisStageKey, string> = {
-  prefill: "#818cf8",   // indigo
-  decode: "#f472b6",    // pink
-  kvCache: "#fbbf24",   // amber
+  prefill: "#6366f1",   // vivid indigo
+  decode: "#ec4899",    // vivid pink
+  kvCache: "#f59e0b",   // vivid amber
 };
 const STAGE_LABELS: Record<AnalysisStageKey, string> = { prefill: "Prefill", decode: "Decode", kvCache: "KV Cache" };
-const FFN_CYAN = "#67e8f9";
-const ATTENTION_CYAN = "#22d3ee";
-const DELTANET_CYAN = "#0e7490";
+const FFN_CYAN = "#5eead4";       // teal-300 — brightest of the three
+const ATTENTION_CYAN = "#06b6d4"; // cyan-500 — punchier than the old cyan-400
+const DELTANET_CYAN = "#1d4ed8";  // blue-700 — deep, still reads as "compute family"
 
-function AnalysisSection({ arch, usecase, chip, tp, deltaCfg, kv }: {
+/** One raw-values table under the chart — a small "spec" strip (the silicon/config numbers
+ *  that stay fixed across the sweep) above a Metric × Concurrency grid (the numbers that do
+ *  change), so every value on the chart above can be read exactly. */
+function AnalysisRawTable({ title, specs, rows, xValues }: {
+  title: string;
+  specs: { label: string; value: string }[];
+  rows: { label: string; values: (number | string)[]; bold?: boolean; format?: (v: number | string) => string }[];
+  xValues: number[];
+}) {
+  return (
+    <div className="rounded-xl overflow-hidden border mt-4" style={{ borderColor: "var(--dm-border-a)" }}>
+      <div className="px-4 py-2" style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
+        <span className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-primary)" }}>{title} — raw values</span>
+      </div>
+      <div className="px-4 py-2 flex flex-wrap gap-x-4 gap-y-1" style={{ borderBottom: "1px solid var(--dm-border-a)", background: "var(--dm-surface-a)" }}>
+        {specs.map(s => (
+          <span key={s.label} className="text-[10.5px]" style={{ color: "var(--dm-txt-muted)" }}>
+            <span style={{ color: "var(--dm-txt-faint)" }}>{s.label}:</span> <span className="font-mono font-semibold" style={{ color: "var(--dm-txt-body)" }}>{s.value}</span>
+          </span>
+        ))}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr style={{ background: "var(--dm-table-head)" }}>
+              <th className="px-3 py-1.5 text-left font-bold uppercase tracking-widest text-[9px] whitespace-nowrap" style={{ color: "var(--dm-txt-faint)" }}>Metric \ Concurrency</th>
+              {xValues.map(x => (
+                <th key={x} className="px-3 py-1.5 text-right font-mono font-bold text-[10px]" style={{ color: "var(--dm-txt-faint)" }}>{x}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.label} style={{ background: r.bold ? "var(--dm-table-head)" : i % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)" }}>
+                <td className={`px-3 py-1.5 whitespace-nowrap ${r.bold ? "font-bold" : ""}`} style={{ color: r.bold ? "var(--dm-txt-primary)" : "var(--dm-txt-body)" }}>{r.label}</td>
+                {r.values.map((v, j) => (
+                  <td key={j} className={`px-3 py-1.5 text-right font-mono ${r.bold ? "font-bold" : ""}`} style={{ color: r.bold ? "var(--dm-txt-primary)" : "var(--dm-txt-body)" }}>
+                    {r.format ? r.format(v) : v}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function AnalysisSection({ arch, usecase, chip, tp, deltaCfg, kv, siliconId, isDark, combos, onUpdateComboField, onApplyCombo, onClearCombo }: {
   arch: ModelArchitecture; usecase: UsecaseInputs; chip: ComparisonChip | undefined;
   tp: TpConfig; deltaCfg: DeltaNetPrefillConfig; kv: KvCacheConfig;
+  siliconId: string; isDark: boolean;
+  combos: (WhatIfCombo | null)[];
+  onUpdateComboField: <K extends keyof WhatIfCombo>(slot: number, field: K, value: WhatIfCombo[K]) => void;
+  onApplyCombo: (slot: number) => void;
+  onClearCombo: (slot: number) => void;
 }) {
   const peak = chip ? getSiliconPeak(chip) : null;
   const memBandwidthGBs = chip ? getSiliconMemoryBandwidthGBs(chip) : null;
@@ -1289,32 +1360,153 @@ function AnalysisSection({ arch, usecase, chip, tp, deltaCfg, kv }: {
       : "This model has no DeltaNet layers (that band is 0) — FFN + Attention sum to Prefill's Compute time.";
   }
 
+  // ── raw-values tables — the exact numbers behind the chart at every concurrency step,
+  // plus the silicon/config specs that stay fixed across the sweep (so a value can always be
+  // traced back to "what silicon spec produced this"). ───────────────────────────────────
+  const msFmt = (v: number | string) => (typeof v === "number" ? v.toFixed(v >= 100 ? 1 : 3) : v);
+
+  const prefillSpecs = [
+    { label: "Peak TFLOPS", value: peak ? `${peak.raw} (${peak.dataType})` : "—" },
+    { label: "Achieved compute MFU", value: `${(usecase.gemmMfu * 100).toFixed(0)}%` },
+    { label: "Interconnect", value: link ? `${link.name} (${fmtInt(link.linkBwGBs)} GB/s)` : "—" },
+    { label: "Comm efficiency", value: `${(usecase.commEfficiency * 100).toFixed(0)}%` },
+    { label: "TP degree", value: fmtInt(tp.tpDegree) },
+  ];
+  const prefillRows = [
+    { label: "FFN (ms)", values: sweep.map(p => p.prefill.computeSub?.ffnMs ?? 0), format: msFmt },
+    { label: "Attention (ms)", values: sweep.map(p => p.prefill.computeSub?.attentionMs ?? 0), format: msFmt },
+    ...(arch.secondary?.kind === "deltaNet" ? [{ label: "DeltaNet (ms)", values: sweep.map(p => p.prefill.computeSub?.deltaNetMs ?? 0), format: msFmt }] : []),
+    { label: "Compute total (ms)", values: sweep.map(p => p.prefill.computeMs), format: msFmt },
+    { label: "Interconnect (ms)", values: sweep.map(p => p.prefill.interconnectMs), format: msFmt },
+    { label: "Total (ms)", values: sweep.map(p => p.prefill.totalMs), bold: true, format: msFmt },
+  ];
+
+  const decodeSpecs = [
+    { label: "Peak TFLOPS", value: peak ? `${peak.raw} (${peak.dataType})` : "—" },
+    { label: "Memory BW", value: memBandwidthGBs != null ? `${fmtInt(memBandwidthGBs)} GB/s` : "—" },
+    { label: "Achieved compute MFU", value: `${(usecase.gemmMfu * 100).toFixed(0)}%` },
+    { label: "Interconnect", value: link ? `${link.name} (${fmtInt(link.linkBwGBs)} GB/s)` : "—" },
+    { label: "Comm efficiency", value: `${(usecase.commEfficiency * 100).toFixed(0)}%` },
+    { label: "Output tokens", value: fmtInt(usecase.outputTokens) },
+  ];
+  const decodeRows = [
+    { label: "Memory (ms)", values: sweep.map(p => p.decode.memoryMs), format: msFmt },
+    { label: "Compute (ms)", values: sweep.map(p => p.decode.computeMs), format: msFmt },
+    { label: "Interconnect (ms)", values: sweep.map(p => p.decode.interconnectMs), format: msFmt },
+    { label: "Total decode-phase (ms)", values: sweep.map(p => p.decode.totalMs), bold: true, format: msFmt },
+  ];
+
+  const kvSpecs = [
+    { label: "VRAM / card", value: vramPerCardGB != null ? `${fmtInt(vramPerCardGB)} GB` : "—" },
+    { label: "Peak TFLOPS (recompute)", value: peak ? `${peak.raw} (${peak.dataType})` : "—" },
+    { label: "DDR / CXL / Flash", value: `${fmtInt(kv.ddrBWGBs)} / ${fmtInt(kv.cxlBWGBs)} / ${fmtInt(kv.flashBWGBs)} GB/s` },
+    { label: "Context length", value: `${fmtInt(usecase.decodeContextLen)} tokens` },
+    { label: "TP degree", value: fmtInt(tp.tpDegree) },
+  ];
+  const kvRows = [
+    { label: "Over capacity?", values: sweep.map(p => (p.kvCache.overCapacity ? "Yes" : "No")), format: (v: number | string) => String(v) },
+    { label: "Recompute (ms)", values: sweep.map(p => p.kvCache.recomputeMs ?? 0), format: msFmt },
+    { label: "Fastest read-back (ms)", values: sweep.map(p => p.kvCache.fastestReadBackMs ?? 0), format: msFmt },
+    { label: "Fastest medium", values: sweep.map(p => p.kvCache.fastestMedium ?? "—"), format: (v: number | string) => String(v) },
+    { label: "Total (realistic, ms)", values: sweep.map(p => p.kvCache.totalMs), bold: true, format: msFmt },
+  ];
+
+  // ── compare saved combinations — one sweep per saved slot, each resolved with the combo's
+  // own silicon/TP/interconnect but the SAME model/use-case/delta-config currently being
+  // studied (a combo is a hardware variant, not a different workload). KV config isn't part of
+  // a combo since it doesn't affect Prefill/Decode at all — the current page's `kv` covers all. ──
+  const comboSweeps = useMemo(
+    () => combos
+      .map((combo, slot) => ({ slot, combo }))
+      .filter((x): x is { slot: number; combo: WhatIfCombo } => x.combo != null)
+      .map(({ slot, combo }) => {
+        const comboChip = COMPARISON_CHIPS.find(c => c.id === combo.siliconId);
+        const comboPeak = comboChip ? getSiliconPeak(comboChip) : null;
+        const comboMemBW = comboChip ? getSiliconMemoryBandwidthGBs(comboChip) : null;
+        const comboLink = INTERCONNECTS.find(i => i.id === combo.interconnectId);
+        const comboVram = comboChip ? getSiliconMemoryCapacityGB(comboChip) : null;
+        const comboTp: TpConfig = { tpDegree: combo.tpDegree, interconnectId: combo.interconnectId, collectiveOpsPerLayer: tp.collectiveOpsPerLayer, activationDtypeBytes: tp.activationDtypeBytes };
+        const comboAnalysis = calcAnalysisSweep(
+          arch, usecase, comboTp, deltaCfg, kv,
+          comboPeak?.teraflops ?? null, comboMemBW, comboLink?.linkBwGBs ?? null, comboVram,
+        );
+        const label = `${comboChip?.name ?? combo.siliconId} · TP${combo.tpDegree}`;
+        return { slot, combo, label, analysis: comboAnalysis };
+      }),
+    [combos, arch, usecase, deltaCfg, kv, tp.collectiveOpsPerLayer, tp.activationDtypeBytes],
+  );
+  const COMBO_COLORS = COMBO_SLOT_COLORS;
+
   return (
-    <SectionCard
-      title="Analysis"
-      subtitle="Where does the time go, and how does that shift as concurrency scales? Drill down to see how the selected silicon's TFLOPS, memory bandwidth, and interconnect speed each start to dominate at different points."
-    >
-      <div className="flex items-center gap-1.5 mb-4 flex-wrap">
-        {crumbs.map((c, i) => (
-          <span key={i} className="flex items-center gap-1.5">
-            {i > 0 && <span style={{ color: "var(--dm-txt-faint)" }}>/</span>}
-            <button
-              type="button" onClick={c.onClick}
-              className="text-xs font-semibold rounded px-1.5 py-0.5 transition-colors"
-              style={{ color: i === crumbs.length - 1 ? "var(--dm-txt-primary)" : "#22d3ee", cursor: i === crumbs.length - 1 ? "default" : "pointer" }}
-            >
-              {c.label}
-            </button>
-          </span>
-        ))}
+    <>
+      <WhatIfComboBar combos={combos} siliconId={siliconId} tp={tp} isDark={isDark} onUpdateField={onUpdateComboField} onApply={onApplyCombo} onClear={onClearCombo} />
+
+      <SectionCard
+        title="Analysis"
+        subtitle="Where does the time go, and how does that shift as concurrency scales? Drill down to see how the selected silicon's TFLOPS, memory bandwidth, and interconnect speed each start to dominate at different points."
+      >
+        <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+          {crumbs.map((c, i) => (
+            <span key={i} className="flex items-center gap-1.5">
+              {i > 0 && <span style={{ color: "var(--dm-txt-faint)" }}>/</span>}
+              <button
+                type="button" onClick={c.onClick}
+                className="text-xs font-semibold rounded px-1.5 py-0.5 transition-colors"
+                style={{ color: i === crumbs.length - 1 ? "var(--dm-txt-primary)" : "#22d3ee", cursor: i === crumbs.length - 1 ? "default" : "pointer" }}
+              >
+                {c.label}
+              </button>
+            </span>
+          ))}
+        </div>
+
+        {chart}
+
+        <p className="mt-4 text-[10.5px] leading-relaxed" style={{ color: "var(--dm-txt-faintest)" }}>{caption}</p>
+
+        {!chip && <p className="mt-3 text-xs" style={{ color: "var(--dm-txt-faintest)" }}>Select a silicon in the rail to compute times across the sweep.</p>}
+
+        <AnalysisRawTable title="Prefill" specs={prefillSpecs} rows={prefillRows} xValues={xValues} />
+        <AnalysisRawTable title="Decode" specs={decodeSpecs} rows={decodeRows} xValues={xValues} />
+        <AnalysisRawTable title="KV-Offload" specs={kvSpecs} rows={kvRows} xValues={xValues} />
+      </SectionCard>
+
+      <div className="rounded-2xl border mt-6 px-5 py-4" style={{ borderColor: "var(--dm-border-a)", background: "var(--dm-table-bg)" }}>
+        <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Compare saved combinations</p>
+        {comboSweeps.length === 0 ? (
+          <p className="text-[11px]" style={{ color: "var(--dm-txt-muted)" }}>Save at least one what-if combination above to see it here — save two or more to compare them against each other.</p>
+        ) : (
+          <>
+            <p className="text-[11px] mb-3" style={{ color: "var(--dm-txt-muted)" }}>
+              Same model and workload as everywhere else on this page — only silicon/TP/interconnect vary per combo. Prefill and Decode wall-clock across the same concurrency sweep, overlaid so you can see which combination actually wins, and at what concurrency the ranking might flip.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {comboSweeps.map(({ slot, label }) => (
+                <span key={slot} className="text-[11px] font-mono font-semibold rounded px-2 py-1" style={{ color: COMBO_COLORS[slot % 3], background: `${COMBO_COLORS[slot % 3]}1a` }}>
+                  {slot + 1}) {label}
+                </span>
+              ))}
+            </div>
+
+            <h4 className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--dm-txt-faint)" }}>Prefill — total wall-clock (ms)</h4>
+            <StackedAreaChart
+              xValues={comboSweeps[0].analysis.map(p => p.concurrency)} xLabel="Concurrency (B)" yLabel="Time (ms)" stacked={false}
+              series={comboSweeps.map(({ slot, label, analysis }) => ({
+                key: `prefill-${slot}`, label, color: COMBO_COLORS[slot % 3], values: analysis.map(p => p.prefill.totalMs),
+              }))}
+            />
+
+            <h4 className="text-[10px] font-semibold uppercase tracking-widest mt-6 mb-2" style={{ color: "var(--dm-txt-faint)" }}>Decode — total decode-phase wall-clock (ms)</h4>
+            <StackedAreaChart
+              xValues={comboSweeps[0].analysis.map(p => p.concurrency)} xLabel="Concurrency (B)" yLabel="Time (ms)" stacked={false}
+              series={comboSweeps.map(({ slot, label, analysis }) => ({
+                key: `decode-${slot}`, label, color: COMBO_COLORS[slot % 3], values: analysis.map(p => p.decode.totalMs),
+              }))}
+            />
+          </>
+        )}
       </div>
-
-      {chart}
-
-      <p className="mt-4 text-[10.5px] leading-relaxed" style={{ color: "var(--dm-txt-faintest)" }}>{caption}</p>
-
-      {!chip && <p className="mt-3 text-xs" style={{ color: "var(--dm-txt-faintest)" }}>Select a silicon in the rail to compute times across the sweep.</p>}
-    </SectionCard>
+    </>
   );
 }
 
@@ -1358,6 +1550,126 @@ const PREFILL_STEPS: { step: PrefillStep; label: string }[] = [
   { step: 5, label: "Prefill under Tensor Parallelism" },
 ];
 
+const COMBO_SLOT_COLORS = ["#8b5cf6", "#14b8a6", "#f43f5e"];
+const COMBO_ACTIVE_GREEN = "#34d399";
+
+/** The 3 what-if hardware slots, pinned to the top of the page (above the section tabs) so
+ *  they're available no matter which section you're looking at. Each slot is a live, always-
+ *  editable mini-form (Silicon / TP / Interconnect) rather than a "save current settings"
+ *  snapshot — editing a dropdown updates just that slot, with nothing applied to the rest of
+ *  the page until you hit the ✓ apply icon. The slot matching the page's current silicon/TP/
+ *  interconnect exactly is outlined in green as the one actually driving every other section. */
+function WhatIfComboBar({ combos, siliconId, tp, isDark, onUpdateField, onApply, onClear }: {
+  combos: (WhatIfCombo | null)[];
+  siliconId: string; tp: TpConfig; isDark: boolean;
+  onUpdateField: <K extends keyof WhatIfCombo>(slot: number, field: K, value: WhatIfCombo[K]) => void;
+  onApply: (slot: number) => void;
+  onClear: (slot: number) => void;
+}) {
+  const comboSelect = "rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none";
+  const comboNumberInput = "rounded-md px-2.5 py-1.5 text-xs font-semibold text-center focus:outline-none w-16";
+
+  return (
+    <div className="rounded-2xl border mb-6 overflow-hidden" style={{ borderColor: "var(--dm-border-a)", background: "var(--dm-table-bg)" }}>
+      <div className="px-5 pt-4 pb-3" style={{ borderBottom: "1px solid var(--dm-border-a)" }}>
+        <h2 className="text-sm font-bold" style={{ color: "var(--dm-txt-primary)" }}>What-if combinations</h2>
+        <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--dm-txt-muted)" }}>
+          Hardware to compare for the current model &amp; workload — pick Silicon / TP / Interconnect per slot, then <b>✓</b> to make one active.
+        </p>
+      </div>
+      <div className="flex flex-col gap-3 p-4">
+        {[0, 1, 2].map(slot => {
+          const combo = combos[slot] ?? { siliconId, tpDegree: tp.tpDegree, interconnectId: tp.interconnectId };
+          const isConfigured = combos[slot] != null;
+          const isActive = comboMatchesCurrent(combo, siliconId, tp);
+          const chip = COMPARISON_CHIPS.find(c => c.id === combo.siliconId);
+          const link = INTERCONNECTS.find(i => i.id === combo.interconnectId);
+          const accent = isConfigured ? COMBO_SLOT_COLORS[slot % 3] : "var(--dm-txt-faintest)";
+
+          return (
+            <div
+              key={slot}
+              className="w-full flex items-stretch gap-0 rounded-xl overflow-hidden border transition-all duration-150"
+              style={{
+                borderColor: isActive ? COMBO_ACTIVE_GREEN : "var(--dm-border-a)",
+                boxShadow: isActive ? `0 0 0 1.5px ${COMBO_ACTIVE_GREEN}, 0 0 14px rgba(52,211,153,0.35)` : "0 1px 2px rgba(0,0,0,0.04)",
+                background: "var(--dm-surface-a)",
+              }}
+            >
+              <div className="w-1.5 flex-shrink-0" style={{ background: accent }} />
+
+              <div className="flex-1 flex items-center gap-3 flex-wrap px-4 py-3">
+                <span
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-extrabold flex-shrink-0"
+                  style={{ color: isConfigured ? "#04222b" : "var(--dm-txt-faint)", background: isConfigured ? accent : "var(--dm-surface-b)" }}
+                >
+                  {slot + 1}
+                </span>
+
+                <select
+                  value={combo.siliconId} onChange={e => onUpdateField(slot, "siliconId", e.target.value)}
+                  className={comboSelect} style={{ ...selectStyle(isDark), width: "12rem" }}
+                >
+                  <option value="" disabled>Silicon…</option>
+                  {COMPARISON_CHIPS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+
+                <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--dm-txt-faint)" }}>
+                  TP
+                  <input
+                    type="number" min={1} value={combo.tpDegree}
+                    onChange={e => onUpdateField(slot, "tpDegree", Math.max(1, Number(e.target.value) || 1))}
+                    className={comboNumberInput} style={inputStyle}
+                  />
+                </label>
+
+                <select
+                  value={combo.interconnectId} onChange={e => onUpdateField(slot, "interconnectId", e.target.value)}
+                  className={comboSelect} style={{ ...selectStyle(isDark), width: "12rem" }}
+                >
+                  {INTERCONNECTS.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </select>
+
+                <span className="w-px self-stretch flex-shrink-0" style={{ background: "var(--dm-border-a)" }} />
+
+                <span className="text-[10.5px] font-mono rounded px-2 py-1" style={{ color: MEMORY_ORANGE, background: `${MEMORY_ORANGE}1a` }}>
+                  {chip ? `${chip.memory.type} · ${chip.memory.bandwidth} · ${chip.memory.capacity}` : "select a silicon"}
+                </span>
+                <span className="text-[10.5px] font-mono rounded px-2 py-1" style={{ color: INTERCONNECT_GREEN, background: `${INTERCONNECT_GREEN}1a` }}>
+                  {link ? `${fmtInt(link.linkBwGBs)} GB/s` : "—"}
+                </span>
+
+                {isActive && (
+                  <span className="text-[9.5px] font-extrabold uppercase tracking-widest rounded-full px-2 py-0.5" style={{ color: "#042318", background: COMBO_ACTIVE_GREEN }}>
+                    ● Active
+                  </span>
+                )}
+
+                <span className="flex-1" />
+
+                <button
+                  type="button" onClick={() => onApply(slot)} title="Make this the active combination"
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 transition-all duration-150 hover:scale-110"
+                  style={{ color: isActive ? "#042318" : COMBO_ACTIVE_GREEN, background: isActive ? COMBO_ACTIVE_GREEN : "rgba(52,211,153,0.14)" }}
+                >
+                  ✓
+                </button>
+                <button
+                  type="button" onClick={() => onClear(slot)} title="Clear this slot" disabled={!isConfigured}
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 transition-all duration-150 hover:scale-110 disabled:hover:scale-100"
+                  style={{ color: isConfigured ? "#fca5a5" : "var(--dm-txt-faintest)", background: isConfigured ? "rgba(248,113,113,0.14)" : "var(--dm-surface-b)" }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function DeepAnalysisView() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -1368,6 +1680,7 @@ export function DeepAnalysisView() {
   const [tpConfig, setTpConfig] = useState<TpConfig>(DEFAULT_TP_CONFIG);
   const [deltaNetConfig, setDeltaNetConfig] = useState<DeltaNetPrefillConfig>(DEFAULT_DELTANET_PREFILL_CONFIG);
   const [kvCacheConfig, setKvCacheConfig] = useState<KvCacheConfig>(DEFAULT_KV_CACHE_CONFIG);
+  const [combos, setCombos] = useState<(WhatIfCombo | null)[]>([null, null, null]);
   const [section, setSection] = useState<Section>("prefill");
   const [revealedSteps, setRevealedSteps] = useState<Set<PrefillStep>>(new Set([1]));
   const [highlightedRow, setHighlightedRow] = useState<PrefillRowKey | null>(null);
@@ -1376,6 +1689,37 @@ export function DeepAnalysisView() {
   const [highlightedKvCacheRow, setHighlightedKvCacheRow] = useState<KvCacheRowKey | null>(null);
 
   const chip = COMPARISON_CHIPS.find(c => c.id === siliconId);
+
+  /** Edits one field of a slot's combo, creating it (from the page's current silicon/TP/
+   *  interconnect as a starting point) the first time a slot goes from empty to configured. */
+  function updateComboField<K extends keyof WhatIfCombo>(slot: number, field: K, value: WhatIfCombo[K]) {
+    setCombos(prev => prev.map((c, i) => {
+      if (i !== slot) return c;
+      const base: WhatIfCombo = c ?? { siliconId, tpDegree: tpConfig.tpDegree, interconnectId: tpConfig.interconnectId };
+      return { ...base, [field]: value };
+    }));
+  }
+  function applyCombo(slot: number) {
+    const c = combos[slot];
+    if (!c) return;
+    setSiliconId(c.siliconId);
+    setTpConfig(prev => ({ ...prev, tpDegree: c.tpDegree, interconnectId: c.interconnectId }));
+  }
+  function clearCombo(slot: number) {
+    setCombos(prev => prev.map((c, i) => (i === slot ? null : c)));
+  }
+
+  const exportHandler = useCallback(async () => {
+    const scenarios: ExportScenario[] = [
+      { name: "Current", siliconId, tpDegree: tpConfig.tpDegree, interconnectId: tpConfig.interconnectId },
+      ...combos
+        .map((c, i) => (c ? { name: `Combo ${i + 1} — ${COMPARISON_CHIPS.find(chip => chip.id === c.siliconId)?.name ?? c.siliconId}`, siliconId: c.siliconId, tpDegree: c.tpDegree, interconnectId: c.interconnectId } : null))
+        .filter((s): s is ExportScenario => s != null),
+    ];
+    await exportDeepAnalysisToExcel(arch, usecase, deltaNetConfig, kvCacheConfig, tpConfig, scenarios);
+  }, [arch, usecase, deltaNetConfig, kvCacheConfig, siliconId, tpConfig, combos]);
+  useRegisterExport(exportHandler, "Export Deep Analysis to Excel");
+
   const rowActive = section === "prefill" ? highlightedRow : null;
   const tpRowActive = section === "prefill" ? highlightedTpRow : null;
   const decodeRowActive = section === "decode" ? highlightedDecodeRow : null;
@@ -1554,7 +1898,11 @@ export function DeepAnalysisView() {
                 highlightedRow={highlightedKvCacheRow} onSelectRow={setHighlightedKvCacheRow}
               />
             ) : section === "analysis" ? (
-              <AnalysisSection arch={arch} usecase={usecase} chip={chip} tp={tpConfig} deltaCfg={deltaNetConfig} kv={kvCacheConfig} />
+              <AnalysisSection
+                arch={arch} usecase={usecase} chip={chip} tp={tpConfig} deltaCfg={deltaNetConfig} kv={kvCacheConfig}
+                siliconId={siliconId} isDark={isDark} combos={combos}
+                onUpdateComboField={updateComboField} onApplyCombo={applyCombo} onClearCombo={clearCombo}
+              />
             ) : (
               <ComingSoonSection title={SECTIONS.find(s => s.key === section)!.label} blurb={COMING_SOON_BLURB[section as Exclude<Section, "prefill" | "decode" | "kv-cache" | "analysis">]} />
             )}
