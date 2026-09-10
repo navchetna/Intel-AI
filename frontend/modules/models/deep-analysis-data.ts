@@ -108,7 +108,17 @@ export interface ModelArchitecture {
   fullAttn: { qHeads: number; kvHeads: number; headDim: number; ropeDim: number };
   secondary: SecondaryAttn | null;
   multiTokenPrediction: boolean;
-  moe?: { totalExperts: number; activeExperts: number; sharedExperts?: number };
+  moe?: {
+    totalExperts: number;
+    activeExperts: number;
+    sharedExperts?: number;
+    /** FFN intermediate width of one routed expert (config's moe_intermediate_size). */
+    expertIntermediateSize: number;
+    /** FFN intermediate width of the always-on shared expert. Gemma4-26B-A4B's config doesn't
+     *  publish this separately from moe_intermediate_size, so it's assumed equal — flagged here
+     *  rather than silently treated as fact. */
+    sharedIntermediateSize: number;
+  };
 }
 
 export const QWEN_3_8_27B: ModelArchitecture = {
@@ -192,7 +202,7 @@ export const GEMMA4_26B_A4B: ModelArchitecture = {
   fullAttn: { qHeads: 16, kvHeads: 2, headDim: 512, ropeDim: 128 },
   secondary: { kind: "windowed", qHeads: 16, kvHeads: 8, headDim: 256, window: 1024 },
   multiTokenPrediction: false,
-  moe: { totalExperts: 128, activeExperts: 8, sharedExperts: 1 },
+  moe: { totalExperts: 128, activeExperts: 8, sharedExperts: 1, expertIntermediateSize: 704, sharedIntermediateSize: 704 },
 };
 
 export const MODEL_CATALOG: ModelArchitecture[] = [QWEN_3_8_27B, QWEN_3_5_9B, GEMMA4_31B, GEMMA4_26B_A4B];
@@ -215,19 +225,13 @@ export interface UsecaseInputs {
   decodeContextLenAuto: boolean;
   weightDtypeBytes: number;
   kvDtypeBytes: number;
-  overheadFraction: number;
-  /** Prefill Efficiency Stack (calibrated against measured TTFT — see Qwen3.8-27B_Sizing_Model_Calliberated.xlsx's
-   *  "Prefill Calibration" sheet). Replaces the old single flat "achievable efficiency": a FLOP-only
-   *  model badly underestimates prefill wall-clock on this hybrid architecture because the 48
-   *  memory-bound / low-MFU Gated DeltaNet layers, convs, norms, gates and RoPE burn far more
-   *  wall-clock than their tiny FLOP share. */
-  /** Best-case dense-GEMM MFU on the selected silicon — a microbenchmark number. */
+  /** Achieved fraction of peak TFLOPS real GEMM kernels hit on the selected silicon — used
+   *  everywhere a compute-bound formula needs a realistic (not theoretical-peak) throughput:
+   *  Prefill compute time, Prefill-TP compute time, Decode's t_compute, and KV-Cache eviction
+   *  recompute. */
   gemmMfu: number;
-  /** Everything a FLOP-only model misses on the compute side beyond the GEMM ceiling (DeltaNet
-   *  scan layers, norms, gates, RoPE, kernel-launch + stack overhead). Fit to reproduce measured TTFT. */
-  hybridStackDerate: number;
   /** Fraction of theoretical link bandwidth the all-reduce collective actually realizes — applies
-   *  to Prefill-TP's communication time only, separate from the compute-side derate above. */
+   *  to both Prefill-TP's and Decode's communication time. */
   commEfficiency: number;
 }
 
@@ -238,19 +242,10 @@ export const DEFAULT_USECASE_INPUTS: UsecaseInputs = {
   decodeContextLen: 9216,
   decodeContextLenAuto: true,
   weightDtypeBytes: 2,
-  kvDtypeBytes: 1,
-  overheadFraction: 0.12,
-  gemmMfu: 0.7,
-  hybridStackDerate: 0.64,
-  commEfficiency: 0.85,
+  kvDtypeBytes: 2,
+  gemmMfu: 0.8,
+  commEfficiency: 0.62,
 };
-
-/** GEMM MFU × hybrid+stack derate — the fraction of peak TFLOPS the compute side actually
- *  sustains before communication/overhead, used everywhere the old flat `achievableEfficiency`
- *  used to be (Prefill compute time, Prefill-TP compute time, KV-Cache eviction recompute). */
-export function getEffectiveComputeMfu(usecase: UsecaseInputs): number {
-  return usecase.gemmMfu * usecase.hybridStackDerate;
-}
 
 /** Applies one field edit to a UsecaseInputs, keeping decodeContextLen in sync with
  *  inputTokens+outputTokens whenever decodeContextLenAuto is still true. Editing
@@ -339,97 +334,187 @@ export function getSiliconMemoryCapacityGB(chip: ComparisonChip): number | null 
   return null;
 }
 
-// ── prefill FLOPs / TFLOPS calculation (from the "Prefill TFLOPs" sheet) ───────────────
+// ── prefill FLOPs / TFLOPS calculation — ported from qwen3_x_model_ttft_calculator.xlsx's
+// "TTFT Model" sheet. More granular than a blanket "total-params × 2" dense term: FFN, the
+// full-attention (global) layers' Q/K/V/O projections, their O(L²) score/weighted-sum matmuls,
+// and — for a DeltaNet hybrid — the secondary layers' own projections plus the chunked
+// delta-rule recurrence, modeled as its own timing bucket at its own achieved TFLOP/s (the
+// chunked-scan kernel realistically hits a different, usually worse, utilization than a dense
+// GEMM). A sliding-window hybrid (Gemma) has no equivalent in that source sheet — its secondary
+// term reuses the same projection formula (ordinary attention, just windowed) plus a quadratic
+// term capped at L×min(L,window), both costed at the same GEMM throughput as everything else. ─
 
-export type PrefillRowKey = "dense" | "fullAttn" | "secondary" | "total";
+export type PrefillRowKey = "ffn" | "fullAttnProj" | "fullAttnQuadratic" | "secondaryProj" | "secondaryCompute" | "total";
 
 /** Which Architecture symbols each Prefill row's formula actually reads — drives the
  *  click-to-highlight link from the Prefill table back to the Architecture panel. Depends on
  *  the model's secondary attention kind (DeltaNet vs. sliding-window use different symbols),
  *  so this is a function of the selected architecture rather than a static table. */
 export function getPrefillRowSymbols(arch: ModelArchitecture, key: PrefillRowKey): string[] {
-  const secondarySymbols: string[] =
-    arch.secondary?.kind === "deltaNet" ? [ABBR.c, ABBR.n_v, ABBR.d_dn, ABBR.L, ABBR.B, ABBR.n_dn]
+  const secondaryProjSymbols: string[] =
+    arch.secondary?.kind === "deltaNet" ? [ABBR.d_model, ABBR.n_qk, ABBR.d_dn, ABBR.n_v, ABBR.L, ABBR.B, ABBR.n_dn]
+    : arch.secondary?.kind === "windowed" ? [ABBR.d_model, ABBR.n_q_sw, ABBR.n_kv_sw, ABBR.d_head_sw, ABBR.L, ABBR.B, ABBR.n_dn]
+    : [];
+  const secondaryComputeSymbols: string[] =
+    arch.secondary?.kind === "deltaNet" ? [ABBR.n_v, ABBR.d_dn, ABBR.L, ABBR.B, ABBR.n_dn]
     : arch.secondary?.kind === "windowed" ? [ABBR.n_q_sw, ABBR.d_head_sw, ABBR.w, ABBR.L, ABBR.B, ABBR.n_dn]
     : [];
   switch (key) {
-    case "dense": return [ABBR.N, ABBR.L, ABBR.B];
-    case "fullAttn": return [ABBR.n_q, ABBR.d_head, ABBR.L, ABBR.B, ABBR.n_fa];
-    case "secondary": return secondarySymbols;
-    case "total": return [ABBR.N, ABBR.L, ABBR.B, ABBR.n_q, ABBR.d_head, ABBR.n_fa, ...secondarySymbols];
+    case "ffn": return arch.moe ? [ABBR.d_model, ABBR.L, ABBR.B, ABBR.n_layers] : [ABBR.d_model, ABBR.d_ffn, ABBR.L, ABBR.B, ABBR.n_layers];
+    case "fullAttnProj": return [ABBR.d_model, ABBR.n_q, ABBR.n_kv, ABBR.d_head, ABBR.L, ABBR.B, ABBR.n_fa];
+    case "fullAttnQuadratic": return [ABBR.n_q, ABBR.d_head, ABBR.L, ABBR.B, ABBR.n_fa];
+    case "secondaryProj": return secondaryProjSymbols;
+    case "secondaryCompute": return secondaryComputeSymbols;
+    case "total": return [ABBR.d_model, ABBR.d_ffn, ABBR.n_q, ABBR.n_kv, ABBR.d_head, ABBR.n_fa, ABBR.L, ABBR.B, ...secondaryProjSymbols, ...secondaryComputeSymbols];
   }
 }
 
-/** Which Use Case inputs each Prefill row's formula actually reads — same click-to-highlight
- *  link as getPrefillRowSymbols, but into the Use Case panel instead of Architecture. Every term
- *  reads concurrency/input tokens; only the Total row's compute-time/achieved-TFLOPS figures
+/** Which Use Case inputs each Prefill row's formula actually reads. Every raw FLOP term reads
+ *  concurrency/input tokens; only the Total row's compute-time/achieved-TFLOPS figures
  *  additionally depend on the Prefill Efficiency Stack inputs. Model-independent. */
 export const PREFILL_ROW_USECASE_FIELDS: Record<PrefillRowKey, (keyof UsecaseInputs)[]> = {
-  dense: ["concurrency", "inputTokens"],
-  fullAttn: ["concurrency", "inputTokens"],
-  secondary: ["concurrency", "inputTokens"],
-  total: ["concurrency", "inputTokens", "gemmMfu", "hybridStackDerate"],
+  ffn: ["concurrency", "inputTokens"],
+  fullAttnProj: ["concurrency", "inputTokens"],
+  fullAttnQuadratic: ["concurrency", "inputTokens"],
+  secondaryProj: ["concurrency", "inputTokens"],
+  secondaryCompute: ["concurrency", "inputTokens"],
+  total: ["concurrency", "inputTokens", "gemmMfu"],
 };
 
 /** Only the Total row's compute-time/achieved-TFLOPS figures depend on the selected silicon's
  *  peak throughput — the raw FLOP terms are silicon-independent. */
 export const PREFILL_ROW_USES_SILICON_PEAK: Record<PrefillRowKey, boolean> = {
-  dense: false,
-  fullAttn: false,
-  secondary: false,
+  ffn: false,
+  fullAttnProj: false,
+  fullAttnQuadratic: false,
+  secondaryProj: false,
+  secondaryCompute: false,
   total: true,
+};
+
+/** Chunked delta-rule ("DeltaNet") arithmetic — a real kernel with its own achieved throughput,
+ *  distinct from the GEMM rate everything else in this model uses. Only meaningful when the
+ *  selected model's `secondary.kind === "deltaNet"`; ignored otherwise. */
+export interface DeltaNetPrefillConfig {
+  /** Chunk size C — DeltaNet processes complete chunks, so the workload pads up to a multiple of C. */
+  chunkSize: number;
+  /** Achieved TFLOP/s/GPU for the chunked recurrent-scan kernel — separate from, and typically
+   *  well below, the GEMM rate used for FFN/projection/quadratic terms. */
+  deltaTflopsPerGpu: number;
+  /** Optional fixed kernel-launch/sync overhead per chunk per linear layer, in microseconds. */
+  fixedOverheadUsPerChunkPerLayer: number;
+}
+
+export const DEFAULT_DELTANET_PREFILL_CONFIG: DeltaNetPrefillConfig = {
+  chunkSize: 64,
+  deltaTflopsPerGpu: 150,
+  fixedOverheadUsPerChunkPerLayer: 0,
 };
 
 export interface PrefillResult {
   /** All *Tflops fields are in TFLOPS (i.e. already divided by 1e12) — see the TFLOPS constant above. */
-  denseTermTflops: number;
-  fullAttnTermTflops: number;
-  /** 0 for a plain dense transformer (arch.secondary === null). */
-  secondaryTermTflops: number;
+  ffnTermTflops: number;
+  /** Q/K/V/O projection FLOPs for the global (full-attention) layers only — linear in L. */
+  fullAttnProjTermTflops: number;
+  /** QKᵀ + weighted-sum FLOPs for the global layers only — O(L²). */
+  fullAttnQuadraticTermTflops: number;
+  /** Secondary layers' own projection FLOPs (DeltaNet's Q/K/V/z/a/b/O, or a windowed hybrid's
+   *  ordinary Q/K/V/O) — 0 for a plain dense transformer. Linear in L either way. */
+  secondaryProjTermTflops: number;
+  /** The secondary layers' core mixing-operation FLOPs: DeltaNet's chunked delta-rule
+   *  recurrence, or a windowed hybrid's QKᵀ + weighted-sum capped at L×min(L,window). 0 for a
+   *  plain dense transformer. */
+  secondaryComputeTermTflops: number;
   totalTflops: number;
+  /** FFN + both projection terms + the quadratic term (+ windowed secondaryCompute, which is
+   *  ordinary GEMM-shaped attention) — everything costed at the shared GEMM rate. Null if no
+   *  silicon peak is known. */
+  gemmComputeTimeSec: number | null;
+  /** DeltaNet's chunked-recurrence time at its own achieved TFLOP/s — 0 for non-DeltaNet models.
+   *  Independent of silicon peak (it's a wholly separate, directly-set throughput assumption). */
+  deltaComputeTimeSec: number;
+  /** Fixed per-chunk-per-layer overhead — 0 unless configured. Independent of silicon peak. */
+  deltaFixedOverheadSec: number;
+  /** gemmComputeTimeSec + deltaComputeTimeSec + deltaFixedOverheadSec. Null if gemmComputeTimeSec is null. */
   estimatedComputeTimeSec: number | null;
   achievedTflops: number | null;
 }
 
-/** `peakTflops` comes from the selected Silicon; `getEffectiveComputeMfu(usecase)` (GEMM MFU ×
- *  hybrid+stack derate) is the fraction of it real kernels hit — see UsecaseInputs' Prefill
- *  Efficiency Stack fields. Pass `peakTflops: null` (no silicon selected, or its peak figure
- *  didn't parse) to still get the FLOPS breakdown with time/achieved-throughput left unset.
+/** `peakTflops` comes from the selected Silicon; `usecase.gemmMfu` is the achieved fraction of it
+ *  real kernels hit. `deltaCfg` only matters for a DeltaNet-hybrid model. Pass
+ *  `peakTflops: null` (no silicon selected, or its peak figure didn't parse) to still get the
+ *  FLOPS breakdown with the GEMM-side time/achieved-throughput left unset — DeltaNet's own
+ *  compute time is independent of silicon peak, so it's still computed either way.
  *
- *  The dense term uses `activeParamsB` when the model is MoE (only active experts + the
- *  always-on attention/projection weights are touched per token) — weight-loading formulas
- *  elsewhere (Decode's t_mem, KV Cache's weights) always use the full `totalParamsB` instead,
- *  since every expert must still be resident in VRAM. The secondary term is 0 for a plain dense
- *  transformer; for a DeltaNet hybrid it's the chunked-scan cost (linear in L); for a
- *  sliding-window hybrid it's ordinary attention capped at L×min(L,window) instead of L². */
-export function calcPrefill(arch: ModelArchitecture, usecase: UsecaseInputs, peakTflops: number | null): PrefillResult {
-  const N = (arch.activeParamsB ?? arch.totalParamsB) * 1e9;
+ *  This is a TP=1 baseline throughout (no sharding) — see calcPrefillTp for the TP-parallel view. */
+export function calcPrefill(
+  arch: ModelArchitecture, usecase: UsecaseInputs, deltaCfg: DeltaNetPrefillConfig, peakTflops: number | null,
+): PrefillResult {
+  const H = arch.hiddenDim;
   const L = usecase.inputTokens;
   const B = usecase.concurrency;
-  const { qHeads, headDim } = arch.fullAttn;
 
-  const denseTermTflops = (2 * N * L * B) / TFLOPS;
-  const fullAttnTermTflops = (2 * qHeads * headDim * L * L * B * arch.fullAttnLayers) / TFLOPS;
+  const ffnPerLayer = arch.moe
+    ? 6 * H * (arch.moe.activeExperts * arch.moe.expertIntermediateSize + arch.moe.sharedIntermediateSize)
+    : 6 * H * arch.ffnIntermediateDim;
+  const ffnTermTflops = (ffnPerLayer * arch.totalLayers * L * B) / TFLOPS;
 
-  let secondaryTermTflops = 0;
+  const { qHeads, kvHeads, headDim } = arch.fullAttn;
+  const fullAttnProjPerLayer = 2 * H * (3 * qHeads * headDim + 2 * kvHeads * headDim);
+  const fullAttnProjTermTflops = (fullAttnProjPerLayer * arch.fullAttnLayers * L * B) / TFLOPS;
+  const fullAttnQuadCoeffPerLayer = 4 * qHeads * headDim;
+  const fullAttnQuadraticTermTflops = (fullAttnQuadCoeffPerLayer * arch.fullAttnLayers * L * L * B) / TFLOPS;
+
+  let secondaryProjTermTflops = 0;
+  let secondaryComputeTermTflops = 0;
+  let deltaComputeTimeSec = 0;
+  let deltaFixedOverheadSec = 0;
+  let windowedComputeIsGemm = false;
+
   if (arch.secondary?.kind === "deltaNet") {
     const s = arch.secondary;
-    secondaryTermTflops = (s.kernelConstant * s.vHeads * s.headDim ** 2 * L * B * arch.secondaryLayers) / TFLOPS;
+    // Q/K/V + z (gate) + a/b (correction) + output projections — see the Formula Guide's
+    // "Linear-attention projections" row: 2H(2·N_k·D_k + 3·N_v·D_v + 2·N_v). Our DeltaNetSecondary
+    // uses one shared headDim for both K and V dims, matching every model in the source catalog.
+    const linearProjPerLayer = 2 * H * (2 * s.qkHeads * s.headDim + 3 * s.vHeads * s.headDim + 2 * s.vHeads);
+    secondaryProjTermTflops = (linearProjPerLayer * arch.secondaryLayers * L * B) / TFLOPS;
+
+    const C = deltaCfg.chunkSize;
+    const D = s.headDim;
+    const deltaFlopsPerTokenLayer = s.vHeads * (4 * C * C * D + C * C * (D + D) + 6 * C * D * D + 2 * C * C * D);
+    const paddedTokens = Math.ceil(L / C) * C;
+    secondaryComputeTermTflops = (deltaFlopsPerTokenLayer * paddedTokens * arch.secondaryLayers * B) / TFLOPS;
+
+    if (deltaCfg.deltaTflopsPerGpu > 0) deltaComputeTimeSec = secondaryComputeTermTflops / deltaCfg.deltaTflopsPerGpu;
+    const chunksPerBatch = B * Math.ceil(L / C);
+    deltaFixedOverheadSec = (chunksPerBatch * arch.secondaryLayers * deltaCfg.fixedOverheadUsPerChunkPerLayer) / 1e6;
   } else if (arch.secondary?.kind === "windowed") {
     const s = arch.secondary;
-    secondaryTermTflops = (2 * s.qHeads * s.headDim * L * Math.min(L, s.window) * B * arch.secondaryLayers) / TFLOPS;
+    const windowedProjPerLayer = 2 * H * (3 * s.qHeads * s.headDim + 2 * s.kvHeads * s.headDim);
+    secondaryProjTermTflops = (windowedProjPerLayer * arch.secondaryLayers * L * B) / TFLOPS;
+    const windowedQuadCoeffPerLayer = 4 * s.qHeads * s.headDim;
+    secondaryComputeTermTflops = (windowedQuadCoeffPerLayer * arch.secondaryLayers * L * Math.min(L, s.window) * B) / TFLOPS;
+    windowedComputeIsGemm = true; // ordinary attention, just windowed — costed at the shared GEMM rate below, not a separate throughput.
   }
 
-  const totalTflops = denseTermTflops + fullAttnTermTflops + secondaryTermTflops;
+  const gemmFlopsTflops =
+    ffnTermTflops + fullAttnProjTermTflops + fullAttnQuadraticTermTflops + secondaryProjTermTflops
+    + (windowedComputeIsGemm ? secondaryComputeTermTflops : 0);
+  const totalTflops = gemmFlopsTflops + (windowedComputeIsGemm ? 0 : secondaryComputeTermTflops);
 
+  let gemmComputeTimeSec: number | null = null;
   let estimatedComputeTimeSec: number | null = null;
   let achievedTflops: number | null = null;
   if (peakTflops && peakTflops > 0) {
-    estimatedComputeTimeSec = totalTflops / (peakTflops * getEffectiveComputeMfu(usecase));
+    gemmComputeTimeSec = gemmFlopsTflops / (peakTflops * usecase.gemmMfu);
+    estimatedComputeTimeSec = gemmComputeTimeSec + deltaComputeTimeSec + deltaFixedOverheadSec;
     achievedTflops = totalTflops / estimatedComputeTimeSec;
   }
 
-  return { denseTermTflops, fullAttnTermTflops, secondaryTermTflops, totalTflops, estimatedComputeTimeSec, achievedTflops };
+  return {
+    ffnTermTflops, fullAttnProjTermTflops, fullAttnQuadraticTermTflops, secondaryProjTermTflops, secondaryComputeTermTflops,
+    totalTflops, gemmComputeTimeSec, deltaComputeTimeSec, deltaFixedOverheadSec, estimatedComputeTimeSec, achievedTflops,
+  };
 }
 
 // ── interconnect reference (from the "Silicon" sheet's Interconnect Reference table) ───
@@ -474,12 +559,19 @@ export interface PrefillTpResult {
   singleGpuTflops: number;
   singleGpuTimeSec: number | null;
   perGpuTflops: number;
+  /** GEMM-side (FFN/projections/quadratic) compute time only, sharded across TP GPUs. */
   perGpuComputeTimeSec: number | null;
-  /** Everything from here down is the communication side — rendered in green in the UI. */
+  /** DeltaNet's chunked-recurrence time, sharded across TP GPUs, at its own achieved TFLOP/s —
+   *  0 for non-DeltaNet models. Independent of silicon peak. */
+  perGpuDeltaComputeTimeSec: number;
+  /** Fixed per-chunk-per-layer overhead — not sharded by TP (every GPU still launches the same
+   *  number of chunk kernels along the token dimension). 0 unless configured. */
+  deltaFixedOverheadSec: number;
+  /** Everything from here down is the communication side — rendered in green in the UI. Bandwidth-
+   *  only (no latency term): negligible next to the bandwidth term at realistic message sizes. */
   allReduceMsgGB: number;
   numAllReduces: number;
   bwTermSec: number;
-  latencyTermSec: number;
   commTimeSec: number | null;
   wallClockSec: number | null;
   speedup: number | null;
@@ -488,50 +580,57 @@ export interface PrefillTpResult {
 }
 
 /** `totalPrefillTflops` is `calcPrefill(...).totalTflops` for the same architecture/usecase —
- *  passed in rather than recomputed so callers that already have it don't do the work twice. */
+ *  passed in rather than recomputed so callers that already have it don't do the work twice.
+ *  `deltaCfg` only matters for a DeltaNet-hybrid model. */
 export function calcPrefillTp(
-  arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig, peakTflops: number | null, totalPrefillTflops: number
+  arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig, deltaCfg: DeltaNetPrefillConfig,
+  peakTflops: number | null, prefill: PrefillResult,
 ): PrefillTpResult {
   const B = usecase.concurrency;
   const L = usecase.inputTokens;
-  const eff = getEffectiveComputeMfu(usecase);
+  const eff = usecase.gemmMfu;
   const link = INTERCONNECTS.find(i => i.id === tp.interconnectId);
   const linkBwGBs = link?.linkBwGBs ?? null;
-  const latencyUs = link?.latencyUsPerHop ?? 0;
 
-  const singleGpuTflops = totalPrefillTflops;
-  const singleGpuTimeSec = peakTflops && peakTflops > 0 ? singleGpuTflops / (peakTflops * eff) : null;
+  const singleGpuTflops = prefill.totalTflops;
+  const singleGpuTimeSec = prefill.estimatedComputeTimeSec;
 
+  const gemmFlopsTflops = prefill.ffnTermTflops + prefill.fullAttnProjTermTflops + prefill.fullAttnQuadraticTermTflops
+    + prefill.secondaryProjTermTflops + (arch.secondary?.kind === "windowed" ? prefill.secondaryComputeTermTflops : 0);
   const perGpuTflops = singleGpuTflops / tp.tpDegree;
-  const perGpuComputeTimeSec = peakTflops && peakTflops > 0 ? perGpuTflops / (peakTflops * eff) : null;
+  const perGpuComputeTimeSec = peakTflops && peakTflops > 0 ? (gemmFlopsTflops / tp.tpDegree) / (peakTflops * eff) : null;
+
+  const perGpuDeltaComputeTimeSec =
+    arch.secondary?.kind === "deltaNet" && deltaCfg.deltaTflopsPerGpu > 0
+      ? (prefill.secondaryComputeTermTflops / tp.tpDegree) / deltaCfg.deltaTflopsPerGpu
+      : 0;
+  const deltaFixedOverheadSec = prefill.deltaFixedOverheadSec;
 
   const allReduceMsgGB = (B * L * arch.hiddenDim * tp.activationDtypeBytes) / 1e9;
   const numAllReduces = tp.collectiveOpsPerLayer * arch.totalLayers;
 
   let bwTermSec = 0;
-  let latencyTermSec = 0;
-  if (tp.tpDegree > 1) {
-    latencyTermSec = (2 * (tp.tpDegree - 1) * latencyUs) / 1e6;
-    // Effective link BW is derated by the realized comm efficiency (real NCCL/oneCCL achieves
-    // ~70-85% of theoretical), not the full theoretical link bandwidth.
-    if (linkBwGBs) bwTermSec = ((2 * (tp.tpDegree - 1)) / tp.tpDegree) * (allReduceMsgGB / (linkBwGBs * usecase.commEfficiency));
+  if (tp.tpDegree > 1 && linkBwGBs) {
+    // Effective link BW is derated by the realized comm efficiency — real NCCL/oneCCL falls well
+    // short of theoretical, so this is never the full theoretical link bandwidth.
+    bwTermSec = ((2 * (tp.tpDegree - 1)) / tp.tpDegree) * (allReduceMsgGB / (linkBwGBs * usecase.commEfficiency));
   }
-  const commTimeSec = tp.tpDegree > 1 && !linkBwGBs ? null : numAllReduces * (bwTermSec + latencyTermSec);
+  const commTimeSec = tp.tpDegree > 1 && !linkBwGBs ? null : numAllReduces * bwTermSec;
 
-  // All-reduce is a hard sync point in vanilla TP (compute + comm additive), then runtime/workspace
-  // overhead is applied on top — previously omitted from the Prefill-TP wall-clock.
+  // Compute + delta + delta-fixed-overhead + comm all sit on the same serialized critical path —
+  // each layer's all-reduce blocks the next layer, so they're additive with no overlap.
   const wallClockSec = perGpuComputeTimeSec != null && commTimeSec != null
-    ? (perGpuComputeTimeSec + commTimeSec) * (1 + usecase.overheadFraction)
+    ? perGpuComputeTimeSec + perGpuDeltaComputeTimeSec + deltaFixedOverheadSec + commTimeSec
     : null;
   const speedup = singleGpuTimeSec != null && wallClockSec != null && wallClockSec > 0 ? singleGpuTimeSec / wallClockSec : null;
   const parallelEfficiency = speedup != null ? speedup / tp.tpDegree : null;
   const regime = commTimeSec != null && perGpuComputeTimeSec != null
-    ? (commTimeSec > perGpuComputeTimeSec ? "Communication-bound" : "Compute-bound scaling")
+    ? (commTimeSec > perGpuComputeTimeSec + perGpuDeltaComputeTimeSec ? "Communication-bound" : "Compute-bound scaling")
     : null;
 
   return {
-    singleGpuTflops, singleGpuTimeSec, perGpuTflops, perGpuComputeTimeSec,
-    allReduceMsgGB, numAllReduces, bwTermSec, latencyTermSec, commTimeSec,
+    singleGpuTflops, singleGpuTimeSec, perGpuTflops, perGpuComputeTimeSec, perGpuDeltaComputeTimeSec, deltaFixedOverheadSec,
+    allReduceMsgGB, numAllReduces, bwTermSec, commTimeSec,
     wallClockSec, speedup, parallelEfficiency, regime,
   };
 }
@@ -541,11 +640,12 @@ export const TP_SWEEP_DEGREES = [1, 2, 4, 8, 16];
 /** The "TP sweep" table — same calculation at a fixed ladder of TP degrees, independent of
  *  the currently-selected TP, to show where communication starts eating the scaling gains. */
 export function calcPrefillTpSweep(
-  arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig, peakTflops: number | null, totalPrefillTflops: number
+  arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig, deltaCfg: DeltaNetPrefillConfig,
+  peakTflops: number | null, prefill: PrefillResult,
 ): (PrefillTpResult & { tpDegree: number })[] {
   return TP_SWEEP_DEGREES.map(tpDegree => ({
     tpDegree,
-    ...calcPrefillTp(arch, usecase, { ...tp, tpDegree }, peakTflops, totalPrefillTflops),
+    ...calcPrefillTp(arch, usecase, { ...tp, tpDegree }, deltaCfg, peakTflops, prefill),
   }));
 }
 
@@ -554,7 +654,7 @@ export function calcPrefillTpSweep(
 // table, and split out by WHERE each dependency lives so the UI can color interconnect
 // dependencies green and everything else the usual cyan.
 
-export type TpRowKey = "singleGpu" | "perGpu" | "msgSize" | "numAllReduces" | "bwTerm" | "latencyTerm" | "commTime" | "wallClock";
+export type TpRowKey = "singleGpu" | "perGpu" | "deltaCompute" | "deltaFixedOverhead" | "msgSize" | "numAllReduces" | "bwTerm" | "commTime" | "wallClock";
 
 export interface TpRowHighlights {
   archAbbrevs?: string[];
@@ -564,19 +664,24 @@ export interface TpRowHighlights {
   interconnectFields?: ("linkBw" | "latency")[];
   /** TP-config inputs rendered inline on the Prefill-TP card itself (not in the rail). */
   localFields?: (keyof TpConfig)[];
+  /** DeltaNet-specific inputs rendered inline on the Prefill-TP card (chunk size / delta TFLOP/s
+   *  / fixed overhead) — only ever set for a DeltaNet-hybrid model. */
+  deltaConfigFields?: (keyof DeltaNetPrefillConfig)[];
 }
 
 export const TP_ROW_HIGHLIGHTS: Record<TpRowKey, TpRowHighlights> = {
-  singleGpu: { siliconPeak: true, usecaseFields: ["gemmMfu", "hybridStackDerate"] },
-  perGpu: { siliconPeak: true, usecaseFields: ["gemmMfu", "hybridStackDerate"], localFields: ["tpDegree"] },
+  singleGpu: { siliconPeak: true, usecaseFields: ["gemmMfu"] },
+  perGpu: { siliconPeak: true, usecaseFields: ["gemmMfu"], localFields: ["tpDegree"] },
+  deltaCompute: { localFields: ["tpDegree"], deltaConfigFields: ["chunkSize", "deltaTflopsPerGpu"] },
+  deltaFixedOverhead: { localFields: ["tpDegree"], deltaConfigFields: ["chunkSize", "fixedOverheadUsPerChunkPerLayer"] },
   msgSize: { archAbbrevs: [ABBR.d_model], usecaseFields: ["concurrency", "inputTokens"], localFields: ["activationDtypeBytes"] },
   numAllReduces: { archAbbrevs: [ABBR.n_layers], localFields: ["collectiveOpsPerLayer"] },
   bwTerm: { localFields: ["tpDegree"], interconnectFields: ["linkBw"], usecaseFields: ["commEfficiency"] },
-  latencyTerm: { localFields: ["tpDegree"], interconnectFields: ["latency"] },
-  commTime: { localFields: ["collectiveOpsPerLayer"], interconnectFields: ["linkBw", "latency"], usecaseFields: ["commEfficiency"] },
+  commTime: { localFields: ["collectiveOpsPerLayer"], interconnectFields: ["linkBw"], usecaseFields: ["commEfficiency"] },
   wallClock: {
-    siliconPeak: true, usecaseFields: ["gemmMfu", "hybridStackDerate", "commEfficiency", "overheadFraction"],
-    localFields: ["tpDegree", "collectiveOpsPerLayer"], interconnectFields: ["linkBw", "latency"],
+    siliconPeak: true, usecaseFields: ["gemmMfu", "commEfficiency"],
+    localFields: ["tpDegree", "collectiveOpsPerLayer"], interconnectFields: ["linkBw"],
+    deltaConfigFields: ["chunkSize", "deltaTflopsPerGpu", "fixedOverheadUsPerChunkPerLayer"],
   },
 };
 
@@ -630,12 +735,16 @@ export function calcDecode(
 
   const totalDecodeFlops = 2 * N_active * B;
   const flopsPerDevice = totalDecodeFlops / X;
-  const tComputeMs = peakTflops && peakTflops > 0 ? (flopsPerDevice / (peakTflops * 1e12)) * 1000 : null;
+  // Derated by the achieved-MFU fraction, same as Prefill's compute time — the raw peak TFLOPS
+  // figure alone was previously used un-derated here, so this input had no effect on Decode at all.
+  const tComputeMs = peakTflops && peakTflops > 0 ? (flopsPerDevice / (peakTflops * usecase.gemmMfu * 1e12)) * 1000 : null;
 
   const allReduceMsgBytes = B * arch.hiddenDim * bytesPerParam;
   const ringFactor = X > 1 ? (2 * (X - 1)) / X : 0;
+  // Derated by the achieved comm-efficiency fraction, same as Prefill-TP's bandwidth term — the
+  // raw theoretical link bandwidth alone was previously used un-derated here.
   const timePerAllReduceMs =
-    X <= 1 ? 0 : linkBwGBs && linkBwGBs > 0 ? ((ringFactor * allReduceMsgBytes) / (linkBwGBs * 1e9)) * 1000 : null;
+    X <= 1 ? 0 : linkBwGBs && linkBwGBs > 0 ? ((ringFactor * allReduceMsgBytes) / (linkBwGBs * usecase.commEfficiency * 1e9)) * 1000 : null;
   const totalSyncPoints = tp.collectiveOpsPerLayer * arch.totalLayers;
   const tCommMs = timePerAllReduceMs != null ? totalSyncPoints * timePerAllReduceMs : null;
 
@@ -681,14 +790,14 @@ export const DECODE_ROW_HIGHLIGHTS: Record<DecodeRowKey, DecodeRowHighlights> = 
   tMem: { siliconBandwidth: true },
   totalFlops: { archAbbrevs: [ABBR.N], usecaseFields: ["concurrency"] },
   flopsPerDevice: { localFields: ["tpDegree"] },
-  tCompute: { siliconPeak: true },
+  tCompute: { siliconPeak: true, usecaseFields: ["gemmMfu"] },
   msgBytes: { archAbbrevs: [ABBR.d_model], usecaseFields: ["concurrency", "weightDtypeBytes"] },
   ringFactor: { localFields: ["tpDegree"] },
-  timePerAllReduce: { localFields: ["tpDegree"], interconnectFields: ["linkBw"] },
+  timePerAllReduce: { localFields: ["tpDegree"], interconnectFields: ["linkBw"], usecaseFields: ["commEfficiency"] },
   syncPoints: { archAbbrevs: [ABBR.n_layers], localFields: ["collectiveOpsPerLayer"] },
-  tComm: { localFields: ["collectiveOpsPerLayer"], interconnectFields: ["linkBw"] },
+  tComm: { localFields: ["collectiveOpsPerLayer"], interconnectFields: ["linkBw"], usecaseFields: ["commEfficiency"] },
   totalTimePerToken: {
-    siliconPeak: true, siliconBandwidth: true, usecaseFields: ["concurrency", "weightDtypeBytes"],
+    siliconPeak: true, siliconBandwidth: true, usecaseFields: ["concurrency", "weightDtypeBytes", "gemmMfu", "commEfficiency"],
     localFields: ["tpDegree", "collectiveOpsPerLayer"], interconnectFields: ["linkBw"],
   },
 };
@@ -801,7 +910,7 @@ export function calcKvCacheAtContext(
   const prefillFlop =
     2 * N * contextTokens + 4 * arch.fullAttnLayers * (arch.fullAttn.qHeads * arch.fullAttn.headDim) * contextTokens ** 2;
   const recomputeSec = peakTflops && peakTflops > 0
-    ? prefillFlop / (tp.tpDegree * peakTflops * 1e12 * getEffectiveComputeMfu(usecase))
+    ? prefillFlop / (tp.tpDegree * peakTflops * 1e12 * usecase.gemmMfu)
     : null;
 
   const ddrMs = (kvPerReqGB / baseline.ddrEgressAggGBs) * 1000;
@@ -850,3 +959,117 @@ export const KV_CACHE_ROW_HIGHLIGHTS: Record<KvCacheRowKey, KvCacheRowHighlights
   cxlEgress: { tpDegreeField: true, kvConfigFields: ["cxlBWGBs"] },
   flashEgress: { tpDegreeField: true, kvConfigFields: ["flashBWGBs"] },
 };
+
+// ── Analysis — cross-stage time breakdown swept across concurrency ─────────────────────
+// Answers "as concurrency scales from 1 up, how does the time split across Prefill/Decode/
+// KV-Cache shift, and within each, across Compute/Memory/Interconnect (and within Prefill's
+// Compute, across FFN/Attention/DeltaNet)?" — the point being to show when the selected
+// silicon's TFLOPS vs. memory bandwidth vs. interconnect speed each start to dominate.
+// Reuses every existing calc function unchanged — just re-runs them at each concurrency step
+// and re-labels/re-groups their already-computed fields; no new formulas are introduced here.
+
+/** Reference concurrency ladder the Analysis view sweeps over. */
+export const ANALYSIS_CONCURRENCY_SWEEP = [1, 2, 4, 8, 16, 32, 64];
+
+export interface AnalysisComputeSub {
+  ffnMs: number;
+  attentionMs: number;
+  /** 0 for a windowed-hybrid or plain dense model — only DeltaNet models have this bucket. */
+  deltaNetMs: number;
+}
+
+export interface AnalysisBreakdown {
+  computeMs: number;
+  /** 0 for Prefill — its weight reads are amortized/overlapped by construction (compute-bound assumption), so no separate memory-time bucket is modeled for it. */
+  memoryMs: number;
+  interconnectMs: number;
+  totalMs: number;
+  /** Only present for Prefill — Decode's compute is a single lumped term, not split by component. */
+  computeSub?: AnalysisComputeSub;
+}
+
+export interface AnalysisKvBreakdown {
+  /** Whether this concurrency exceeds the KV budget at the current context length — below
+   *  capacity, no eviction is needed and this stage contributes 0. */
+  overCapacity: boolean;
+  recomputeMs: number | null;
+  fastestReadBackMs: number | null;
+  fastestMedium: "DDR" | "CXL" | "Flash" | null;
+  /** The realistic modeled cost: min(recomputeMs, fastestReadBackMs) — a real system picks
+   *  whichever is faster (per the KV Cache section's own conclusion, read-back always wins). 0 if not overCapacity. */
+  totalMs: number;
+}
+
+export interface AnalysisPoint {
+  concurrency: number;
+  prefill: AnalysisBreakdown;
+  decode: AnalysisBreakdown;
+  kvCache: AnalysisKvBreakdown;
+  totalMs: number;
+}
+
+/** `vramPerCardGB` comes from the selected Silicon, same as the KV Cache section. Every other
+ *  input mirrors what Prefill/Prefill-TP/Decode/KV-Cache already take — this just re-runs them
+ *  at each concurrency in ANALYSIS_CONCURRENCY_SWEEP with everything else (arch, token lengths,
+ *  TP, silicon, delta config) held at the caller's current settings. */
+export function calcAnalysisSweep(
+  arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig, deltaCfg: DeltaNetPrefillConfig, kv: KvCacheConfig,
+  peakTflops: number | null, memBandwidthGBs: number | null, linkBwGBs: number | null, vramPerCardGB: number | null,
+): AnalysisPoint[] {
+  return ANALYSIS_CONCURRENCY_SWEEP.map(concurrency => {
+    const u: UsecaseInputs = { ...usecase, concurrency };
+
+    // ── Prefill: compute (GEMM + delta) and interconnect come straight out of calcPrefillTp;
+    // FFN/Attention/DeltaNet sub-shares are allocated proportionally from calcPrefill's own
+    // TFLOPS breakdown, since every GEMM-side term shares the same (peak × MFU × TP) denominator.
+    const prefillResult = calcPrefill(arch, u, deltaCfg, peakTflops);
+    const prefillTp = calcPrefillTp(arch, u, tp, deltaCfg, peakTflops, prefillResult);
+    const gemmFlopsTflops =
+      prefillResult.ffnTermTflops + prefillResult.fullAttnProjTermTflops + prefillResult.fullAttnQuadraticTermTflops
+      + prefillResult.secondaryProjTermTflops + (arch.secondary?.kind === "windowed" ? prefillResult.secondaryComputeTermTflops : 0);
+    const gemmComputeMs = (prefillTp.perGpuComputeTimeSec ?? 0) * 1000;
+    const attentionTflops =
+      prefillResult.fullAttnProjTermTflops + prefillResult.fullAttnQuadraticTermTflops + prefillResult.secondaryProjTermTflops
+      + (arch.secondary?.kind === "windowed" ? prefillResult.secondaryComputeTermTflops : 0);
+    const ffnMs = gemmFlopsTflops > 0 ? gemmComputeMs * (prefillResult.ffnTermTflops / gemmFlopsTflops) : 0;
+    const attentionMs = gemmFlopsTflops > 0 ? gemmComputeMs * (attentionTflops / gemmFlopsTflops) : 0;
+    const deltaNetMs = ((prefillTp.perGpuDeltaComputeTimeSec ?? 0) + (prefillTp.deltaFixedOverheadSec ?? 0)) * 1000;
+
+    const prefill: AnalysisBreakdown = {
+      computeMs: gemmComputeMs + deltaNetMs,
+      memoryMs: 0,
+      interconnectMs: (prefillTp.commTimeSec ?? 0) * 1000,
+      totalMs: (prefillTp.wallClockSec ?? 0) * 1000,
+      computeSub: { ffnMs, attentionMs, deltaNetMs },
+    };
+
+    // ── Decode: t_mem/t_compute/t_comm are already exactly Memory/Compute/Interconnect — just
+    // scale each per-token figure up by outputTokens for "total decode-phase time for this request".
+    const decodeResult = calcDecode(arch, u, tp, peakTflops, memBandwidthGBs, linkBwGBs);
+    const outTok = u.outputTokens;
+    const decode: AnalysisBreakdown = {
+      computeMs: (decodeResult.tComputeMs ?? 0) * outTok,
+      memoryMs: (decodeResult.tMemMs ?? 0) * outTok,
+      interconnectMs: (decodeResult.tCommMs ?? 0) * outTok,
+      totalMs: (decodeResult.totalTimePerTokenMs ?? 0) * outTok,
+    };
+
+    // ── KV-Cache: 0 unless this concurrency exceeds the budget at the current context length,
+    // in which case the realistic cost is whichever of recompute/read-back is faster.
+    const baseline = calcKvCacheBaseline(arch, u, tp, kv, vramPerCardGB);
+    const atContext = calcKvCacheAtContext(arch, u, tp, baseline, u.decodeContextLen, peakTflops);
+    const overCapacity = concurrency > atContext.maxConcurrency;
+    let kvCache: AnalysisKvBreakdown;
+    if (!overCapacity) {
+      kvCache = { overCapacity: false, recomputeMs: null, fastestReadBackMs: null, fastestMedium: null, totalMs: 0 };
+    } else {
+      const recomputeMs = atContext.recomputeSec != null ? atContext.recomputeSec * 1000 : null;
+      const tiers: [medium: "DDR" | "CXL" | "Flash", ms: number][] = [["DDR", atContext.ddrMs], ["CXL", atContext.cxlMs], ["Flash", atContext.flashMs]];
+      const [fastestMedium, fastestReadBackMs] = tiers.reduce((a, b) => (b[1] < a[1] ? b : a));
+      const totalMs = recomputeMs != null ? Math.min(recomputeMs, fastestReadBackMs) : fastestReadBackMs;
+      kvCache = { overCapacity: true, recomputeMs, fastestReadBackMs, fastestMedium, totalMs };
+    }
+
+    return { concurrency, prefill, decode, kvCache, totalMs: prefill.totalMs + decode.totalMs + kvCache.totalMs };
+  });
+}
