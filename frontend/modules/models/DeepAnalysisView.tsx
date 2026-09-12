@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import Image from "next/image";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useRegisterExport } from "@/contexts/ExportContext";
+import { useRequestSidebarCollapsed } from "@/contexts/SidebarCollapseContext";
 import { COMPARISON_CHIPS, type ComparisonChip } from "@/modules/silicon/comparison-data";
 import { StackedAreaChart, type StackedAreaSeries } from "./AnalysisChart";
 import { exportDeepAnalysisToExcel, type ExportScenario } from "./deep-analysis-export";
@@ -12,14 +13,14 @@ import {
   DEFAULT_USECASE_INPUTS, WEIGHT_DTYPE_OPTIONS, KV_DTYPE_OPTIONS,
   getPrefillRowSymbols, PREFILL_ROW_USECASE_FIELDS, PREFILL_ROW_USES_SILICON_PEAK,
   DEFAULT_DELTANET_PREFILL_CONFIG,
-  INTERCONNECTS, DEFAULT_TP_CONFIG, TP_ROW_HIGHLIGHTS, DECODE_ROW_HIGHLIGHTS,
+  INTERCONNECTS, DEFAULT_TP_CONFIG, B70_DEFAULT_INTERCONNECT_ID, TP_ROW_HIGHLIGHTS, DECODE_ROW_HIGHLIGHTS,
   DEFAULT_KV_CACHE_CONFIG, KV_CACHE_ROW_HIGHLIGHTS,
   getSiliconPeak, getSiliconMemoryBandwidthGBs, getSiliconMemoryCapacityGB,
-  calcPrefill, calcPrefillTp, calcPrefillTpSweep, calcDecode, calcKvCacheBaseline, calcKvCacheAtContext, calcKvCacheSweep,
-  calcAnalysisSweep,
+  calcPrefill, calcPrefillTp, calcPrefillTpSweep, calcDecode, calcKvCacheBaseline, calcKvCacheAtContext,
+  calcKvPoolOccupancy, calcAnalysisSweep,
   updateUsecaseField, resetDecodeContextToAuto,
   type UsecaseInputs, type PrefillRowKey, type TpConfig, type TpRowKey, type DecodeRowKey,
-  type KvCacheConfig, type KvCacheRowKey, type ModelArchitecture, type DeltaNetPrefillConfig,
+  type KvCacheConfig, type KvCacheRowKey, type KvCacheBaseline, type KvPoolOccupancy, type ModelArchitecture, type DeltaNetPrefillConfig,
 } from "./deep-analysis-data";
 
 // ── shared styling helpers (same conventions as KvOffloadView/ModelBenchmarksView) ─────
@@ -230,7 +231,7 @@ function UsecasePanel({ usecase, onChange, highlightedFields }: {
   );
 }
 
-// ── Silicon panel (selector — pulls specs from the Silicon module, doesn't redefine them) ──
+// ── Compute panel (selector — pulls specs from the Silicon module, doesn't redefine them) ──
 
 function SiliconPanel({ chip, onChange, highlightPeak, highlightBandwidth, highlightCapacity }: {
   chip: ComparisonChip | undefined; onChange: (id: string) => void;
@@ -241,8 +242,8 @@ function SiliconPanel({ chip, onChange, highlightPeak, highlightBandwidth, highl
   const peak = chip ? getSiliconPeak(chip) : null;
 
   return (
-    <CompactPanel title="Silicon" subtitle="Pulled from the Silicon page's own comparison data — not re-entered here.">
-      <CompactRow label="Selected silicon" index={0}>
+    <CompactPanel title="Compute" subtitle="Pulled from the Silicon page's own comparison data — not re-entered here.">
+      <CompactRow label="Selected compute" index={0}>
         <select
           value={chip?.id ?? ""} onChange={e => onChange(e.target.value)}
           className="rounded px-1.5 py-0.5 text-xs focus:outline-none" style={{ ...selectStyle(isDark), width: "12rem" }}
@@ -255,7 +256,7 @@ function SiliconPanel({ chip, onChange, highlightPeak, highlightBandwidth, highl
       </CompactRow>
 
       {!chip ? (
-        <p className="text-xs px-3 py-2" style={{ color: "var(--dm-txt-faint)" }}>No silicon selected — pick one above to drive the Prefill/Decode estimates.</p>
+        <p className="text-xs px-3 py-2" style={{ color: "var(--dm-txt-faint)" }}>No compute selected — pick one above to drive the Prefill/Decode estimates.</p>
       ) : (
         <>
           <CompactRow label="Peak throughput used" index={1} hint={peak?.note} lit={highlightPeak}>
@@ -276,6 +277,62 @@ function SiliconPanel({ chip, onChange, highlightPeak, highlightBandwidth, highl
           </CompactRow>
         </>
       )}
+    </CompactPanel>
+  );
+}
+
+// ── Memory panel (reference — bandwidth/capacity ranges across the memory hierarchy,
+// independent of whichever chip is selected above). Cost per tier is deliberately not modeled
+// yet — flagged in the subtitle rather than guessed at. HBM is on-package and CXL is itself a
+// point-to-point link, so both carry their own fixed bandwidth spec; DDR (host) and All-Flash
+// are only reachable *over* the selected fabric here, so their bandwidth is whatever that
+// Interconnect link can actually deliver, not the local DDR-channel/array spec.
+
+interface MemoryTier { id: string; name: string; capacityRange: string; note: string; bwRange?: string; bwFromInterconnect?: boolean }
+
+const MEMORY_TIERS: MemoryTier[] = [
+  {
+    id: "hbm", name: "HBM", bwRange: "1.2 – 8 TB/s", capacityRange: "24 – 288 GB",
+    note: "On-package stacked memory (HBM2e/HBM3/HBM3e) — highest bandwidth of any tier here, but capacity is fixed at manufacture and not field-expandable.",
+  },
+  {
+    id: "ddr", name: "DDR (host)", capacityRange: "256 GB – 1.5+ TB", bwFromInterconnect: true,
+    note: "Host DDR reached over the fabric — bandwidth is capped by the selected Interconnect link, not the local DDR-channel spec.",
+  },
+  {
+    id: "cxl", name: "CXL", bwRange: "32 – 64 GB/s", capacityRange: "128 GB – 2+ TB",
+    note: "Pooled/tiered memory over a CXL expander — lower per-module bandwidth than DDR, but composable capacity beyond local DIMM slots.",
+  },
+  {
+    id: "flash", name: "All-Flash", capacityRange: "10s of TB – PB-scale", bwFromInterconnect: true,
+    note: "NVMe-oF array reached over the fabric — bandwidth is capped by the selected Interconnect link, not the raw array/media spec.",
+  },
+];
+
+function MemoryPanel({ tp }: { tp: TpConfig }) {
+  const link = INTERCONNECTS.find(i => i.id === tp.interconnectId);
+  const interconnectBw = link ? `${fmtInt(link.linkBwGBs)} GB/s` : "—";
+
+  return (
+    <CompactPanel title="Memory" subtitle="Reference bandwidth/capacity ranges across the memory hierarchy — independent of the selected compute. Cost per tier to follow.">
+      {MEMORY_TIERS.map((t, i) => {
+        const bw = t.bwFromInterconnect ? interconnectBw : t.bwRange;
+        const hint = t.bwFromInterconnect && link ? `${t.note} Currently capped by ${link.name} at ${interconnectBw}.` : t.note;
+        return (
+          <div
+            key={t.id}
+            title={hint}
+            className="flex items-center justify-between gap-3 px-3 py-1.5"
+            style={{ background: i % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)" }}
+          >
+            <div className="min-w-0">
+              <div className="text-[11px] truncate" style={{ color: "var(--dm-txt-faint)" }}>{t.name}</div>
+              <div className="text-[9px] truncate" style={{ color: "var(--dm-txt-faint)" }}>{t.capacityRange}</div>
+            </div>
+            <span className="text-xs font-mono text-left whitespace-nowrap flex-shrink-0" style={{ color: "var(--dm-txt-body)" }}>{bw}</span>
+          </div>
+        );
+      })}
     </CompactPanel>
   );
 }
@@ -330,10 +387,10 @@ function InterconnectPanel({ tp, onChange, highlighted }: {
 
 const ARCHITECTURE_DIAGRAMS: Record<string, { src: string; width: number; height: number; alt: string; caption: string }> = {
   "qwen3.8-27b": {
-    src: "/Qwen3.8-27B_labeled_architecture.svg",
-    width: 1560, height: 1600,
-    alt: "Qwen3.8-27B labeled architecture diagram — token embedding through Gated DeltaNet / Gated Attention hybrid layers to output logits, with every dimension and parameter abbreviation labeled",
-    caption: "Layout after Sebastian Raschka. Abbreviations match the Architecture panel and every formula elsewhere in this tab.",
+    src: "/Qwen3.8-27B_architecture_inline_3to1.svg",
+    width: 1060, height: 1120,
+    alt: "Qwen3.8-27B labeled architecture diagram — one period (1 Gated Attention + 3 Gated DeltaNet layers, repeated ×16 = 64 layers) from token embedding to output logits, with every dimension and parameter abbreviation labeled",
+    caption: "Layout after Sebastian Raschka. One period = 1 Gated Attention + 3 Gated DeltaNet, repeated ×16. Abbreviations match the Architecture panel and every formula elsewhere in this tab.",
   },
   "gemma4-31b": {
     src: "/gemma4-31B.png",
@@ -343,9 +400,45 @@ const ARCHITECTURE_DIAGRAMS: Record<string, { src: string; width: number; height
   },
 };
 
-function ArchitectureDiagram({ arch }: { arch: ModelArchitecture }) {
+/** Hover regions for the Qwen3.8-27B diagram, in the SVG's own viewBox coordinates (1060×1120)
+ *  — read directly off the source SVG's <rect> geometry, so a hover always lines up with the
+ *  box a viewer is actually pointing at. Positioned as absolute % overlays on top of the
+ *  rendered SVG rather than reconstructing every shape as JSX, so the artwork stays exactly
+ *  what the SVG file draws. Only leaf-level boxes/badges get a hotspot — the two big colored
+ *  layer containers are deliberately excluded since they'd sit underneath (and block) these. */
+interface DiagramHotspot { x: number; y: number; w: number; h: number; abbrevs: string[] }
+
+const QWEN_HOTSPOTS: DiagramHotspot[] = [
+  { x: 42, y: 122, w: 150, h: 28, abbrevs: [ABBR.N] },
+  { x: 280, y: 198, w: 300, h: 40, abbrevs: [ABBR.V] },
+  { x: 660, y: 196, w: 168, h: 28, abbrevs: [ABBR.V] },
+  { x: 280, y: 358, w: 300, h: 32, abbrevs: [ABBR.d_ffn] },
+  { x: 660, y: 358, w: 160, h: 28, abbrevs: [ABBR.d_ffn] },
+  { x: 280, y: 468, w: 300, h: 40, abbrevs: [ABBR.n_q, ABBR.d_head, ABBR.n_kv, ABBR.d_rope] },
+  { x: 660, y: 462, w: 120, h: 28, abbrevs: [ABBR.n_q] },
+  { x: 786, y: 462, w: 140, h: 28, abbrevs: [ABBR.d_head] },
+  { x: 660, y: 494, w: 170, h: 28, abbrevs: [ABBR.n_kv] },
+  { x: 660, y: 526, w: 120, h: 28, abbrevs: [ABBR.d_rope] },
+  { x: 30, y: 308, w: 150, h: 28, abbrevs: [ABBR.n_layers] },
+  { x: 30, y: 342, w: 168, h: 28, abbrevs: [ABBR.n_fa] },
+  { x: 30, y: 376, w: 168, h: 28, abbrevs: [ABBR.n_dn] },
+  { x: 280, y: 616, w: 300, h: 32, abbrevs: [ABBR.d_ffn] },
+  { x: 280, y: 726, w: 300, h: 40, abbrevs: [ABBR.n_v, ABBR.n_qk, ABBR.d_dn] },
+  { x: 660, y: 720, w: 120, h: 28, abbrevs: [ABBR.n_v] },
+  { x: 786, y: 720, w: 120, h: 28, abbrevs: [ABBR.n_qk] },
+  { x: 660, y: 752, w: 140, h: 28, abbrevs: [ABBR.d_dn] },
+  { x: 30, y: 712, w: 182, h: 28, abbrevs: [ABBR.L_native] },
+  { x: 30, y: 746, w: 182, h: 28, abbrevs: [ABBR.L_ext] },
+  { x: 280, y: 830, w: 300, h: 42, abbrevs: [ABBR.d_model] },
+  { x: 660, y: 838, w: 160, h: 28, abbrevs: [ABBR.d_model] },
+  { x: 30, y: 1020, w: 590, h: 24, abbrevs: [ABBR.MTP] },
+  { x: 30, y: 1046, w: 590, h: 24, abbrevs: [ABBR.c] },
+];
+
+function ArchitectureDiagram({ arch, onHoverAbbrevs }: { arch: ModelArchitecture; onHoverAbbrevs?: (abbrevs: Set<string> | null) => void }) {
   const diagram = ARCHITECTURE_DIAGRAMS[arch.id];
   if (!diagram) return null;
+  const interactive = arch.id === "qwen3.8-27b";
   return (
     <div
       className="rounded-2xl border border-[var(--dm-border-a)] overflow-hidden"
@@ -353,15 +446,37 @@ function ArchitectureDiagram({ arch }: { arch: ModelArchitecture }) {
     >
       <div className="px-4 pt-3 pb-2" style={{ borderBottom: "1px solid var(--dm-border-a)" }}>
         <h2 className="text-sm font-bold text-[var(--dm-txt-primary)]">{arch.name} — Labeled Architecture</h2>
-        <p className="mt-0.5 text-[11px] text-[var(--dm-txt-muted)] leading-snug">{diagram.caption}</p>
+        <p className="mt-0.5 text-[11px] text-[var(--dm-txt-muted)] leading-snug">
+          {diagram.caption}{interactive ? " Hover a block to light up its row in the Architecture panel." : ""}
+        </p>
       </div>
       <div className="p-3" style={{ background: "#f8fafc" }}>
-        <Image
-          src={diagram.src}
-          alt={diagram.alt}
-          width={diagram.width} height={diagram.height}
-          className="w-full h-auto rounded-lg"
-        />
+        {interactive ? (
+          <div className="relative w-full" style={{ aspectRatio: `${diagram.width} / ${diagram.height}` }}>
+            <Image src={diagram.src} alt={diagram.alt} fill className="rounded-lg" style={{ objectFit: "contain" }} />
+            {QWEN_HOTSPOTS.map((h, i) => (
+              <div
+                key={i}
+                onMouseEnter={() => onHoverAbbrevs?.(new Set(h.abbrevs))}
+                onMouseLeave={() => onHoverAbbrevs?.(null)}
+                className="absolute cursor-pointer"
+                style={{
+                  left: `${(h.x / diagram.width) * 100}%`,
+                  top: `${(h.y / diagram.height) * 100}%`,
+                  width: `${(h.w / diagram.width) * 100}%`,
+                  height: `${(h.h / diagram.height) * 100}%`,
+                }}
+              />
+            ))}
+          </div>
+        ) : (
+          <Image
+            src={diagram.src}
+            alt={diagram.alt}
+            width={diagram.width} height={diagram.height}
+            className="w-full h-auto rounded-lg"
+          />
+        )}
       </div>
     </div>
   );
@@ -442,12 +557,126 @@ function ArchitecturePanel({ arch: a, highlighted }: { arch: ModelArchitecture; 
   );
 }
 
+// ── Table/Visual toggle — shared by Prefill and Prefill-TP (same pill style as KV Pool's
+// placement-strategy toggle, so the interaction reads the same everywhere it appears). ──────
+
+function ViewToggle({ view, onChange }: { view: "table" | "visual"; onChange: (v: "table" | "visual") => void }) {
+  return (
+    <div className="inline-flex rounded-lg border overflow-hidden mb-4" style={{ borderColor: "var(--dm-border-a)" }}>
+      {(["table", "visual"] as const).map(v => (
+        <button
+          key={v} type="button" onClick={() => onChange(v)}
+          className="px-3 py-1.5 text-xs font-semibold transition-colors"
+          style={{ background: view === v ? "rgba(34,211,238,0.15)" : "var(--dm-surface-a)", color: view === v ? "#22d3ee" : "var(--dm-txt-secondary)" }}
+        >
+          {v === "table" ? "Table" : "Visual"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+interface DistributionSlice { label: string; value: number; color: string }
+
+/** A ring built from per-slice `<circle>` dash-arcs rather than hand-rolled arc paths — much
+ *  simpler math, and a soft color-matched glow on each arc is what makes it read as "bright"
+ *  rather than a flat, dutiful pie chart. */
+function DonutChart({ slices, size = 200, thickness = 30, centerLabel, centerSub }: {
+  slices: DistributionSlice[]; size?: number; thickness?: number; centerLabel?: string; centerSub?: string;
+}) {
+  const total = slices.reduce((s, x) => s + Math.max(0, x.value), 0);
+  const r = (size - thickness) / 2;
+  const c = 2 * Math.PI * r;
+  const cx = size / 2, cy = size / 2;
+  let offset = 0;
+
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{ flexShrink: 0 }}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--dm-surface-b)" strokeWidth={thickness} />
+      {total > 0 && slices.map((s, i) => {
+        const frac = Math.max(0, s.value) / total;
+        if (frac <= 0.0001) return null;
+        const len = frac * c;
+        const dashoffset = -offset;
+        offset += len;
+        return (
+          <circle
+            key={i} cx={cx} cy={cy} r={r} fill="none" stroke={s.color} strokeWidth={thickness}
+            strokeDasharray={`${len} ${c - len}`} strokeDashoffset={dashoffset}
+            transform={`rotate(-90 ${cx} ${cy})`}
+            style={{ filter: `drop-shadow(0 0 5px ${s.color}90)` }}
+          />
+        );
+      })}
+      {centerLabel && (
+        <text x={cx} y={centerSub ? cy - 8 : cy} textAnchor="middle" dominantBaseline="middle" fontSize={size * 0.1} fontWeight={800} fill="var(--dm-txt-primary)">
+          {centerLabel}
+        </text>
+      )}
+      {centerSub && (
+        <text x={cx} y={cy + 14} textAnchor="middle" dominantBaseline="middle" fontSize={size * 0.052} fill="var(--dm-txt-faint)">
+          {centerSub}
+        </text>
+      )}
+    </svg>
+  );
+}
+
+function DistributionLegend({ slices, fmtValue }: { slices: DistributionSlice[]; fmtValue: (v: number) => string }) {
+  const total = slices.reduce((s, x) => s + Math.max(0, x.value), 0);
+  return (
+    <div className="flex flex-col gap-2 w-full">
+      {slices.map((s, i) => {
+        const pct = total > 0 ? (Math.max(0, s.value) / total) * 100 : 0;
+        return (
+          <div key={i} className="flex items-center gap-2.5">
+            <span style={{ width: 11, height: 11, borderRadius: 3, background: s.color, boxShadow: `0 0 7px ${s.color}a0`, flexShrink: 0 }} />
+            <span className="text-xs flex-1 truncate" style={{ color: "var(--dm-txt-body)" }}>{s.label}</span>
+            <span className="text-xs font-mono font-bold whitespace-nowrap" style={{ color: s.color }}>{fmtValue(s.value)}</span>
+            <span className="text-[10px] font-mono w-11 text-right flex-shrink-0" style={{ color: "var(--dm-txt-faint)" }}>{pct.toFixed(1)}%</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Donut + legend, side by side — the shared "distribution" pictorial for Prefill and
+ *  Prefill-TP. Bright, saturated per-category colors with a matching glow are deliberate: this
+ *  is meant to pop next to the dense formula tables elsewhere on this tab, not blend in. */
+function DistributionViz({ subtitle, slices, fmtValue, centerLabel, centerSub }: {
+  subtitle: string; slices: DistributionSlice[]; fmtValue: (v: number) => string; centerLabel: string; centerSub: string;
+}) {
+  return (
+    <div className="rounded-xl border overflow-hidden p-4" style={{ borderColor: "var(--dm-border-a)", background: "var(--dm-table-bg)" }}>
+      <p className="text-[10.5px] leading-relaxed mb-3" style={{ color: "var(--dm-txt-muted)" }}>{subtitle}</p>
+      <div className="flex flex-col sm:flex-row items-center gap-6">
+        <DonutChart slices={slices} centerLabel={centerLabel} centerSub={centerSub} />
+        <DistributionLegend slices={slices} fmtValue={fmtValue} />
+      </div>
+    </div>
+  );
+}
+
 // ── Prefill section ──────────────────────────────────────────────────────────────────────
+
+/** Vivid, saturated palette for the compute-category distribution — deliberately not the app's
+ *  usual cyan-monochrome, so the Visual toggle reads as a distinct, pop-off-the-page view next
+ *  to the dense formula table it sits beside. Communication reuses the app-wide green so it
+ *  still reads as "network cost" the moment it shows up in Prefill-TP's version below. */
+const PREFILL_CATEGORY_COLORS: Record<string, string> = {
+  ffn: "#2dd4bf",              // bright teal
+  fullAttnProj: "#22d3ee",     // bright cyan
+  fullAttnQuadratic: "#f472b6", // bright pink
+  secondaryProj: "#a78bfa",    // bright violet
+  secondaryCompute: "#facc15", // bright amber
+};
 
 function PrefillSection({ arch, usecase, deltaCfg, chip, highlightedRow, onSelectRow }: {
   arch: ModelArchitecture; usecase: UsecaseInputs; deltaCfg: DeltaNetPrefillConfig; chip: ComparisonChip | undefined;
   highlightedRow: PrefillRowKey | null; onSelectRow: (key: PrefillRowKey | null) => void;
 }) {
+  const [view, setView] = useState<"table" | "visual">("table");
   const peak = chip ? getSiliconPeak(chip) : null;
   const result = useMemo(() => calcPrefill(arch, usecase, deltaCfg, peak?.teraflops ?? null), [arch, usecase, deltaCfg, peak?.teraflops]);
   const isDeltaNet = arch.secondary?.kind === "deltaNet";
@@ -500,6 +729,19 @@ function PrefillSection({ arch, usecase, deltaCfg, chip, highlightedRow, onSelec
       title="Prefill TFLOPS"
       subtitle={`Ported from qwen3_x_model_ttft_calculator.xlsx — FFN, attention projections, and the O(L²) quadratic term are broken out separately${isDeltaNet ? "; DeltaNet's chunked-recurrence arithmetic is its own timing bucket, at its own achieved TFLOP/s" : isWindowed ? "; sliding-window layers are capped at the window size" : ""}. All figures in TFLOPS. Click a row to light up the Architecture parameters it uses.`}
     >
+      <ViewToggle view={view} onChange={setView} />
+
+      {view === "visual" ? (
+        <div className="mb-4">
+          <DistributionViz
+            subtitle="Share of total prefill compute (TFLOPS) each category demands — the same terms as the table, just sized by how much of the work they actually are."
+            slices={rows.map(r => ({ label: r.label, value: r.value, color: PREFILL_CATEGORY_COLORS[r.key] ?? "#94a3b8" }))}
+            fmtValue={v => `${fmtTflops(v)} TF`}
+            centerLabel={fmtTflops(result.totalTflops)}
+            centerSub="TFLOPS total"
+          />
+        </div>
+      ) : (
       <div className="rounded-xl overflow-hidden border mb-4" style={{ borderColor: "var(--dm-border-a)" }}>
         <table className="w-full text-sm border-collapse">
           <thead>
@@ -536,6 +778,7 @@ function PrefillSection({ arch, usecase, deltaCfg, chip, highlightedRow, onSelec
           </tbody>
         </table>
       </div>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <div>
@@ -590,7 +833,9 @@ function PrefillTpCard({ arch, usecase, chip, tp, onChangeTp, deltaCfg, onChange
   deltaCfg: DeltaNetPrefillConfig; onChangeDeltaCfg: (next: DeltaNetPrefillConfig) => void;
   highlightedRow: TpRowKey | null; onSelectRow: (key: TpRowKey | null) => void;
 }) {
+  const [view, setView] = useState<"table" | "visual">("table");
   const isDeltaNet = arch.secondary?.kind === "deltaNet";
+  const isWindowed = arch.secondary?.kind === "windowed";
   const peak = chip ? getSiliconPeak(chip) : null;
   const prefill = useMemo(() => calcPrefill(arch, usecase, deltaCfg, peak?.teraflops ?? null), [arch, usecase, deltaCfg, peak?.teraflops]);
   const result = useMemo(
@@ -629,9 +874,9 @@ function PrefillTpCard({ arch, usecase, chip, tp, onChangeTp, deltaCfg, onChange
   type TpTableRow = { key: TpRowKey; label: string; formula: string; value: string; final?: boolean };
   const computeRows: TpTableRow[] = [
     { key: "singleGpu", label: "Single-GPU compute time (TP=1)", formula: "Total prefill ÷ (P_peak × eff_mfu) [+ delta]", value: result.singleGpuTimeSec != null ? `${result.singleGpuTimeSec.toFixed(4)} s` : "—" },
-    { key: "perGpu", label: `Per-GPU GEMM compute time (TP=${tp.tpDegree})`, formula: "(GEMM FLOPs ÷ TP) ÷ (P_peak × eff_mfu)", value: result.perGpuComputeTimeSec != null ? `${result.perGpuComputeTimeSec.toFixed(4)} s` : "—", final: true },
+    { key: "perGpu", label: `Per-GPU GEMM compute time (TP=${tp.tpDegree})`, formula: "(GEMM FLOPs ÷ TP) ÷ (P_peak × eff_mfu)", value: result.perGpuComputeTimeSec != null ? `${result.perGpuComputeTimeSec.toFixed(4)} s` : "—" },
     ...(isDeltaNet ? [
-      { key: "deltaCompute" as TpRowKey, label: `Per-GPU delta compute (TP=${tp.tpDegree})`, formula: "(Delta FLOPs ÷ TP) ÷ delta_TFLOPs", value: `${result.perGpuDeltaComputeTimeSec.toFixed(4)} s`, final: true },
+      { key: "deltaCompute" as TpRowKey, label: `Per-GPU delta compute (TP=${tp.tpDegree})`, formula: "(Delta FLOPs ÷ TP) ÷ delta_TFLOPs", value: `${result.perGpuDeltaComputeTimeSec.toFixed(4)} s` },
       { key: "deltaFixedOverhead" as TpRowKey, label: "Delta fixed overhead", formula: "chunks × n_dn × overhead_µs ÷ 1e6", value: `${result.deltaFixedOverheadSec.toFixed(4)} s` },
     ] : []),
   ];
@@ -640,6 +885,31 @@ function PrefillTpCard({ arch, usecase, chip, tp, onChangeTp, deltaCfg, onChange
     { key: "numAllReduces", label: "Number of all-reduces", formula: `k_coll × ${ABBR.n_layers}`, value: fmtInt(result.numAllReduces) },
     { key: "bwTerm", label: "Bandwidth term (per all-reduce)", formula: "2×(TP−1)/TP × msg_GB ÷ (link_BW × comm_eff)", value: `${result.bwTermSec.toFixed(6)} s` },
     { key: "commTime", label: `Communication time (Σ ${result.numAllReduces} all-reduces)`, formula: "n_allreduce × bw_term", value: result.commTimeSec != null ? `${result.commTimeSec.toFixed(4)} s` : "—", final: true },
+  ];
+
+  // Per-GPU compute time doesn't come pre-split by category — it's proportionally allocated
+  // from the single-GPU TFLOPS shares above, the same allocation the Comparisons tab's
+  // cross-stage sweep already uses for its own Prefill Compute → FFN/Attention/DeltaNet drill-down.
+  const gemmFlopsTotal =
+    prefill.ffnTermTflops + prefill.fullAttnProjTermTflops + prefill.fullAttnQuadraticTermTflops
+    + prefill.secondaryProjTermTflops + (isWindowed ? prefill.secondaryComputeTermTflops : 0);
+  const gemmComputeSec = result.perGpuComputeTimeSec ?? 0;
+  const shareSec = (tflops: number) => (gemmFlopsTotal > 0 ? gemmComputeSec * (tflops / gemmFlopsTotal) : 0);
+
+  const tpSlices: DistributionSlice[] = [
+    { label: "FFN", value: shareSec(prefill.ffnTermTflops), color: PREFILL_CATEGORY_COLORS.ffn },
+    { label: "Full-attention projections", value: shareSec(prefill.fullAttnProjTermTflops), color: PREFILL_CATEGORY_COLORS.fullAttnProj },
+    { label: "Full-attention quadratic", value: shareSec(prefill.fullAttnQuadraticTermTflops), color: PREFILL_CATEGORY_COLORS.fullAttnQuadratic },
+    ...(isDeltaNet || isWindowed ? [{
+      label: isDeltaNet ? "DeltaNet projections" : "Sliding-window projections",
+      value: shareSec(prefill.secondaryProjTermTflops), color: PREFILL_CATEGORY_COLORS.secondaryProj,
+    }] : []),
+    ...(isWindowed ? [{ label: "Sliding-window quadratic", value: shareSec(prefill.secondaryComputeTermTflops), color: PREFILL_CATEGORY_COLORS.secondaryCompute }] : []),
+    ...(isDeltaNet ? [{
+      label: "Delta-rule arithmetic", value: (result.perGpuDeltaComputeTimeSec ?? 0) + (result.deltaFixedOverheadSec ?? 0),
+      color: PREFILL_CATEGORY_COLORS.secondaryCompute,
+    }] : []),
+    { label: "Communication (all-reduce)", value: result.commTimeSec ?? 0, color: INTERCONNECT_GREEN },
   ];
 
   /** One clearly-labeled sub-table per side of the wall-clock (Compute / Communication) — own
@@ -734,6 +1004,20 @@ function PrefillTpCard({ arch, usecase, chip, tp, onChangeTp, deltaCfg, onChange
         )}
       </div>
 
+      <ViewToggle view={view} onChange={setView} />
+
+      {view === "visual" ? (
+        <div className="mb-4">
+          <DistributionViz
+            subtitle="Per-GPU wall-clock share at this TP degree — compute categories proportionally split from Prefill's TFLOPS breakdown, plus the all-reduce communication cost this section adds on top."
+            slices={tpSlices}
+            fmtValue={v => `${v.toFixed(3)} s`}
+            centerLabel={result.wallClockSec != null ? `${result.wallClockSec.toFixed(3)}s` : "—"}
+            centerSub="wall-clock"
+          />
+        </div>
+      ) : (
+      <>
       <div className="flex flex-col gap-4 mb-4">
         {renderMetricGroup("Compute", "#22d3ee", "34,211,238", computeRows)}
         {renderMetricGroup("Communication", INTERCONNECT_GREEN, INTERCONNECT_GREEN_RGB, commRows)}
@@ -754,6 +1038,8 @@ function PrefillTpCard({ arch, usecase, chip, tp, onChangeTp, deltaCfg, onChange
           </tbody>
         </table>
       </div>
+      </>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
         <div>
@@ -1005,11 +1291,171 @@ function DecodeSection({ arch, usecase, chip, tp, onChangeTp, highlightedRow, on
   );
 }
 
-// ── KV Cache — capacity & eviction model ────────────────────────────────────────────────
-// Ported from kv_capacity_eviction_model.xlsx: how many concurrent requests' KV cache fits in
-// VRAM after weights + reserve, and whether evicting a resident request to an offload tier
-// beats recomputing it from scratch on resume. "Cards" reuses the same TP degree as
-// Prefill-TP/Decode; the reserve fraction and per-tier bandwidths are new, KV-Cache-only inputs.
+// ── KV Pool — occupancy & decode-aware parking ──────────────────────────────────────────
+// Two placement strategies: "naive" keeps every admitted sequence's KV resident in HBM until
+// it finishes; "decode-aware parking" keeps only the active decode batch resident and parks
+// the rest in DDR → CXL → Flash, promoting a sequence back only when it's next in line to
+// decode. The payoff: as long as a park/promote round trip is faster than the queue wait a
+// waiting sequence would sit through anyway, parking reclaims HBM at no added latency. "Cards"
+// reuses the same TP degree as Prefill-TP/Decode; slot-hold time is derived from calcDecode()
+// run at the active-batch size, not manually entered.
+
+const KV_WEIGHTS_COLOR = "#64748b"; // slate — fixed floor, weights
+const KV_RESERVE_COLOR = "#94a3b8"; // lighter slate — fixed floor, activation/overhead
+const KV_UNSERVED_RED = "#f87171";  // matches the app's existing "not ok" red (see kvHeadShardingOk)
+
+function fmtGB(g: number): string {
+  return g >= 100 ? g.toFixed(0) : g >= 10 ? g.toFixed(1) : g.toFixed(2);
+}
+function fmtSec(s: number): string {
+  return s >= 1 ? `${s.toFixed(2)} s` : `${(s * 1000).toFixed(1)} ms`;
+}
+
+function LegendSwatch({ color, label, hatch, bordered }: { color: string; label: string; hatch?: boolean; bordered?: boolean }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <i
+        style={{
+          width: 13, height: 11, borderRadius: 2, display: "inline-block",
+          background: hatch ? `${color}29` : color,
+          backgroundImage: hatch ? `repeating-linear-gradient(45deg, transparent, transparent 3px, ${color}66 3px, ${color}66 5px)` : undefined,
+          border: bordered ? "1px solid var(--dm-border-a)" : "1px solid rgba(0,0,0,0.12)",
+        }}
+      />
+      {label}
+    </span>
+  );
+}
+
+/** Stacked-bar visualization: one HBM column per GPU (weights → reserve → resident KV, outlined
+ *  as the active decode batch → free space, bottom-up) plus a DDR/CXL/Flash pool column each,
+ *  hatched to read as "parked" rather than "active". Dashed arrows show the park/promote flow. */
+function KvPoolViz({ tp, vramPerCardGB, baseline, o, kv }: {
+  tp: TpConfig; vramPerCardGB: number | null; baseline: KvCacheBaseline; o: KvPoolOccupancy; kv: KvCacheConfig;
+}) {
+  const vram = vramPerCardGB ?? 0;
+  const nH = Math.max(1, tp.tpDegree);
+  const wShardPerGPU = baseline.weightsGB / tp.tpDegree;
+  const reservePerGPU = baseline.reserveGB / tp.tpDegree;
+  const kvResidentPerGPU = (o.resident * o.seqKVGB) / tp.tpDegree;
+
+  const H = 420, padT = 48, padB = 48, base = H - padB, top = padT, colH = base - top;
+  const hbmW = Math.min(70, 460 / nH - 12), gap = 12;
+  const hbmCols: number[] = [];
+  let x = 46;
+  for (let i = 0; i < nH; i++) { hbmCols.push(x); x += hbmW + gap; }
+  x += 34;
+  const poolW = 96;
+  const ddrX = x; x += poolW + 28;
+  const cxlX = x; x += poolW + 28;
+  const flashX = x;
+  const totalW = flashX + poolW + 74;
+  const hbmR = hbmCols[hbmCols.length - 1] + hbmW;
+
+  const ppgHbm = vram > 0 ? colH / vram : 0;
+
+  function poolColumn(px: number, seq: number, capGB: number, usedGB: number, bwGBs: number, label: string) {
+    const ppg = capGB > 0 ? colH / capGB : 0;
+    const uh = Math.min(usedGB, capGB) * ppg;
+    const t = bwGBs > 0 ? o.seqKVGB / bwGBs : 0;
+    return (
+      <g key={label}>
+        {uh > 0.3 && <rect x={px} y={base - uh} width={poolW} height={uh} fill={`${MEMORY_ORANGE}48`} stroke={MEMORY_ORANGE} strokeWidth={0.8} />}
+        <rect x={px} y={top} width={poolW} height={colH} fill="none" stroke="var(--dm-border-a)" strokeWidth={1} />
+        {seq > 0 && <text x={px + poolW / 2} y={base - uh - 8} textAnchor="middle" fontSize={10.5} fontWeight={700} fill={MEMORY_ORANGE}>{seq} seq</text>}
+        <text x={px + poolW / 2} y={base + 16} textAnchor="middle" fontSize={11} fill="var(--dm-txt-muted)">{label}</text>
+        <text x={px + poolW / 2} y={base + 30} textAnchor="middle" fontSize={10} fill="var(--dm-txt-faint)">{fmtGB(usedGB)}/{fmtInt(capGB)} GB</text>
+        <text x={px + poolW / 2} y={base + 46} textAnchor="middle" fontSize={10} fill="var(--dm-txt-muted)">1 seq ↔ {fmtSec(t)}</text>
+        <text x={px + poolW / 2} y={base + 59} textAnchor="middle" fontSize={9} fill="var(--dm-txt-faintest)">@ {fmtInt(bwGBs)} GB/s</text>
+      </g>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border overflow-hidden p-3" style={{ borderColor: "var(--dm-border-a)", background: "var(--dm-table-bg)" }}>
+      <svg viewBox={`0 0 ${totalW} ${H}`} className="w-full h-auto" style={{ display: "block" }}>
+        <defs>
+          <marker id="kv-ar" viewBox="0 0 10 10" refX={8} refY={5} markerWidth={6} markerHeight={6} orient="auto-start-reverse">
+            <path d="M2 2L8 5L2 8" fill="none" stroke="var(--dm-txt-faint)" strokeWidth={1.4} />
+          </marker>
+        </defs>
+
+        {hbmCols.map((cx, i) => {
+          const wh = wShardPerGPU * ppgHbm;
+          const rh = reservePerGPU * ppgHbm;
+          const kh = Math.min(kvResidentPerGPU, Math.max(0, vram - wShardPerGPU - reservePerGPU)) * ppgHbm;
+          const fh = Math.max(0, colH - wh - rh - kh);
+          return (
+            <g key={i}>
+              <rect x={cx} y={base - wh} width={hbmW} height={wh} fill={KV_WEIGHTS_COLOR} stroke="rgba(0,0,0,0.10)" strokeWidth={0.6} />
+              <rect x={cx} y={base - wh - rh} width={hbmW} height={rh} fill={KV_RESERVE_COLOR} stroke="rgba(0,0,0,0.10)" strokeWidth={0.6} />
+              {kh > 0.3 && (
+                <>
+                  <rect x={cx} y={base - wh - rh - kh} width={hbmW} height={kh} fill={MEMORY_ORANGE} stroke="rgba(0,0,0,0.10)" strokeWidth={0.6} />
+                  <rect x={cx + 0.8} y={base - wh - rh - kh + 0.8} width={hbmW - 1.6} height={Math.max(0, kh - 1.6)} fill="none" stroke="#22d3ee" strokeWidth={1.6} />
+                </>
+              )}
+              <rect x={cx} y={base - wh - rh - kh - fh} width={hbmW} height={fh} fill="var(--dm-surface-b)" stroke="rgba(0,0,0,0.06)" strokeWidth={0.6} />
+              <rect x={cx} y={top} width={hbmW} height={colH} fill="none" stroke="var(--dm-border-a)" strokeWidth={1} />
+              <text x={cx + hbmW / 2} y={base + 16} textAnchor="middle" fontSize={11} fill="var(--dm-txt-muted)">GPU {i}</text>
+              <text x={cx + hbmW / 2} y={base + 30} textAnchor="middle" fontSize={10} fill="var(--dm-txt-faint)">{fmtInt(vram)}GB</text>
+            </g>
+          );
+        })}
+        <text x={(hbmCols[0] + hbmR) / 2} y={top - 20} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--dm-txt-primary)">
+          HBM — sharded ÷{tp.tpDegree} · {o.resident} seq resident
+        </text>
+
+        {poolColumn(ddrX, o.ddrSeq, kv.ddrPoolGB, o.ddrSeq * o.seqKVGB, kv.ddrBWGBs, "DDR pool")}
+        {poolColumn(cxlX, o.cxlSeq, kv.cxlPoolGB, o.cxlSeq * o.seqKVGB, kv.cxlBWGBs, "CXL pool")}
+        {poolColumn(flashX, o.flashSeq, kv.flashPoolGB, o.flashSeq * o.seqKVGB, kv.flashBWGBs, "Flash pool")}
+        <text x={(ddrX + flashX + poolW) / 2} y={top - 20} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--dm-txt-primary)">
+          Offload pools — parked (waiting) KV
+        </text>
+
+        <line x1={hbmR + 6} y1={top + colH * 0.4} x2={ddrX - 6} y2={top + colH * 0.4} stroke="var(--dm-txt-faint)" strokeDasharray="4 3" markerEnd="url(#kv-ar)" />
+        <line x1={ddrX - 6} y1={top + colH * 0.6} x2={hbmR + 6} y2={top + colH * 0.6} stroke="var(--dm-txt-faint)" strokeDasharray="4 3" markerEnd="url(#kv-ar)" />
+        <text x={(hbmR + ddrX) / 2} y={top + colH * 0.4 - 6} textAnchor="middle" fontSize={10} fill="var(--dm-txt-faint)">park →</text>
+        <text x={(hbmR + ddrX) / 2} y={top + colH * 0.6 + 14} textAnchor="middle" fontSize={10} fill="var(--dm-txt-faint)">← promote</text>
+
+        {o.unservedSeq > 0 && (
+          <>
+            <text x={flashX + poolW + 10} y={top + 14} fontSize={11} fill={KV_UNSERVED_RED}>⚠ {o.unservedSeq} seq</text>
+            <text x={flashX + poolW + 10} y={top + 28} fontSize={11} fill={KV_UNSERVED_RED}>unservable</text>
+          </>
+        )}
+      </svg>
+    </div>
+  );
+}
+
+/** Compares the queue wait a waiting sequence would sit through anyway against the cost of
+ *  parking it to (and promoting it back from) DDR — the tier tried first. */
+function KvPoolVerdict({ o }: { o: KvPoolOccupancy }) {
+  if (o.unservedSeq > 0) {
+    return (
+      <div className="mt-3 rounded-lg px-3 py-2 text-[11.5px] leading-relaxed" style={{ background: "rgba(248,113,113,0.12)", color: KV_UNSERVED_RED }}>
+        Pools full — {o.unservedSeq} sequences ({fmtGB(o.unservedSeq * o.seqKVGB)} GB) have nowhere to go. Shard wider, add pool capacity, or shed load.
+      </div>
+    );
+  }
+  if (o.waiting === 0) {
+    return (
+      <div className="mt-3 rounded-lg px-3 py-2 text-[11.5px] leading-relaxed" style={{ background: "var(--dm-surface-b)", color: "var(--dm-txt-muted)" }}>
+        No queue — every sequence has a slot. Parking is idle here; it starts paying off the moment concurrency exceeds the {o.activeSlots}-slot batch.
+      </div>
+    );
+  }
+  const ratio = o.tDdrSec > 0 ? o.queueWaitSec / o.tDdrSec : Infinity;
+  return (
+    <div className="mt-3 rounded-lg px-3 py-2 text-[11.5px] leading-relaxed" style={{ background: "rgba(52,211,153,0.12)", color: "#34d399" }}>
+      Promoting from DDR costs <b>{fmtSec(o.tDdrSec)}</b> against a <b>{fmtSec(o.queueWaitSec)}</b> slot wait — KV returns{" "}
+      <b>{Number.isFinite(ratio) ? (ratio >= 10 ? `${Math.round(ratio)}×` : `${ratio.toFixed(1)}×`) : "—"} before</b> it&apos;s needed.
+      Parking {o.waiting} waiting sequences frees <b>{fmtGB(o.waiting * o.seqKVGB)} GB</b> of HBM at no added latency; holding them resident
+      would burn the fleet&apos;s most expensive memory to sit idle.
+    </div>
+  );
+}
 
 function KvCacheSection({ arch, usecase, chip, tp, onChangeTp, kv, onChangeKv, highlightedRow, onSelectRow }: {
   arch: ModelArchitecture; usecase: UsecaseInputs; chip: ComparisonChip | undefined; tp: TpConfig; onChangeTp: (next: TpConfig) => void;
@@ -1017,18 +1463,29 @@ function KvCacheSection({ arch, usecase, chip, tp, onChangeTp, kv, onChangeKv, h
   highlightedRow: KvCacheRowKey | null; onSelectRow: (key: KvCacheRowKey | null) => void;
 }) {
   const peak = chip ? getSiliconPeak(chip) : null;
+  const memBandwidthGBs = chip ? getSiliconMemoryBandwidthGBs(chip) : null;
   const vramPerCardGB = chip ? getSiliconMemoryCapacityGB(chip) : null;
+  const link = INTERCONNECTS.find(i => i.id === tp.interconnectId);
+
   const baseline = useMemo(
     () => calcKvCacheBaseline(arch, usecase, tp, kv, vramPerCardGB),
     [arch, usecase, tp, kv, vramPerCardGB],
   );
-  const current = useMemo(
+  const atContext = useMemo(
     () => calcKvCacheAtContext(arch, usecase, tp, baseline, usecase.decodeContextLen, peak?.teraflops ?? null),
     [arch, usecase, tp, baseline, peak?.teraflops],
   );
-  const sweep = useMemo(
-    () => calcKvCacheSweep(arch, usecase, tp, baseline, peak?.teraflops ?? null),
-    [arch, usecase, tp, baseline, peak?.teraflops],
+  // Placement/capacity don't depend on decode timing — resolve those first to get the active-
+  // batch size, then feed that (not the full concurrency) into calcDecode for a realistic
+  // slot-hold time, and finally recompute with that for the queue-wait economics below.
+  const placementOnly = useMemo(() => calcKvPoolOccupancy(usecase, kv, baseline, atContext, null), [usecase, kv, baseline, atContext]);
+  const decodeAtActiveSlots = useMemo(
+    () => calcDecode(arch, { ...usecase, concurrency: Math.max(1, placementOnly.activeSlots) }, tp, peak?.teraflops ?? null, memBandwidthGBs, link?.linkBwGBs ?? null),
+    [arch, usecase, placementOnly.activeSlots, tp, peak?.teraflops, memBandwidthGBs, link?.linkBwGBs],
+  );
+  const o = useMemo(
+    () => calcKvPoolOccupancy(usecase, kv, baseline, atContext, decodeAtActiveSlots.totalTimePerTokenMs),
+    [usecase, kv, baseline, atContext, decodeAtActiveSlots.totalTimePerTokenMs],
   );
 
   function toggleRow(key: KvCacheRowKey) {
@@ -1041,162 +1498,144 @@ function KvCacheSection({ arch, usecase, chip, tp, onChangeTp, kv, onChangeKv, h
     onChangeKv({ ...kv, [key]: value });
   }
 
-  const rowHighlights = highlightedRow ? KV_CACHE_ROW_HIGHLIGHTS[highlightedRow] : null;
-  const localLit = (field: keyof TpConfig): boolean => field === "tpDegree" && !!rowHighlights?.tpDegreeField;
-  const kvConfigLit = (field: keyof KvCacheConfig): boolean => !!rowHighlights?.kvConfigFields?.includes(field);
   const smallNumberInput = "rounded-lg px-2.5 py-1.5 text-sm focus:outline-none w-24";
-  const glowWrap = (lit: boolean, rgb: string): React.CSSProperties => ({
-    display: "inline-block", borderRadius: "0.5rem", transition: "box-shadow 200ms",
-    boxShadow: lit ? `0 0 0 1px rgb(${rgb}), 0 0 8px rgba(${rgb},0.5)` : "none",
-  });
-
-  type Row = { key: KvCacheRowKey; label: string; formula: string; value: string; color?: "orange" };
-  const rows: Row[] = [
-    { key: "kvPerToken", label: "KV per token", formula: `2 × ${ABBR.n_fa} × ${ABBR.n_kv} × ${ABBR.d_head} × kv_bytes`, value: `${fmtInt(baseline.kvPerTokenBytes)} bytes` },
-    { key: "weights", label: "Weights", formula: `${ABBR.N} × bytes_per_param`, value: `${baseline.weightsGB.toFixed(1)} GB` },
-    { key: "vramTotal", label: "VRAM total", formula: "cards × VRAM_card", value: `${fmtInt(baseline.vramTotalGB)} GB`, color: "orange" },
-    { key: "reserve", label: "Reserve", formula: "VRAM_total × reserve%", value: `${baseline.reserveGB.toFixed(1)} GB`, color: "orange" },
-    { key: "kvBudget", label: "KV budget", formula: "VRAM_total − weights − reserve", value: `${baseline.kvBudgetGB.toFixed(1)} GB`, color: "orange" },
-    { key: "minCardsForWeights", label: "Min cards for weights", formula: "⌈ weights ÷ VRAM_card ⌉", value: baseline.minCardsForWeights > 0 ? `${fmtInt(baseline.minCardsForWeights)} cards` : "—", color: "orange" },
-    { key: "ddrEgress", label: "DDR egress (aggregate)", formula: "ddr_per_card × cards", value: `${fmtInt(baseline.ddrEgressAggGBs)} GB/s`, color: "orange" },
-    { key: "cxlEgress", label: "CXL egress (aggregate)", formula: "cxl_per_card × cards", value: `${fmtInt(baseline.cxlEgressAggGBs)} GB/s`, color: "orange" },
-    { key: "flashEgress", label: "Flash egress (aggregate)", formula: "flash_per_card × cards", value: `${fmtInt(baseline.flashEgressAggGBs)} GB/s`, color: "orange" },
-  ];
+  const cardStyle: React.CSSProperties = { border: "1px solid var(--dm-border-a)", borderRadius: "0.6rem", padding: "0.6rem 0.75rem" };
+  const active = { total: o.activeSlots + o.waiting };
 
   return (
     <SectionCard
-      title="KV Cache — Capacity & Eviction"
-      subtitle="How many concurrent requests' KV cache fits in VRAM after weights + reserve, and whether evicting to an offload tier beats recomputing on resume. Click a row to light up the parameters it uses — memory/VRAM dependencies light up in orange."
+      title="KV Pool — Occupancy & Decode-Aware Parking"
+      subtitle="Only the active decode batch needs to sit in HBM — the rest can park in DDR → CXL → Flash and promote back when it's their turn, freeing HBM at no latency cost as long as the round trip beats the queue wait anyway."
     >
-      <div className="flex flex-wrap items-end gap-4 mb-4">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Placement strategy</span>
+        <div className="inline-flex rounded-lg border overflow-hidden" style={{ borderColor: "var(--dm-border-a)" }}>
+          {(["naive", "park"] as const).map(m => (
+            <button
+              key={m} type="button" onClick={() => setKv("placementMode", m)}
+              className="px-3 py-1.5 text-xs font-semibold transition-colors"
+              style={{ background: kv.placementMode === m ? "rgba(34,211,238,0.15)" : "var(--dm-surface-a)", color: kv.placementMode === m ? "#22d3ee" : "var(--dm-txt-secondary)" }}
+            >
+              {m === "naive" ? "Naïve — all KV in HBM" : "Decode-aware parking"}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs" style={{ color: "var(--dm-txt-faint)" }}>
+          {kv.placementMode === "naive"
+            ? "HBM must hold every admitted sequence — it fills and evicts early."
+            : "HBM holds only the decoding batch; the rest wait in the pools."}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+        <div style={cardStyle} className="cursor-pointer" onClick={() => toggleRow("kvBudget")}>
+          <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: highlightedRow === "kvBudget" ? MEMORY_ORANGE : "var(--dm-txt-faint)" }}>HBM KV budget</p>
+          <p className="text-base font-mono font-bold mt-0.5" style={{ color: "var(--dm-txt-primary)" }}>{fmtGB(o.kvBudgetTotalGB)} GB</p>
+          <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--dm-txt-faintest)" }}>{tp.tpDegree}× after weights+reserve</p>
+        </div>
+        <div style={cardStyle} className="cursor-pointer" onClick={() => toggleRow("kvPerToken")}>
+          <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: highlightedRow === "kvPerToken" ? MEMORY_ORANGE : "var(--dm-txt-faint)" }}>KV / sequence</p>
+          <p className="text-base font-mono font-bold mt-0.5" style={{ color: "var(--dm-txt-primary)" }}>{fmtGB(o.seqKVGB)} GB</p>
+          <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--dm-txt-faintest)" }}>{fmtInt(usecase.decodeContextLen)} tok context</p>
+        </div>
+        <div style={cardStyle}>
+          <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Resident (HBM)</p>
+          <p className="text-base font-mono font-bold mt-0.5" style={{ color: "#22d3ee" }}>{o.resident} seq</p>
+          <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--dm-txt-faintest)" }}>{fmtGB(o.resident * o.seqKVGB)} GB{o.computeCapped ? " · compute-capped" : ""}</p>
+        </div>
+        <div style={cardStyle}>
+          <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Parked (pools)</p>
+          <p className="text-base font-mono font-bold mt-0.5" style={{ color: MEMORY_ORANGE }}>{o.parked} seq</p>
+          <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--dm-txt-faintest)" }}>DDR {o.ddrSeq} · CXL {o.cxlSeq} · Flash {o.flashSeq}</p>
+        </div>
+        <div style={cardStyle}>
+          <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Served / offered</p>
+          <p className="text-base font-mono font-bold mt-0.5" style={{ color: o.unservedSeq > 0 ? KV_UNSERVED_RED : "var(--dm-txt-primary)" }}>{usecase.concurrency - o.unservedSeq} / {usecase.concurrency}</p>
+          <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--dm-txt-faintest)" }}>{o.unservedSeq > 0 ? `${o.unservedSeq} seq unservable` : "all fit"}</p>
+        </div>
+      </div>
+
+      <KvPoolViz tp={tp} vramPerCardGB={vramPerCardGB} baseline={baseline} o={o} kv={kv} />
+
+      <div className="flex flex-wrap gap-4 mt-3 text-[11px]" style={{ color: "var(--dm-txt-muted)" }}>
+        <LegendSwatch color={KV_WEIGHTS_COLOR} label="Weights (÷TP shard) — fixed" />
+        <LegendSwatch color={KV_RESERVE_COLOR} label="Activation / overhead — fixed" />
+        <LegendSwatch color={MEMORY_ORANGE} label="KV resident (active decode batch)" />
+        <LegendSwatch color={MEMORY_ORANGE} hatch label="KV parked (DDR / CXL / Flash)" />
+        <LegendSwatch color="var(--dm-surface-b)" bordered label="Free — promote / prefill staging" />
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4 mt-6">
+        <div style={cardStyle}>
+          <h3 className="text-xs font-bold mb-2" style={{ color: "var(--dm-txt-primary)" }}>Decode occupancy &amp; queue wait</h3>
+          <div className="flex justify-between text-[11px] font-mono mb-1.5" style={{ color: "var(--dm-txt-muted)" }}>
+            <span>active decode slots: <b style={{ color: "var(--dm-txt-primary)" }}>{o.activeSlots}</b></span>
+            <span>waiting in queue: <b style={{ color: "var(--dm-txt-primary)" }}>{o.waiting}</b></span>
+          </div>
+          <div className="h-6 rounded-md overflow-hidden flex border mb-2" style={{ borderColor: "var(--dm-border-a)" }}>
+            {o.activeSlots > 0 && (
+              <div className="flex items-center justify-center text-[11px] font-mono text-white" style={{ width: `${(o.activeSlots / Math.max(1, active.total)) * 100}%`, background: "#f59e0b" }}>{o.activeSlots}</div>
+            )}
+            {o.waiting > 0 && (
+              <div className="flex items-center justify-center text-[11px] font-mono text-white" style={{ width: `${(o.waiting / Math.max(1, active.total)) * 100}%`, background: MEMORY_ORANGE }}>{o.waiting}</div>
+            )}
+          </div>
+          <p className="font-mono text-[10.5px] leading-relaxed p-2 rounded-md" style={{ color: "var(--dm-txt-muted)", background: "var(--dm-surface-a)", border: "1px solid var(--dm-border-a)" }}>
+            slot held per turn = {fmtInt(usecase.outputTokens)} tok × {decodeAtActiveSlots.totalTimePerTokenMs != null ? decodeAtActiveSlots.totalTimePerTokenMs.toFixed(1) : "—"} ms = <b style={{ color: "var(--dm-txt-primary)" }}>{fmtSec(o.slotHoldSec)}</b><br />
+            queue wait ≈ (waiting ÷ active slots) × slot-time = ({o.waiting} ÷ {o.activeSlots || 1}) × {fmtSec(o.slotHoldSec)} = <b style={{ color: "var(--dm-txt-primary)" }}>{fmtSec(o.queueWaitSec)}</b>
+          </p>
+        </div>
+        <div style={cardStyle}>
+          <h3 className="text-xs font-bold mb-2" style={{ color: "var(--dm-txt-primary)" }}>Park vs. hold-in-HBM (per waiting sequence)</h3>
+          <div className="space-y-1 font-mono text-[11px]" style={{ color: "var(--dm-txt-muted)" }}>
+            <div className="flex justify-between"><span>KV per sequence</span><b style={{ color: "var(--dm-txt-primary)" }}>{fmtGB(o.seqKVGB)} GB</b></div>
+            <div className="flex justify-between"><span>move ↔ DDR (each way)</span><b style={{ color: "var(--dm-txt-primary)" }}>{fmtSec(o.tDdrSec)}</b></div>
+            <div className="flex justify-between"><span>move ↔ CXL (each way)</span><b style={{ color: "var(--dm-txt-primary)" }}>{fmtSec(o.tCxlSec)}</b></div>
+            <div className="flex justify-between"><span>move ↔ Flash (each way)</span><b style={{ color: "var(--dm-txt-primary)" }}>{fmtSec(o.tFlashSec)}</b></div>
+            <div className="flex justify-between"><span>HBM freed per parked seq</span><b style={{ color: "var(--dm-txt-primary)" }}>{fmtGB(o.seqKVGB)} GB</b></div>
+          </div>
+          <KvPoolVerdict o={o} />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-4 mt-6 pt-4" style={{ borderTop: "1px solid var(--dm-border-a)" }}>
         <div>
           <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Cards (TP group)</label>
-          <div style={glowWrap(localLit("tpDegree"), "34,211,238")}>
-            <input type="number" min={1} value={tp.tpDegree} onChange={e => setTp("tpDegree", Math.max(1, Number(e.target.value) || 1))} className={smallNumberInput} style={inputStyle} />
-          </div>
+          <input type="number" min={1} value={tp.tpDegree} onChange={e => setTp("tpDegree", Math.max(1, Number(e.target.value) || 1))} className={smallNumberInput} style={inputStyle} />
         </div>
         <div>
           <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>Reserve %</label>
-          <div style={glowWrap(kvConfigLit("reserveFraction"), MEMORY_ORANGE_RGB)}>
-            <input
-              type="number" min={0} max={1} step={0.01} value={kv.reserveFraction}
-              onChange={e => setKv("reserveFraction", Math.min(1, Math.max(0, Number(e.target.value) || 0)))}
-              className={smallNumberInput} style={inputStyle}
-            />
-          </div>
+          <input type="number" min={0} max={1} step={0.01} value={kv.reserveFraction} onChange={e => setKv("reserveFraction", Math.min(1, Math.max(0, Number(e.target.value) || 0)))} className={smallNumberInput} style={inputStyle} />
         </div>
         <div>
-          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>DDR GB/s · card</label>
-          <div style={glowWrap(kvConfigLit("ddrBWGBs"), MEMORY_ORANGE_RGB)}>
-            <input type="number" min={0} value={kv.ddrBWGBs} onChange={e => setKv("ddrBWGBs", Math.max(0, Number(e.target.value) || 0))} className={smallNumberInput} style={inputStyle} />
-          </div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Decode batch (slots)</label>
+          <input type="number" min={1} value={kv.decodeBatchSlots} onChange={e => setKv("decodeBatchSlots", Math.max(1, Number(e.target.value) || 1))} className={smallNumberInput} style={inputStyle} />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>DDR pool (GB)</label>
+          <input type="number" min={0} value={kv.ddrPoolGB} onChange={e => setKv("ddrPoolGB", Math.max(0, Number(e.target.value) || 0))} className={smallNumberInput} style={inputStyle} />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>CXL pool (GB)</label>
+          <input type="number" min={0} value={kv.cxlPoolGB} onChange={e => setKv("cxlPoolGB", Math.max(0, Number(e.target.value) || 0))} className={smallNumberInput} style={inputStyle} />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>Flash pool (GB)</label>
+          <input type="number" min={0} value={kv.flashPoolGB} onChange={e => setKv("flashPoolGB", Math.max(0, Number(e.target.value) || 0))} className={smallNumberInput} style={inputStyle} />
         </div>
         <div>
           <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>CXL GB/s · card</label>
-          <div style={glowWrap(kvConfigLit("cxlBWGBs"), MEMORY_ORANGE_RGB)}>
-            <input type="number" min={0} value={kv.cxlBWGBs} onChange={e => setKv("cxlBWGBs", Math.max(0, Number(e.target.value) || 0))} className={smallNumberInput} style={inputStyle} />
-          </div>
+          <input type="number" min={0} value={kv.cxlBWGBs} onChange={e => setKv("cxlBWGBs", Math.max(0, Number(e.target.value) || 0))} className={smallNumberInput} style={inputStyle} />
         </div>
         <div>
-          <label className="block text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>Flash GB/s · card</label>
-          <div style={glowWrap(kvConfigLit("flashBWGBs"), MEMORY_ORANGE_RGB)}>
-            <input type="number" min={0} value={kv.flashBWGBs} onChange={e => setKv("flashBWGBs", Math.max(0, Number(e.target.value) || 0))} className={smallNumberInput} style={inputStyle} />
-          </div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>DDR / Flash GB/s</p>
+          <p className="text-sm font-mono font-semibold py-1.5" style={{ color: "var(--dm-txt-body)" }}>
+            {fmtInt(kv.ddrBWGBs)} <span style={{ color: "var(--dm-txt-faintest)" }}>(via {link?.name ?? "—"})</span>
+          </p>
         </div>
       </div>
 
-      <div className="rounded-xl overflow-hidden border mb-4" style={{ borderColor: "var(--dm-border-a)" }}>
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr style={{ background: "var(--dm-table-head)" }}>
-              <th className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Component</th>
-              <th className="px-4 py-2 text-left text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Formula</th>
-              <th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-faint)" }}>Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => {
-              const active = highlightedRow === r.key;
-              const activeColor = r.color === "orange" ? MEMORY_ORANGE : "#22d3ee";
-              const activeBg = r.color === "orange" ? "rgba(251,146,60,0.16)" : "rgba(34,211,238,0.14)";
-              const idleBg = i % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)";
-              return (
-                <tr key={r.key} onClick={() => toggleRow(r.key)} className="cursor-pointer transition-colors duration-150" style={{ background: active ? activeBg : idleBg }}>
-                  <td className="px-4 py-2.5" style={{ color: active ? activeColor : "var(--dm-txt-body)" }}>{r.label}</td>
-                  <td className="px-4 py-2.5 text-left font-mono text-xs whitespace-nowrap" style={{ color: "var(--dm-txt-faint)" }}>{r.formula}</td>
-                  <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: active ? activeColor : "var(--dm-txt-body)" }}>{r.value}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--dm-txt-faint)" }}>
-        At the current Use Case context ({fmtInt(usecase.decodeContextLen)} tokens)
-      </p>
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-4">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>KV / request</p>
-          <p className="text-lg font-mono font-bold" style={{ color: "var(--dm-txt-primary)" }}>{current.kvPerReqGB.toFixed(2)} GB</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Max concurrency</p>
-          <p className="text-lg font-mono font-bold" style={{ color: "#22d3ee" }}>{fmtInt(current.maxConcurrency)}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--dm-txt-faint)" }}>Recompute</p>
-          <p className="text-lg font-mono font-bold" style={{ color: "var(--dm-txt-primary)" }}>{current.recomputeSec != null ? `${current.recomputeSec.toFixed(2)} s` : "—"}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>DDR / CXL read-back</p>
-          <p className="text-lg font-mono font-bold" style={{ color: MEMORY_ORANGE }}>{current.ddrMs.toFixed(2)} / {current.cxlMs.toFixed(2)} ms</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: MEMORY_ORANGE }}>Flash read-back</p>
-          <p className="text-lg font-mono font-bold" style={{ color: MEMORY_ORANGE }}>{current.flashMs.toFixed(2)} ms</p>
-        </div>
-      </div>
-
-      <div className="rounded-xl overflow-hidden border" style={{ borderColor: "var(--dm-border-a)" }}>
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr style={{ background: "var(--dm-table-head)" }}>
-              <th className="px-3 py-1.5 text-left font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Context</th>
-              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>KV / req (GB)</th>
-              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Max concurrency</th>
-              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Recompute (s)</th>
-              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: MEMORY_ORANGE }}>DDR ↔ (ms)</th>
-              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: MEMORY_ORANGE }}>CXL ↔ (ms)</th>
-              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: MEMORY_ORANGE }}>Flash ↔ (ms)</th>
-              <th className="px-3 py-1.5 text-right font-bold uppercase tracking-widest text-[9px]" style={{ color: "var(--dm-txt-faint)" }}>Recompute ÷ flash</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sweep.map((row, i) => (
-              <tr key={row.contextTokens} style={{ background: i % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)" }}>
-                <td className="px-3 py-1.5 font-mono font-semibold" style={{ color: "var(--dm-txt-primary)" }}>{fmtInt(row.contextTokens / 1000)}K</td>
-                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.kvPerReqGB.toFixed(2)}</td>
-                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{fmtInt(row.maxConcurrency)}</td>
-                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.recomputeSec != null ? row.recomputeSec.toFixed(2) : "—"}</td>
-                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.ddrMs.toFixed(1)}</td>
-                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.cxlMs.toFixed(1)}</td>
-                <td className="px-3 py-1.5 text-right font-mono" style={{ color: "var(--dm-txt-body)" }}>{row.flashMs.toFixed(1)}</td>
-                <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: "var(--dm-txt-primary)" }}>{row.recomputeOverFlash != null ? `${fmtInt(row.recomputeOverFlash)}×` : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {!chip && <p className="mt-3 text-xs" style={{ color: "var(--dm-txt-faintest)" }}>Select a silicon in the rail for VRAM capacity, KV budget, and recompute time.</p>}
-
-      <p className="mt-4 text-[10.5px] leading-relaxed" style={{ color: "var(--dm-txt-faintest)" }}>
-        Read-back beats recompute at every context here — re-prefilling this model is roughly two
-        orders of magnitude slower per token than reading its KV cache back from any offload tier.
-        So the real eviction decision is which tier to use, not whether to recompute; tier choice
-        is set by aggregate egress bandwidth under concurrent eviction.
-      </p>
+      {!chip && <p className="mt-3 text-xs" style={{ color: "var(--dm-txt-faintest)" }}>Select a silicon in the rail for HBM capacity and decode timing.</p>}
     </SectionCard>
   );
 }
@@ -1223,6 +1662,14 @@ function comboMatchesCurrent(combo: WhatIfCombo, siliconId: string, tp: TpConfig
   return combo.siliconId === siliconId && combo.tpDegree === tp.tpDegree && combo.interconnectId === tp.interconnectId;
 }
 
+/** Shipped starting point for the 3 what-if slots — a realistic low/mid/high spread. Slot 1
+ *  matches the page's own default silicon/TP/interconnect, so it's the one shown "Active". */
+const DEFAULT_WHAT_IF_COMBOS: (WhatIfCombo | null)[] = [
+  { siliconId: "b70", tpDegree: 4, interconnectId: "pcie-gen4" },
+  { siliconId: "crescent-island", tpDegree: 1, interconnectId: "pcie-gen5" },
+  { siliconId: "gb300-nvl72", tpDegree: 1, interconnectId: "nvlink5" },
+];
+
 type AnalysisStageKey = "prefill" | "decode" | "kvCache";
 
 const STAGE_COLORS: Record<AnalysisStageKey, string> = {
@@ -1230,7 +1677,7 @@ const STAGE_COLORS: Record<AnalysisStageKey, string> = {
   decode: "#ec4899",    // vivid pink
   kvCache: "#f59e0b",   // vivid amber
 };
-const STAGE_LABELS: Record<AnalysisStageKey, string> = { prefill: "Prefill", decode: "Decode", kvCache: "KV Cache" };
+const STAGE_LABELS: Record<AnalysisStageKey, string> = { prefill: "Prefill", decode: "Decode", kvCache: "KV Pool" };
 const FFN_CYAN = "#5eead4";       // teal-300 — brightest of the three
 const ATTENTION_CYAN = "#06b6d4"; // cyan-500 — punchier than the old cyan-400
 const DELTANET_CYAN = "#1d4ed8";  // blue-700 — deep, still reads as "compute family"
@@ -1321,7 +1768,7 @@ function AnalysisSection({ arch, usecase, chip, tp, deltaCfg, kv, siliconId, isD
     const series: StackedAreaSeries[] = [
       { key: "prefill", label: "Prefill", color: STAGE_COLORS.prefill, values: sweep.map(p => p.prefill.totalMs), onClick: () => goToStage("prefill") },
       { key: "decode", label: "Decode", color: STAGE_COLORS.decode, values: sweep.map(p => p.decode.totalMs), onClick: () => goToStage("decode") },
-      { key: "kvCache", label: "KV Cache", color: STAGE_COLORS.kvCache, values: sweep.map(p => p.kvCache.totalMs), onClick: () => goToStage("kvCache") },
+      { key: "kvCache", label: "KV Pool", color: STAGE_COLORS.kvCache, values: sweep.map(p => p.kvCache.totalMs), onClick: () => goToStage("kvCache") },
       { key: "routing", label: "Routing", color: "#94a3b8", values: xValues.map(() => 0), disabledNote: "not yet modeled" },
     ];
     chart = <StackedAreaChart xValues={xValues} xLabel="Concurrency (B)" yLabel="Time (ms)" series={series} />;
@@ -1437,12 +1884,15 @@ function AnalysisSection({ arch, usecase, chip, tp, deltaCfg, kv, siliconId, isD
   );
   const COMBO_COLORS = COMBO_SLOT_COLORS;
 
+  const activeLink = INTERCONNECTS.find(i => i.id === tp.interconnectId);
+  const analysisTitle = `Comparisons: ${chip?.name ?? siliconId}, TP=${tp.tpDegree}, ${activeLink?.name ?? tp.interconnectId}`;
+
   return (
     <>
       <WhatIfComboBar combos={combos} siliconId={siliconId} tp={tp} isDark={isDark} onUpdateField={onUpdateComboField} onApply={onApplyCombo} onClear={onClearCombo} />
 
       <SectionCard
-        title="Analysis"
+        title={analysisTitle}
         subtitle="Where does the time go, and how does that shift as concurrency scales? Drill down to see how the selected silicon's TFLOPS, memory bandwidth, and interconnect speed each start to dominate at different points."
       >
         <div className="flex items-center gap-1.5 mb-4 flex-wrap">
@@ -1468,7 +1918,7 @@ function AnalysisSection({ arch, usecase, chip, tp, deltaCfg, kv, siliconId, isD
 
         <AnalysisRawTable title="Prefill" specs={prefillSpecs} rows={prefillRows} xValues={xValues} />
         <AnalysisRawTable title="Decode" specs={decodeSpecs} rows={decodeRows} xValues={xValues} />
-        <AnalysisRawTable title="KV-Offload" specs={kvSpecs} rows={kvRows} xValues={xValues} />
+        <AnalysisRawTable title="KV Pool" specs={kvSpecs} rows={kvRows} xValues={xValues} />
       </SectionCard>
 
       <div className="rounded-2xl border mt-6 px-5 py-4" style={{ borderColor: "var(--dm-border-a)", background: "var(--dm-table-bg)" }}>
@@ -1529,10 +1979,10 @@ type Section = "prefill" | "decode" | "kv-cache" | "routing" | "persistent-memor
 const SECTIONS: { key: Section; label: string }[] = [
   { key: "prefill", label: "Prefill" },
   { key: "decode", label: "Decode" },
-  { key: "kv-cache", label: "KV Cache" },
+  { key: "kv-cache", label: "KV Pool" },
   { key: "routing", label: "Routing" },
   { key: "persistent-memory", label: "Persistent Memory" },
-  { key: "analysis", label: "Analysis" },
+  { key: "analysis", label: "Comparisons" },
 ];
 
 const COMING_SOON_BLURB: Record<Exclude<Section, "prefill" | "decode" | "kv-cache" | "analysis">, string> = {
@@ -1544,7 +1994,7 @@ type PrefillStep = 1 | 2 | 3 | 4 | 5;
 
 const PREFILL_STEPS: { step: PrefillStep; label: string }[] = [
   { step: 1, label: "Architecture" },
-  { step: 2, label: "Use Case & Silicon" },
+  { step: 2, label: "Use Case, Compute & Memory" },
   { step: 3, label: "Prefill TFLOPS" },
   { step: 4, label: "Interconnect" },
   { step: 5, label: "Prefill under Tensor Parallelism" },
@@ -1671,6 +2121,7 @@ function WhatIfComboBar({ combos, siliconId, tp, isDark, onUpdateField, onApply,
 }
 
 export function DeepAnalysisView() {
+  useRequestSidebarCollapsed(true);
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [modelId, setModelId] = useState<string>(DEFAULT_MODEL_ID);
@@ -1678,15 +2129,31 @@ export function DeepAnalysisView() {
   const [usecase, setUsecase] = useState<UsecaseInputs>(DEFAULT_USECASE_INPUTS);
   const [siliconId, setSiliconId] = useState<string>("b70");
   const [tpConfig, setTpConfig] = useState<TpConfig>(DEFAULT_TP_CONFIG);
+  /** Arc Pro B70's realistic default fabric is PCIe Gen4, not Gen5 — nudge the interconnect
+   *  there the moment B70 becomes the selected silicon, without fighting a later manual choice. */
+  function handleSiliconChange(nextSiliconId: string) {
+    setSiliconId(nextSiliconId);
+    if (nextSiliconId === "b70") setTpConfig(prev => ({ ...prev, interconnectId: B70_DEFAULT_INTERCONNECT_ID }));
+  }
   const [deltaNetConfig, setDeltaNetConfig] = useState<DeltaNetPrefillConfig>(DEFAULT_DELTANET_PREFILL_CONFIG);
   const [kvCacheConfig, setKvCacheConfig] = useState<KvCacheConfig>(DEFAULT_KV_CACHE_CONFIG);
-  const [combos, setCombos] = useState<(WhatIfCombo | null)[]>([null, null, null]);
+  /** DDR and All-Flash are only reachable *over* the selected Interconnect (same reasoning as
+   *  the Memory panel) — derived here rather than stored, so editing the Interconnect always
+   *  keeps these two in sync without an effect fighting the user's own KV Pool inputs. CXL
+   *  keeps its own independently-configured spec. */
+  const kvInterconnectLinkBwGBs = INTERCONNECTS.find(i => i.id === tpConfig.interconnectId)?.linkBwGBs ?? kvCacheConfig.ddrBWGBs;
+  const kvCacheConfigEffective: KvCacheConfig = useMemo(
+    () => ({ ...kvCacheConfig, ddrBWGBs: kvInterconnectLinkBwGBs, flashBWGBs: kvInterconnectLinkBwGBs }),
+    [kvCacheConfig, kvInterconnectLinkBwGBs],
+  );
+  const [combos, setCombos] = useState<(WhatIfCombo | null)[]>(DEFAULT_WHAT_IF_COMBOS);
   const [section, setSection] = useState<Section>("prefill");
   const [revealedSteps, setRevealedSteps] = useState<Set<PrefillStep>>(new Set([1]));
   const [highlightedRow, setHighlightedRow] = useState<PrefillRowKey | null>(null);
   const [highlightedTpRow, setHighlightedTpRow] = useState<TpRowKey | null>(null);
   const [highlightedDecodeRow, setHighlightedDecodeRow] = useState<DecodeRowKey | null>(null);
   const [highlightedKvCacheRow, setHighlightedKvCacheRow] = useState<KvCacheRowKey | null>(null);
+  const [hoveredAbbrevs, setHoveredAbbrevs] = useState<Set<string> | null>(null);
 
   const chip = COMPARISON_CHIPS.find(c => c.id === siliconId);
 
@@ -1716,8 +2183,8 @@ export function DeepAnalysisView() {
         .map((c, i) => (c ? { name: `Combo ${i + 1} — ${COMPARISON_CHIPS.find(chip => chip.id === c.siliconId)?.name ?? c.siliconId}`, siliconId: c.siliconId, tpDegree: c.tpDegree, interconnectId: c.interconnectId } : null))
         .filter((s): s is ExportScenario => s != null),
     ];
-    await exportDeepAnalysisToExcel(arch, usecase, deltaNetConfig, kvCacheConfig, tpConfig, scenarios);
-  }, [arch, usecase, deltaNetConfig, kvCacheConfig, siliconId, tpConfig, combos]);
+    await exportDeepAnalysisToExcel(arch, usecase, deltaNetConfig, kvCacheConfigEffective, tpConfig, scenarios);
+  }, [arch, usecase, deltaNetConfig, kvCacheConfigEffective, siliconId, tpConfig, combos]);
   useRegisterExport(exportHandler, "Export Deep Analysis to Excel");
 
   const rowActive = section === "prefill" ? highlightedRow : null;
@@ -1728,7 +2195,7 @@ export function DeepAnalysisView() {
   const decodeHighlights = decodeRowActive ? DECODE_ROW_HIGHLIGHTS[decodeRowActive] : null;
   const kvCacheHighlights = kvCacheRowActive ? KV_CACHE_ROW_HIGHLIGHTS[kvCacheRowActive] : null;
 
-  const highlightedAbbrevs = rowActive || tpHighlights?.archAbbrevs || decodeHighlights?.archAbbrevs || kvCacheHighlights?.archAbbrevs
+  const clickHighlightedAbbrevs = rowActive || tpHighlights?.archAbbrevs || decodeHighlights?.archAbbrevs || kvCacheHighlights?.archAbbrevs
     ? new Set([
         ...(rowActive ? getPrefillRowSymbols(arch, rowActive) : []),
         ...(tpHighlights?.archAbbrevs ?? []),
@@ -1736,6 +2203,9 @@ export function DeepAnalysisView() {
         ...(kvCacheHighlights?.archAbbrevs ?? []),
       ])
     : null;
+  // Hovering the architecture diagram takes priority over a clicked row's highlight — it's a
+  // more immediate, transient signal than whatever row happened to be clicked last.
+  const highlightedAbbrevs = hoveredAbbrevs ?? clickHighlightedAbbrevs;
   const highlightedUsecaseFields = rowActive || tpHighlights?.usecaseFields || decodeHighlights?.usecaseFields || kvCacheHighlights?.usecaseFields
     ? new Set([
         ...(rowActive ? PREFILL_ROW_USECASE_FIELDS[rowActive] : []),
@@ -1772,11 +2242,11 @@ export function DeepAnalysisView() {
   const show3 = revealedSteps.has(3);
   const show4 = revealedSteps.has(4);
   const show5 = revealedSteps.has(5);
-  /** The labeled architecture diagram is a lot of screen real estate — only worth it when
-   *  step 1 is the sole thing revealed. As soon as anything else joins the story, drop it and
-   *  keep just the compact Architecture panel (still needed for click-to-highlight). It's also
-   *  a static asset drawn per model, so it only applies where one's on file. */
-  const showArchitectureDiagram = show1 && revealedSteps.size === 1 && arch.id in ARCHITECTURE_DIAGRAMS;
+  /** Whether this model has a labeled architecture diagram on file — a static asset drawn per
+   *  model. When it's revealed (step 1), it's always shown the same way (full-width, diagram
+   *  beside the panel) regardless of which other steps join it, so the layout never has to
+   *  resize/reflow other steps as you click through the story. */
+  const hasArchitectureDiagram = arch.id in ARCHITECTURE_DIAGRAMS;
 
   return (
     <div className="mx-auto max-w-screen-2xl px-6 pb-12">
@@ -1841,10 +2311,18 @@ export function DeepAnalysisView() {
         </div>
       )}
 
-      {section === "prefill" ? (
-        <div className="flex flex-col lg:flex-row gap-6 items-start">
-          {(show3 || show5) && (
+      {section === "prefill" ? (() => {
+        // The diagram is only worth showing early in the story (steps 1-2), and lives in the
+        // main content column — the same column the Prefill TFLOPS / Prefill-TP cards occupy —
+        // rather than its own full-width row above everything. That keeps the rail (Architecture
+        // panel + Use Case/Silicon/Interconnect) sticky at a FIXED position on the right at all
+        // times, exactly like Decode/KV-Cache/Analysis: nothing above it ever pushes it down.
+        const showDiagram = show1 && hasArchitectureDiagram && revealedSteps.size <= 2;
+
+        return (
+          <div className="flex flex-col lg:flex-row gap-6 items-start">
             <div className="flex-1 min-w-0 flex flex-col gap-6">
+              {showDiagram && <ArchitectureDiagram arch={arch} onHoverAbbrevs={setHoveredAbbrevs} />}
               {show3 && (
                 <PrefillSection arch={arch} usecase={usecase} deltaCfg={deltaNetConfig} chip={chip} highlightedRow={highlightedRow} onSelectRow={setHighlightedRow} />
               )}
@@ -1856,34 +2334,33 @@ export function DeepAnalysisView() {
                 />
               )}
             </div>
-          )}
-          {(show1 || show2 || show4) && (
-            <div className={showArchitectureDiagram ? "w-full flex flex-col gap-6" : "w-full lg:w-[420px] flex-shrink-0 flex flex-col gap-6 lg:sticky lg:top-6 lg:self-start"}>
-              {show1 && (
-                showArchitectureDiagram ? (
-                  <div className="flex flex-col md:flex-row gap-6 items-start">
-                    <div className="flex-1 min-w-0">
-                      <ArchitectureDiagram arch={arch} />
-                    </div>
-                    <div className="w-full md:w-[340px] flex-shrink-0 md:sticky md:top-6 md:self-start">
+
+            {(show1 || show2 || show4) && (
+              <div className="w-full lg:w-[680px] flex-shrink-0 lg:sticky lg:top-6 lg:self-start">
+                <div className="flex flex-col sm:flex-row gap-6">
+                  {show1 && (
+                    <div className="sm:w-[300px] flex-shrink-0">
                       <ArchitecturePanel arch={arch} highlighted={highlightedAbbrevs} />
                     </div>
-                  </div>
-                ) : (
-                  <ArchitecturePanel arch={arch} highlighted={highlightedAbbrevs} />
-                )
-              )}
-              {show2 && (
-                <>
-                  <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
-                  <SiliconPanel chip={chip} onChange={setSiliconId} highlightPeak={highlightSiliconPeak} highlightBandwidth={highlightSiliconBandwidth} highlightCapacity={highlightSiliconCapacity} />
-                </>
-              )}
-              {show4 && <InterconnectPanel tp={tpConfig} onChange={setTpConfig} highlighted={highlightedInterconnectFields} />}
-            </div>
-          )}
-        </div>
-      ) : (
+                  )}
+                  {(show2 || show4) && (
+                    <div className="flex-1 min-w-0 flex flex-col gap-6">
+                      {show2 && (
+                        <>
+                          <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
+                          <SiliconPanel chip={chip} onChange={handleSiliconChange} highlightPeak={highlightSiliconPeak} highlightBandwidth={highlightSiliconBandwidth} highlightCapacity={highlightSiliconCapacity} />
+                          <MemoryPanel tp={tpConfig} />
+                        </>
+                      )}
+                      {show4 && <InterconnectPanel tp={tpConfig} onChange={setTpConfig} highlighted={highlightedInterconnectFields} />}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })() : (
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           <div className="flex-1 min-w-0">
             {section === "decode" ? (
@@ -1894,12 +2371,12 @@ export function DeepAnalysisView() {
             ) : section === "kv-cache" ? (
               <KvCacheSection
                 arch={arch} usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
-                kv={kvCacheConfig} onChangeKv={setKvCacheConfig}
+                kv={kvCacheConfigEffective} onChangeKv={setKvCacheConfig}
                 highlightedRow={highlightedKvCacheRow} onSelectRow={setHighlightedKvCacheRow}
               />
             ) : section === "analysis" ? (
               <AnalysisSection
-                arch={arch} usecase={usecase} chip={chip} tp={tpConfig} deltaCfg={deltaNetConfig} kv={kvCacheConfig}
+                arch={arch} usecase={usecase} chip={chip} tp={tpConfig} deltaCfg={deltaNetConfig} kv={kvCacheConfigEffective}
                 siliconId={siliconId} isDark={isDark} combos={combos}
                 onUpdateComboField={updateComboField} onApplyCombo={applyCombo} onClearCombo={clearCombo}
               />
@@ -1915,7 +2392,8 @@ export function DeepAnalysisView() {
               </div>
               <div className="flex-1 min-w-0 flex flex-col gap-6">
                 <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
-                <SiliconPanel chip={chip} onChange={setSiliconId} highlightPeak={highlightSiliconPeak} highlightBandwidth={highlightSiliconBandwidth} highlightCapacity={highlightSiliconCapacity} />
+                <SiliconPanel chip={chip} onChange={handleSiliconChange} highlightPeak={highlightSiliconPeak} highlightBandwidth={highlightSiliconBandwidth} highlightCapacity={highlightSiliconCapacity} />
+                <MemoryPanel tp={tpConfig} />
                 <InterconnectPanel tp={tpConfig} onChange={setTpConfig} highlighted={highlightedInterconnectFields} />
               </div>
             </div>

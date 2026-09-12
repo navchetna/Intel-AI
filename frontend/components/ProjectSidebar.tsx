@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useProject } from "@/contexts/ProjectContext";
+import { useSidebarForceCollapsed } from "@/contexts/SidebarCollapseContext";
 import { buildProjectTree, allFolderPaths, type ProjectTreeNode, type ProjectTreeFolder } from "@/modules/projects/tree";
 import { timeAgo } from "@/modules/projects/format";
 
@@ -98,7 +99,9 @@ function TreeNodeRow({ node, depth, expanded, onToggleFolder, currentId, onDelet
 export function ProjectSidebar() {
   const { projects, currentProject, projectsLoading, listError, createProject, deleteProject } = useProject();
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
+  const forceCollapsed = useSidebarForceCollapsed();
+  const [manualCollapsed, setCollapsed] = useState(false);
+  const collapsed = manualCollapsed || forceCollapsed;
   const [hydrated, setHydrated] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
@@ -114,8 +117,8 @@ export function ProjectSidebar() {
     setHydrated(true);
   }, []);
   useEffect(() => {
-    if (hydrated) localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
-  }, [collapsed, hydrated]);
+    if (hydrated) localStorage.setItem(COLLAPSE_KEY, manualCollapsed ? "1" : "0");
+  }, [manualCollapsed, hydrated]);
 
   // Default-expand every folder the first time it appears, without clobbering user collapses afterward.
   useEffect(() => {
