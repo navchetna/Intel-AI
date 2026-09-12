@@ -5,14 +5,21 @@ import { ModelsView } from "./ModelsView_reimagined";
 import { RequestVolumeSizingView } from "./RequestVolumeSizingView";
 import { ModelBenchmarksView } from "./ModelBenchmarksView";
 import { ModelDefaultsView } from "./ModelDefaultsView";
-import { KvOffloadView } from "./KvOffloadView";
 import { DeepAnalysisView } from "./DeepAnalysisView";
 import { models, type Model } from "./data";
 import { exportModelCatalogToExcel } from "./export";
 import { useProject } from "@/contexts/ProjectContext";
 import { useRegisterExport } from "@/contexts/ExportContext";
 
-type Tab = "catalog" | "benchmarks" | "kv-cache-offload" | "defaults" | "sizing" | "deep-analysis";
+type Tab = "catalog" | "benchmarks" | "defaults" | "sizing" | "deep-analysis";
+
+const TAB_TITLES: Record<Tab, string> = {
+  catalog: "Model Catalog",
+  benchmarks: "Model Benchmarks",
+  defaults: "Task-Model Mapping",
+  sizing: "Model Sizing",
+  "deep-analysis": "Model Deep Analysis",
+};
 
 /** Owns cross-tab UI state (active tab) for the Model Catalog / Sizing pair. Selections live in the current Project. */
 export function ModelsPageView() {
@@ -44,7 +51,7 @@ export function ModelsPageView() {
         {/* ── header ── */}
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-black text-white tracking-tight">Model Catalog</h1>
+            <h1 className="text-4xl font-black text-white tracking-tight">{TAB_TITLES[activeTab]}</h1>
           </div>
 
           <label className="flex items-center gap-2.5 cursor-pointer select-none pb-1">
@@ -69,7 +76,6 @@ export function ModelsPageView() {
           {[
             { key: "catalog" as const, label: "Catalog" },
             { key: "benchmarks" as const, label: "Benchmarks" },
-            { key: "kv-cache-offload" as const, label: "KV Cache Offload" },
             { key: "defaults" as const, label: "Task-Model-Mapping" },
             { key: "sizing" as const, label: `Sizing${validSelectedCount ? ` (${validSelectedCount})` : ""}` },
             { key: "deep-analysis" as const, label: "Deep Analysis" },
@@ -97,7 +103,6 @@ export function ModelsPageView() {
       )}
       {activeTab === "benchmarks" && <ModelBenchmarksView />}
       {activeTab === "defaults" && <ModelDefaultsView />}
-      {activeTab === "kv-cache-offload" && <KvOffloadView />}
       {activeTab === "deep-analysis" && <DeepAnalysisView />}
     </main>
   );

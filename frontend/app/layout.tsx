@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { NavSettingsProvider } from "@/contexts/NavSettingsContext";
 import { ProjectProvider } from "@/contexts/ProjectContext";
 import { ExportProvider } from "@/contexts/ExportContext";
+import { SidebarCollapseProvider } from "@/contexts/SidebarCollapseContext";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -30,15 +31,17 @@ export default function RootLayout({
           <NavSettingsProvider>
             <ProjectProvider>
               <ExportProvider>
-                <Navbar />
-                <div className="flex items-stretch">
-                  <ProjectSidebar />
-                  <div className="flex-1 min-w-0">{children}</div>
-                </div>
-                {/* Visitor counter — fixed bottom-right pill */}
-                <div className="fixed bottom-5 right-5 z-50">
-                  <VisitorCounter />
-                </div>
+                <SidebarCollapseProvider>
+                  <Navbar />
+                  <div className="flex items-stretch">
+                    <ProjectSidebar />
+                    <div className="flex-1 min-w-0">{children}</div>
+                  </div>
+                  {/* Visitor counter — fixed bottom-right pill */}
+                  <div className="fixed bottom-5 right-5 z-50">
+                    <VisitorCounter />
+                  </div>
+                </SidebarCollapseProvider>
               </ExportProvider>
             </ProjectProvider>
           </NavSettingsProvider>

@@ -238,8 +238,8 @@ export interface UsecaseInputs {
 export const DEFAULT_USECASE_INPUTS: UsecaseInputs = {
   concurrency: 32,
   inputTokens: 8192,
-  outputTokens: 1024,
-  decodeContextLen: 9216,
+  outputTokens: 1,
+  decodeContextLen: 8193,
   decodeContextLenAuto: true,
   weightDtypeBytes: 2,
   kvDtypeBytes: 2,
@@ -550,10 +550,14 @@ export interface TpConfig {
 
 export const DEFAULT_TP_CONFIG: TpConfig = {
   tpDegree: 4,
-  interconnectId: "pcie-gen5",
+  interconnectId: "pcie-gen4",
   collectiveOpsPerLayer: 2,
   activationDtypeBytes: 2,
 };
+
+/** Arc Pro B70's default interconnect — PCIe Gen4 x16, not Gen5 — surfaced here so both the
+ *  page's initial state and the "silicon changed" auto-default logic use the same source. */
+export const B70_DEFAULT_INTERCONNECT_ID = "pcie-gen4";
 
 export interface PrefillTpResult {
   singleGpuTflops: number;
@@ -826,9 +830,20 @@ export const OFFLOAD_MEDIA: OffloadMedium[] = [
 export interface KvCacheConfig {
   /** Fraction of total VRAM reserved for activations/fragmentation, not available for KV. */
   reserveFraction: number;
+  /** DDR and All-Flash are only reachable *over* the selected Interconnect (see the Memory
+   *  panel) — these two are kept in sync with that link's bandwidth, not hand-edited. CXL is
+   *  itself a point-to-point link, so it keeps its own independent spec. */
   ddrBWGBs: number;
   cxlBWGBs: number;
   flashBWGBs: number;
+  /** How the placement strategy decides who stays resident in HBM (see KvPoolPlacementMode). */
+  placementMode: "naive" | "park";
+  /** Compute-bound cap on sequences actively decoding at once — under "park" mode this, not
+   *  raw HBM capacity, is what limits residency; everything else parks in a pool tier. */
+  decodeBatchSlots: number;
+  ddrPoolGB: number;
+  cxlPoolGB: number;
+  flashPoolGB: number;
 }
 
 export const DEFAULT_KV_CACHE_CONFIG: KvCacheConfig = {
@@ -836,6 +851,11 @@ export const DEFAULT_KV_CACHE_CONFIG: KvCacheConfig = {
   ddrBWGBs: OFFLOAD_MEDIA[0].perCardBWGBs,
   cxlBWGBs: OFFLOAD_MEDIA[1].perCardBWGBs,
   flashBWGBs: OFFLOAD_MEDIA[2].perCardBWGBs,
+  placementMode: "park",
+  decodeBatchSlots: 12,
+  ddrPoolGB: 256,
+  cxlPoolGB: 1024,
+  flashPoolGB: 4096,
 };
 
 export interface KvCacheBaseline {
@@ -921,13 +941,78 @@ export function calcKvCacheAtContext(
   return { contextTokens, secondaryKvGB, kvPerReqGB, maxConcurrency, recomputeSec, ddrMs, cxlMs, flashMs, recomputeOverFlash };
 }
 
-/** The reference context-length ladder the workbook itself sweeps (in thousands of tokens). */
-export const KV_CACHE_CONTEXT_SWEEP_K = [8, 16, 32, 64];
+// ── KV Pool — occupancy & decode-aware parking ──────────────────────────────────────────
+// A second, complementary question to the capacity/eviction model above: at the CURRENT
+// concurrency, who actually needs to sit in HBM right now? Only the sequences in the active
+// decode batch do — a compute-bound slot count, not a capacity-bound one. Everything else can
+// be "parked" out to DDR → CXL → Flash and "promoted" back when its turn comes, freeing HBM at
+// no latency cost as long as the park/promote round trip is faster than the queue wait a
+// parked sequence would have sat through anyway. Built on top of calcKvCacheBaseline/
+// calcKvCacheAtContext's own numbers (kvBudgetGB, kvPerReqGB) rather than re-deriving them.
 
-export function calcKvCacheSweep(
-  arch: ModelArchitecture, usecase: UsecaseInputs, tp: TpConfig, baseline: KvCacheBaseline, peakTflops: number | null,
-): KvCacheAtContext[] {
-  return KV_CACHE_CONTEXT_SWEEP_K.map(k => calcKvCacheAtContext(arch, usecase, tp, baseline, k * 1000, peakTflops));
+export interface KvPoolOccupancy {
+  seqKVGB: number;
+  kvBudgetTotalGB: number;
+  /** How many sequences HBM could hold by capacity alone, ignoring the decode-batch cap. */
+  fitByCapacity: number;
+  resident: number;
+  /** True when "park" mode's batch-slot cap — not raw HBM capacity — is what's limiting residency. */
+  computeCapped: boolean;
+  parked: number;
+  ddrSeq: number;
+  cxlSeq: number;
+  flashSeq: number;
+  /** Parked sequences that don't fit in any pool tier either — nowhere to go. */
+  unservedSeq: number;
+  /** Sequences actually decoding right now (naive: same as resident; park: capped at decodeBatchSlots). */
+  activeSlots: number;
+  waiting: number;
+  /** Seconds one decode slot is held for a full turn (outputTokens × per-token decode time). */
+  slotHoldSec: number;
+  /** Mean-field estimate of how long a waiting sequence sits before it gets a decode slot. */
+  queueWaitSec: number;
+  /** Per-sequence park/promote transfer time, one way, for each tier. */
+  tDdrSec: number;
+  tCxlSec: number;
+  tFlashSec: number;
+}
+
+/** `decodeTimePerTokenMs` should come from calcDecode() run at the current active-slot count
+ *  (not the full concurrency) — pass null if no silicon is selected yet, which zeroes out the
+ *  queue-wait side of the model but leaves the capacity/placement math intact. */
+export function calcKvPoolOccupancy(
+  usecase: UsecaseInputs, kv: KvCacheConfig, baseline: KvCacheBaseline, atContext: KvCacheAtContext,
+  decodeTimePerTokenMs: number | null,
+): KvPoolOccupancy {
+  const seqKVGB = atContext.kvPerReqGB;
+  const conc = usecase.concurrency;
+  const fitByCapacity = seqKVGB > 0 ? Math.floor(baseline.kvBudgetGB / seqKVGB) : 0;
+
+  const resident = Math.max(0, kv.placementMode === "naive"
+    ? Math.min(conc, fitByCapacity)
+    : Math.min(conc, kv.decodeBatchSlots, fitByCapacity));
+  const computeCapped = kv.placementMode === "park" && kv.decodeBatchSlots < fitByCapacity && conc > kv.decodeBatchSlots;
+
+  const parked = Math.max(0, conc - resident);
+  const ddrSeq = seqKVGB > 0 ? Math.min(parked, Math.floor(kv.ddrPoolGB / seqKVGB)) : 0;
+  const cxlSeq = seqKVGB > 0 ? Math.min(parked - ddrSeq, Math.floor(kv.cxlPoolGB / seqKVGB)) : 0;
+  const flashSeq = seqKVGB > 0 ? Math.min(parked - ddrSeq - cxlSeq, Math.floor(kv.flashPoolGB / seqKVGB)) : 0;
+  const unservedSeq = parked - ddrSeq - cxlSeq - flashSeq;
+
+  // Only resident sequences can actually be decoding — capacity is always the outer bound,
+  // even in "park" mode where decodeBatchSlots is usually the tighter one.
+  const activeSlots = resident;
+  const waiting = Math.max(0, conc - activeSlots);
+  const slotHoldSec = decodeTimePerTokenMs != null ? (decodeTimePerTokenMs / 1000) * usecase.outputTokens : 0;
+  const queueWaitSec = activeSlots > 0 ? (waiting / activeSlots) * slotHoldSec : 0;
+
+  return {
+    seqKVGB, kvBudgetTotalGB: baseline.kvBudgetGB, fitByCapacity, resident, computeCapped, parked,
+    ddrSeq, cxlSeq, flashSeq, unservedSeq, activeSlots, waiting, slotHoldSec, queueWaitSec,
+    tDdrSec: kv.ddrBWGBs > 0 ? seqKVGB / kv.ddrBWGBs : 0,
+    tCxlSec: kv.cxlBWGBs > 0 ? seqKVGB / kv.cxlBWGBs : 0,
+    tFlashSec: kv.flashBWGBs > 0 ? seqKVGB / kv.flashBWGBs : 0,
+  };
 }
 
 // ── click-to-highlight for KV Cache — mirrors DECODE_ROW_HIGHLIGHTS above. Silicon memory

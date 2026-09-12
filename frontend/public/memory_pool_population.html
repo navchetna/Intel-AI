@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memory pool population — HBM · DDR · CXL</title>
+<style>
+  :root{
+    --bg:#f6f7f9;--panel:#fff;--ink:#171a20;--muted:#5c6572;--faint:#8a929e;
+    --line:#e4e7ec;--line2:#eef0f3;--accent:#3730a3;
+    --w:#4f46e5;--kv:#0d9488;--park:#5eead4;--reserve:#94a3b8;--free:#f3f5f8;--hot:#d97706;--over:#e11d48;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code','Roboto Mono',Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1200px;margin:0 auto;padding:24px 18px 70px;display:grid;gap:16px}
+  header h1{font-size:20px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}
+  header p{margin:0;color:var(--muted);max-width:840px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px 18px}
+  .panel h2{font-size:13px;font-weight:600;margin:0 0 12px}
+  .panel h2 .sub{font-weight:400;color:var(--faint);font-family:var(--mono);font-size:11px;margin-left:8px}
+  .controls{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 20px}
+  .ctl label{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .ctl label .val{font-family:var(--mono);color:var(--ink);font-weight:500}
+  .ctl input[type=range]{width:100%;accent-color:var(--accent)}
+  .group-label{grid-column:1/-1;font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.03em;margin:4px 0 -3px;border-top:1px solid var(--line2);padding-top:10px}
+  .group-label:first-child{border-top:none;padding-top:0}
+  .modewrap{display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+  .toggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:12px}
+  .toggle button{border:none;background:#fff;padding:6px 14px;cursor:pointer;font-family:var(--sans);color:var(--muted);font-weight:500}
+  .toggle button.on{background:var(--accent);color:#fff}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px;margin-bottom:4px}
+  .card{border:1px solid var(--line);border-radius:9px;padding:9px 11px}
+  .card .k{font-size:11px;color:var(--muted)}
+  .card .v{font-family:var(--mono);font-size:17px;font-weight:600;margin-top:3px;letter-spacing:-.01em}
+  .card .n{font-size:10.5px;color:var(--faint);font-family:var(--mono);margin-top:1px}
+  svg{display:block;width:100%;height:auto}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:11.5px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .legend i{width:13px;height:11px;border-radius:2px;border:1px solid rgba(0,0,0,.12)}
+  .econ{display:grid;grid-template-columns:1.25fr 1fr;gap:16px}
+  @media(max-width:760px){.econ{grid-template-columns:1fr}}
+  .econ .box{border:1px solid var(--line);border-radius:9px;padding:12px 14px}
+  .econ h3{font-size:12px;margin:0 0 8px;font-weight:600}
+  .flowbar{height:26px;border-radius:6px;overflow:hidden;display:flex;border:1px solid var(--line);margin:8px 0}
+  .flowbar .seg{display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:#fff;white-space:nowrap}
+  .verdict{font-size:12.5px;padding:8px 11px;border-radius:8px;margin-top:8px;line-height:1.5}
+  .vwin{background:#e7f6ee;color:#0f6e43}.vover{background:#fdeaee;color:#b4213a}.vneutral{background:#eef1f6;color:#3a4a66}
+  .kvrow{font-family:var(--mono);font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;margin-top:4px}
+  .kvrow b{color:var(--ink);font-weight:500}
+  .deriv{font-family:var(--mono);font-size:11px;color:var(--muted);background:#fafbfc;border:1px solid var(--line2);border-radius:7px;padding:9px 11px;margin-top:8px;line-height:1.7}
+  .note{font-size:11.5px;color:var(--faint);margin-top:10px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Memory pool population — HBM · DDR · CXL</h1>
+    <p>How GPU memory fills under tensor parallelism as concurrency and context grow. Weights and activation reserve are the fixed floor; KV — resident and parked — is banded by sequence so you can count what each pool serves. Transfer times per 32K sequence are labelled on each tier.</p>
+  </header>
+
+  <section class="panel">
+    <div class="modewrap">
+      <span style="font-size:12px;color:var(--muted)">Placement strategy:</span>
+      <div class="toggle" id="mode">
+        <button data-m="naive">Naïve — all KV in HBM</button>
+        <button data-m="park" class="on">Decode-aware parking</button>
+      </div>
+      <span class="note" id="modenote" style="margin:0"></span>
+    </div>
+    <div class="cards" id="cards"></div>
+    <div id="viz"></div>
+    <div class="legend">
+      <span><i style="background:var(--w)"></i>Weights (÷TP shard) — fixed</span>
+      <span><i style="background:var(--reserve)"></i>Activation / overhead — fixed</span>
+      <span><i style="background:var(--kv)"></i>KV resident (per-seq bands)</span>
+      <span><i style="background:var(--park);background-image:repeating-linear-gradient(45deg,transparent,transparent 3px,rgba(13,148,136,.4) 3px,rgba(13,148,136,.4) 5px)"></i>KV parked (per-seq bands)</span>
+      <span><i style="background:var(--free);border-color:var(--line)"></i>Free — promote / prefill staging</span>
+      <span><i style="background:#fff;border:1.5px solid var(--hot)"></i>Active decode batch</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Decode pressure &amp; parking economics <span class="sub">how the wait time is estimated</span></h2>
+    <div class="econ">
+      <div class="box">
+        <h3>Decode occupancy &amp; queue wait</h3>
+        <div id="flowlabels" class="kvrow"></div>
+        <div class="flowbar" id="flowbar"></div>
+        <div class="deriv" id="deriv"></div>
+      </div>
+      <div class="box">
+        <h3>Park vs hold-in-HBM (per waiting sequence)</h3>
+        <div class="kvrow">KV per sequence<b id="e_kv"></b></div>
+        <div class="kvrow">move ↔ DDR (each way)<b id="e_ddr"></b></div>
+        <div class="kvrow">move ↔ CXL (each way)<b id="e_cxl"></b></div>
+        <div class="kvrow">HBM freed per parked seq<b id="e_free"></b></div>
+        <div class="verdict" id="e_verdict"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Inputs <span class="sub">defaults: Qwen3.8-27B on 4× Intel Arc Pro B70</span></h2>
+    <div class="controls" id="controls"></div>
+  </section>
+</div>
+
+<script>
+function gc(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+const P={
+  tp:4, vram:32, weights:55.6, kvKiB:64, reservePct:10,
+  conc:40, ctxK:32, batch:12,
+  ddrPool:256, cxlPool:1024, ddrBW:200, cxlBW:160,
+  tpot:30, tokTurn:150,
+  mode:'park'
+};
+const CTRLS=[
+  {g:'Silicon & TP'},
+  {k:'tp',t:'TP group (GPUs)',min:1,max:8,step:1,int:1},
+  {k:'vram',t:'VRAM / GPU (GB)',min:16,max:192,step:8,int:1},
+  {k:'reservePct',t:'Activation reserve',min:0,max:30,step:1,fmt:v=>v+'%'},
+  {g:'Model'},
+  {k:'weights',t:'Weights (GB)',min:8,max:400,step:0.4,fmt:v=>v.toFixed(1)+' GB'},
+  {k:'kvKiB',t:'KV per token (KiB)',min:8,max:512,step:8,int:1},
+  {g:'Load — this is what you sweep'},
+  {k:'conc',t:'Concurrency (sequences)',min:1,max:400,step:1,int:1},
+  {k:'ctxK',t:'Context length',min:1,max:256,step:1,fmt:v=>v+'K tok'},
+  {k:'batch',t:'Active decode batch (slots)',min:1,max:128,step:1,int:1},
+  {g:'Decode timing — sets the queue wait'},
+  {k:'tpot',t:'TPOT (ms / output token)',min:5,max:120,step:1,int:1},
+  {k:'tokTurn',t:'Output tokens / turn',min:10,max:2000,step:10,int:1},
+  {g:'Pools & interconnect'},
+  {k:'ddrPool',t:'DDR pool (GB)',min:0,max:2048,step:32,int:1},
+  {k:'cxlPool',t:'CXL pool (GB)',min:0,max:8192,step:128,int:1},
+  {k:'ddrBW',t:'DDR aggregate BW (GB/s)',min:20,max:900,step:10,int:1},
+  {k:'cxlBW',t:'CXL aggregate BW (GB/s)',min:20,max:900,step:10,int:1},
+];
+
+function build(){
+  const box=document.getElementById('controls');box.innerHTML='';
+  CTRLS.forEach(c=>{
+    if(c.g){const d=document.createElement('div');d.className='group-label';d.textContent=c.g;box.appendChild(d);return;}
+    const w=document.createElement('div');w.className='ctl';
+    const disp=c.fmt?c.fmt(P[c.k]):P[c.k];
+    w.innerHTML=`<label>${c.t}<span class="val" id="v_${c.k}">${disp}</span></label><input type="range" id="c_${c.k}" min="${c.min}" max="${c.max}" step="${c.step}" value="${P[c.k]}">`;
+    box.appendChild(w);const el=w.querySelector('input'),vv=w.querySelector('.val');
+    el.oninput=()=>{P[c.k]=parseFloat(el.value);vv.textContent=c.fmt?c.fmt(P[c.k]):P[c.k];render();};
+  });
+}
+
+// ---- model ----
+function kvPerTokB(){return P.kvKiB*1024;}
+function perSeqKV_GB(){return kvPerTokB()*P.ctxK*1000/1e9;}
+function state(){
+  const wShard=P.weights/P.tp, reserve=P.vram*P.reservePct/100;
+  const kvBudgetPerGPU=Math.max(0,P.vram-wShard-reserve), kvBudgetTotal=kvBudgetPerGPU*P.tp;
+  const seqKV=perSeqKV_GB();
+  const fitByCap=seqKV>0?Math.floor(kvBudgetTotal/seqKV):0;
+  let resident = P.mode==='naive'?Math.min(P.conc,fitByCap):Math.min(P.conc,P.batch,fitByCap);
+  resident=Math.max(0,resident);
+  const parked=Math.max(0,P.conc-resident), parkedGB=parked*seqKV;
+  const ddrSeq=seqKV>0?Math.min(parked,Math.floor(P.ddrPool/seqKV)):0;
+  const cxlSeq=seqKV>0?Math.min(parked-ddrSeq,Math.floor(P.cxlPool/seqKV)):0;
+  const unservedSeq=parked-ddrSeq-cxlSeq;
+  return {wShard,reserve,kvBudgetPerGPU,kvBudgetTotal,seqKV,fitByCap,resident,parked,parkedGB,
+          ddrSeq,cxlSeq,unservedSeq,residentGB:resident*seqKV,ddrGB:ddrSeq*seqKV,cxlGB:cxlSeq*seqKV};
+}
+const fmtGB=g=>g>=100?g.toFixed(0):g>=10?g.toFixed(1):g.toFixed(2);
+const fmtMs=s=>s>=1?s.toFixed(2)+' s':(s*1000).toFixed(1)+' ms';
+
+function render(){
+  const s=state();
+  document.getElementById('modenote').textContent = P.mode==='naive'
+    ? 'HBM must hold every admitted sequence — it fills and evicts early.'
+    : 'HBM holds only the decoding batch; the rest wait in the pools.';
+  const cbLimit = P.mode==='park' && P.batch<s.fitByCap;
+  const cards=[
+    {k:'HBM KV budget',v:fmtGB(s.kvBudgetTotal)+' GB',n:`${P.tp}×${fmtGB(s.kvBudgetPerGPU)} after weights+reserve`},
+    {k:'KV / sequence',v:fmtGB(s.seqKV)+' GB',n:`${P.ctxK}K tok × ${P.kvKiB} KiB`},
+    {k:'Resident (HBM)',v:s.resident+' seq',n:`${fmtGB(s.residentGB)} GB`+(cbLimit?' · compute-capped':'')},
+    {k:'Parked (pools)',v:s.parked+' seq',n:`DDR ${s.ddrSeq} · CXL ${s.cxlSeq}`},
+    {k:'Served / offered',v:(P.conc-s.unservedSeq)+' / '+P.conc,n:s.unservedSeq>0?s.unservedSeq+' seq unservable':'all fit'},
+  ];
+  document.getElementById('cards').innerHTML=cards.map(c=>`<div class="card"><div class="k">${c.k}</div><div class="v"${s.unservedSeq>0&&c.k==='Served / offered'?' style="color:var(--over)"':''}>${c.v}</div><div class="n">${c.n}</div></div>`).join('');
+  drawViz(s);drawEcon(s);
+}
+
+function bandRegion(x,w,yTop,h,n,fill,outline){
+  let s=`<rect x="${x}" y="${yTop}" width="${w}" height="${h}" fill="${fill}" stroke="rgba(0,0,0,.10)" stroke-width="0.6"/>`;
+  if(n>1 && h/n>=2.6) for(let i=1;i<n;i++){const yy=yTop+h*i/n;s+=`<line x1="${x}" y1="${yy}" x2="${x+w}" y2="${yy}" stroke="rgba(255,255,255,.75)" stroke-width="0.8"/>`;}
+  if(outline && h>0.4) s+=`<rect x="${x+0.7}" y="${yTop+0.7}" width="${w-1.4}" height="${h-1.4}" fill="none" stroke="${gc('--hot')}" stroke-width="1.6"/>`;
+  return s;
+}
+
+function drawViz(s){
+  const W=1160,H=580,padB=94,padT=70,base=H-padB,top=padT,colH=base-top;
+  const nH=P.tp, hbmW=Math.min(76,620/nH-14), gap=14;
+  let x=64; const cols=[];
+  for(let i=0;i<nH;i++){cols.push({type:'hbm',x,w:hbmW,i});x+=hbmW+gap;}
+  x+=30; const poolW=104;
+  cols.push({type:'ddr',x,w:poolW});x+=poolW+40;
+  cols.push({type:'cxl',x,w:poolW+22});
+  const totalW=x+poolW+22+70;
+  let g=`<svg viewBox="0 0 ${Math.max(W,totalW)} ${H}" preserveAspectRatio="xMinYMid meet">`;
+  g+=`<defs><pattern id="hatch" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="${gc('--park')}"/><line x1="0" y1="0" x2="0" y2="6" stroke="rgba(13,148,136,.55)" stroke-width="2.4"/></pattern>
+     <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 2L8 5L2 8" fill="none" stroke="${gc('--faint')}" stroke-width="1.4"/></marker></defs>`;
+  const rect=(x,y,w,h,f)=>h>0.3?`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}" stroke="rgba(0,0,0,.10)" stroke-width="0.6"/>`:'';
+  const txt=(x,y,t,c,sz,anc,fw)=>`<text x="${x}" y="${y}" text-anchor="${anc||'middle'}" font-family="${gc('--mono')}" font-size="${sz||10}" fill="${c||gc('--muted')}"${fw?' font-weight="'+fw+'"':''}>${t}</text>`;
+
+  // HBM columns
+  const ppgH=colH/P.vram, kvResPerGPU=s.residentGB/P.tp;
+  cols.filter(c=>c.type==='hbm').forEach(c=>{
+    let y=base;
+    const wh=s.wShard*ppgH; g+=rect(c.x,y-wh,c.w,wh,gc('--w')); y-=wh;
+    const rh=s.reserve*ppgH; g+=rect(c.x,y-rh,c.w,rh,gc('--reserve')); y-=rh;
+    const kh=Math.min(kvResPerGPU,P.vram-s.wShard-s.reserve)*ppgH; g+=bandRegion(c.x,c.w,y-kh,kh,s.resident,gc('--kv'),true); y-=kh;
+    const fh=Math.max(0,colH-wh-rh-kh); g+=rect(c.x,y-fh,c.w,fh,gc('--free'));
+    g+=`<rect x="${c.x}" y="${top}" width="${c.w}" height="${colH}" fill="none" stroke="${gc('--line')}" stroke-width="1"/>`;
+    g+=txt(c.x+c.w/2,base+16,'GPU '+c.i,gc('--muted'),11);
+    g+=txt(c.x+c.w/2,base+30,P.vram+'GB',gc('--faint'),10);
+  });
+  const hbmR=cols[nH-1].x+cols[nH-1].w, hbmL=64;
+  g+=txt((hbmL+hbmR)/2,top-34,`HBM — tensor-parallel (weights & KV sharded ÷${P.tp})`,gc('--ink'),12,'middle',600);
+  g+=`<line x1="${hbmL}" y1="${top-22}" x2="${hbmR}" y2="${top-22}" stroke="${gc('--line')}"/>`;
+  // resident seq count callout
+  g+=txt(hbmL-8,base-(s.wShard+s.reserve)*ppgH-(kvResPerGPU*ppgH)/2,'',gc('--kv'),10,'end');
+  g+=`<text x="${hbmL-8}" y="${base-(s.wShard+s.reserve)*ppgH-Math.min(kvResPerGPU,P.vram-s.wShard-s.reserve)*ppgH/2}" text-anchor="end" font-family="${gc('--mono')}" font-size="10.5" fill="${gc('--kv')}" font-weight="600">${s.resident} seq</text>`;
+  // free-space annotation (park mode)
+  if(P.mode==='park'){
+    const freeTopGB=P.vram-s.wShard-s.reserve-kvResPerGPU;
+    if(freeTopGB>2){
+      const yc=top+ (freeTopGB*ppgH)/2;
+      g+=txt(hbmL-8,yc,'free',gc('--faint'),10,'end');
+    }
+  }
+
+  // pools
+  const drawPool=(ty,seqCnt,cap,bw)=>{
+    const c=cols.find(cc=>cc.type===ty), ppg=colH/cap;
+    const usedGB=seqCnt*s.seqKV, uh=Math.min(usedGB,cap)*ppg;
+    g+=bandRegion(c.x,c.w,base-uh,uh,seqCnt,'url(#hatch)',false);
+    g+=`<rect x="${c.x}" y="${top}" width="${c.w}" height="${colH}" fill="none" stroke="${gc('--line')}" stroke-width="1"/>`;
+    g+=txt(c.x+c.w/2,base+16,ty.toUpperCase()+' pool',gc('--muted'),11);
+    g+=txt(c.x+c.w/2,base+30,fmtGB(usedGB)+'/'+cap+'GB',gc('--faint'),10);
+    // seq count inside/above fill
+    if(seqCnt>0) g+=txt(c.x+c.w/2, base-uh-6, seqCnt+' seq', gc('--kv'),10.5,'middle',600);
+    // transfer time label
+    const t=s.seqKV/bw;
+    g+=txt(c.x+c.w/2,base+46,`1 seq ↔ ${fmtMs(t)}`,ty==='ddr'?gc('--kv'):gc('--kv'),10.5);
+    g+=txt(c.x+c.w/2,base+59,`@ ${bw} GB/s`,gc('--faint'),9.5);
+    return c;
+  };
+  const cd=drawPool('ddr',s.ddrSeq,P.ddrPool,P.ddrBW);
+  const cc=drawPool('cxl',s.cxlSeq,P.cxlPool,P.cxlBW);
+  const pL=cd.x, pR=cc.x+cc.w;
+  g+=txt((pL+pR)/2,top-34,'Offload pools — parked (waiting) KV',gc('--ink'),12,'middle',600);
+  g+=`<line x1="${pL}" y1="${top-22}" x2="${pR}" y2="${top-22}" stroke="${gc('--line')}"/>`;
+  // park/promote arrows
+  g+=`<line x1="${hbmR+6}" y1="${top+colH*0.4}" x2="${pL-6}" y2="${top+colH*0.4}" stroke="${gc('--faint')}" stroke-dasharray="4 3" marker-end="url(#ar)"/>`;
+  g+=`<line x1="${pL-6}" y1="${top+colH*0.6}" x2="${hbmR+6}" y2="${top+colH*0.6}" stroke="${gc('--faint')}" stroke-dasharray="4 3" marker-end="url(#ar)"/>`;
+  g+=txt((hbmR+pL)/2,top+colH*0.4-5,'park →',gc('--faint'),10);
+  g+=txt((hbmR+pL)/2,top+colH*0.6+13,'← promote',gc('--faint'),10);
+  if(s.unservedSeq>0){
+    g+=`<text x="${pR+8}" y="${top+14}" font-family="${gc('--mono')}" font-size="11" fill="${gc('--over')}">⚠ ${s.unservedSeq} seq</text>`;
+    g+=`<text x="${pR+8}" y="${top+28}" font-family="${gc('--mono')}" font-size="11" fill="${gc('--over')}">unservable</text>`;
+  }
+  g+='</svg>';
+  document.getElementById('viz').innerHTML=g;
+}
+
+function drawEcon(s){
+  const act=P.mode==='naive'?Math.min(s.resident,P.conc):Math.min(P.batch,P.conc);
+  const waiting=Math.max(0,P.conc-act);
+  document.getElementById('flowlabels').innerHTML=`<span>active decode slots: <b>${act}</b></span><span>waiting in queue: <b>${waiting}</b></span>`;
+  const total=Math.max(1,act+waiting);
+  document.getElementById('flowbar').innerHTML=
+    `<div class="seg" style="width:${act/total*100}%;background:${gc('--hot')}">${act}</div>`+
+    (waiting>0?`<div class="seg" style="width:${waiting/total*100}%;background:${gc('--kv')};background-image:repeating-linear-gradient(45deg,transparent,transparent 3px,rgba(255,255,255,.35) 3px,rgba(255,255,255,.35) 5px)">${waiting}</div>`:'');
+  const burst=P.tokTurn*P.tpot/1000;                 // s a slot is held per turn
+  const queueWait=act>0?waiting/act*burst:0;          // mean wait for a slot
+  document.getElementById('deriv').innerHTML=
+    `slot held per turn = ${P.tokTurn} tok × ${P.tpot} ms = <b style="color:${gc('--ink')}">${burst.toFixed(2)} s</b><br>`+
+    `queue wait ≈ (waiting ÷ slots) × slot-time = (${waiting} ÷ ${act}) × ${burst.toFixed(2)}s = <b style="color:${gc('--ink')}">${fmtMs(queueWait)}</b><br>`+
+    `<span style="color:${gc('--faint')}">first-order mean; exact wait depends on scheduling. The ratio to promote time is what's robust.</span>`;
+
+  const tDDR=s.seqKV/P.ddrBW, tCXL=s.seqKV/P.cxlBW;
+  document.getElementById('e_kv').textContent=fmtGB(s.seqKV)+' GB';
+  document.getElementById('e_ddr').textContent=fmtMs(tDDR);
+  document.getElementById('e_cxl').textContent=fmtMs(tCXL);
+  document.getElementById('e_free').textContent=fmtGB(s.seqKV)+' GB HBM';
+  const v=document.getElementById('e_verdict');
+  if(s.unservedSeq>0){v.className='verdict vover';
+    v.innerHTML=`Pools full — ${s.unservedSeq} sequences (${fmtGB(s.unservedSeq*s.seqKV)} GB) have nowhere to go. Shard wider, add pool capacity, or shed load.`;
+  }else if(waiting===0){v.className='verdict vneutral';
+    v.innerHTML=`No queue — every sequence has a slot. Parking is idle here; it starts paying the moment concurrency exceeds the ${act}-slot batch.`;
+  }else{const ratio=queueWait/tDDR;v.className='verdict vwin';
+    v.innerHTML=`Promoting from DDR costs <b>${fmtMs(tDDR)}</b> against a <b>${fmtMs(queueWait)}</b> slot wait — KV returns <b>${ratio>=10?Math.round(ratio):ratio.toFixed(1)}× before</b> it's needed. Parking ${waiting} waiting seqs frees <b>${fmtGB(waiting*s.seqKV)} GB</b> of HBM at no added latency; holding them resident would burn the fleet's most expensive memory to sit idle.`;
+  }
+}
+
+document.getElementById('mode').addEventListener('click',e=>{if(e.target.dataset.m){P.mode=e.target.dataset.m;[...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b.dataset.m===P.mode));render();}});
+build();render();
+</script>
+</body>
+</html>
