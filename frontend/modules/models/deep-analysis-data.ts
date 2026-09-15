@@ -334,6 +334,18 @@ export function getSiliconMemoryCapacityGB(chip: ComparisonChip): number | null 
   return null;
 }
 
+/** Short on-package memory technology label for a chip — "HBM3e", "GDDR6", "LPDDR5X", etc.,
+ *  read straight off the leading token of `chip.memory.type` (e.g. "GDDR6, ECC, 256-bit" →
+ *  "GDDR6"). Used anywhere the KV Pool view would otherwise hardcode "HBM" — that term is
+ *  NVIDIA-specific (GB200/GB300/H100); Arc Pro B70 is GDDR6 and Crescent Island is LPDDR5X, so
+ *  the label must track whichever GPU is actually selected. Falls back to "HBM" (the most
+ *  common case among this app's silicon options) when no chip is selected yet. */
+export function getSiliconMemoryLabel(chip: ComparisonChip | undefined | null): string {
+  if (!chip) return "HBM";
+  const m = chip.memory.type.match(/^[A-Za-z0-9]+/);
+  return m ? m[0] : "HBM";
+}
+
 // ── prefill FLOPs / TFLOPS calculation — ported from qwen3_x_model_ttft_calculator.xlsx's
 // "TTFT Model" sheet. More granular than a blanket "total-params × 2" dense term: FFN, the
 // full-attention (global) layers' Q/K/V/O projections, their O(L²) score/weighted-sum matmuls,
