@@ -115,6 +115,10 @@ export const ROUTING_ROW_HIGHLIGHTS: Record<RoutingRowKey, RoutingRowHighlights>
 interface RoutingModel {
   kvTok: number; wBytes: number; nBlk: number; bytesMove: number; bytesTotal: number;
   roofFull: number; cStep: number;
+  /** Intermediates not otherwise exposed above — kept on the result so callers building a live
+   *  formula chain (the Excel export) can cache the exact same numbers Excel's formulas will
+   *  land on, without re-deriving them by hand and risking a mismatch. */
+  Peff: number; nStepsP: number; roof: number; kvRead: number; blkMove: number; flops: number;
   stages: RoutingStage[];
   ttft: number; t2nd: number; total: number; tCpu: number; tGpu: number; tXfer: number;
   tPfGpu: number;
@@ -208,7 +212,11 @@ export function computeRoutingModel(p: RoutingComputeInputs): RoutingModel {
   const tCpu = p.cFe + tTok + tBlk + tScore + 2 * p.cAdmit + tPfCpu + tDesc + p.cHop + tDecCpu;
   const tGpu = tPfGpu + tDecGpu;
 
-  return { kvTok, wBytes, nBlk, bytesMove, bytesTotal, roofFull, cStep, stages, ttft, t2nd, total, tCpu, tGpu, tXfer, tPfGpu };
+  return {
+    kvTok, wBytes, nBlk, bytesMove, bytesTotal, roofFull, cStep,
+    Peff, nStepsP, roof, kvRead, blkMove, flops,
+    stages, ttft, t2nd, total, tCpu, tGpu, tXfer, tPfGpu,
+  };
 }
 
 // ── presentational helpers — styled to this app's --dm-* theme tokens ──────────────────────
