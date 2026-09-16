@@ -4,12 +4,13 @@
  *  conventions as modules/silicon/comparison-export.ts. */
 
 import ExcelJS from "exceljs";
-import { COMPARISON_CHIPS } from "@/modules/silicon/comparison-data";
+import { COMPARISON_CHIPS, type ComparisonChip } from "@/modules/silicon/comparison-data";
 import {
   INTERCONNECTS, calcAnalysisSweep,
   getSiliconPeak, getSiliconMemoryBandwidthGBs, getSiliconMemoryCapacityGB,
   type ModelArchitecture, type UsecaseInputs, type TpConfig, type DeltaNetPrefillConfig, type KvCacheConfig,
 } from "./deep-analysis-data";
+import { computeRoutingModel, buildRoutingComputeInputs, type RoutingInputs } from "./RoutingView";
 
 const HEADER_FILL = "FF1E3A5F";
 const HEADER_FONT = "FFFFFFFF";
@@ -91,6 +92,7 @@ function resolveScenario(s: ExportScenario) {
 export async function exportDeepAnalysisToExcel(
   arch: ModelArchitecture, usecase: UsecaseInputs, deltaCfg: DeltaNetPrefillConfig, kv: KvCacheConfig,
   baseTp: TpConfig, scenarios: ExportScenario[],
+  routingInputs: RoutingInputs, chip: ComparisonChip | undefined,
 ): Promise<void> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Intel-AI Deep Analysis";
@@ -181,12 +183,45 @@ export async function exportDeepAnalysisToExcel(
     decodeRows, [16, 12, 14, 14, 14, 20],
   );
 
-  const kvSheet = workbook.addWorksheet("KV-Offload");
-  const kvHeaderRow = addTitle(kvSheet, "KV-Offload — raw values", "One row per (scenario, concurrency). 0 / \"No\" below the capacity line — no eviction is needed there.", 7);
+  const kvSheet = workbook.addWorksheet("KV Pool");
+  const kvHeaderRow = addTitle(kvSheet, "KV Pool — raw values", "One row per (scenario, concurrency). 0 / \"No\" below the capacity line — no eviction is needed there.", 7);
   writeTidyTable(
     kvSheet, kvHeaderRow,
     ["Scenario", "Concurrency", "Over capacity?", "Recompute (ms)", "Fastest read-back (ms)", "Fastest medium", "Total realistic (ms)"],
     kvRows, [16, 12, 14, 16, 18, 14, 18],
+  );
+
+  // ── Routing: the CPU-orchestration stage model at the current configuration — a single
+  // operating point (current Use Case + current GPU Compute chip), not scenario-swept like the
+  // sheets above, since Routing's own inputs (Serving/Host-CPU/CPU coefficients) aren't part of
+  // a saved what-if combo. ────────────────────────────────────────────────────────────────────
+  const routingModel = computeRoutingModel(buildRoutingComputeInputs(routingInputs, arch, usecase, chip));
+  const routingSheet = workbook.addWorksheet("Routing");
+  let routingRow = addTitle(
+    routingSheet, "Routing — CPU orchestration, current configuration",
+    `${arch.name} · ${chip?.name ?? "no compute selected"} · generated ${new Date().toLocaleString()}`, 6,
+  );
+
+  const routingSummary: [string, string | number][] = [
+    ["TTFT (ms)", routingModel.ttft],
+    ["Time to 2nd token (ms)", routingModel.t2nd],
+    ["Total request (ms)", routingModel.total],
+    ["CPU orchestration (ms)", routingModel.tCpu],
+    ["GPU execution (ms)", routingModel.tGpu],
+    ["KV transfer (ms)", routingModel.tXfer],
+  ];
+  routingSummary.forEach(([label, value], i) => {
+    routingSheet.getCell(routingRow + i, 1).value = label;
+    routingSheet.getCell(routingRow + i, 1).font = { bold: true };
+    routingSheet.getCell(routingRow + i, 2).value = value;
+  });
+  routingRow += routingSummary.length + 2;
+
+  const routingStageRows = routingModel.stages.map(s => [s.node, s.name, s.unit, s.form, s.t, s.cs * 1000]);
+  writeTidyTable(
+    routingSheet, routingRow,
+    ["Node", "Stage", "Scales with", "Derivation", "Time (ms)", "Core-s (ms)"],
+    routingStageRows, [10, 30, 18, 30, 12, 12],
   );
 
   await downloadWorkbook(workbook, `deep-analysis-${arch.id}-${new Date().toISOString().slice(0, 10)}.xlsx`);

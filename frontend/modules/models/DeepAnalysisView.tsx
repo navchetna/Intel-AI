@@ -8,6 +8,10 @@ import { useRequestSidebarCollapsed } from "@/contexts/SidebarCollapseContext";
 import { COMPARISON_CHIPS, type ComparisonChip } from "@/modules/silicon/comparison-data";
 import { StackedAreaChart, type StackedAreaSeries } from "./AnalysisChart";
 import { ArchitectureSection } from "./ArchitectureView";
+import {
+  RoutingSection, RoutingServingPanel, RoutingHostCpuPanel, RoutingCpuCoefficientsPanel,
+  DEFAULT_ROUTING_INPUTS, ROUTING_ROW_HIGHLIGHTS, type RoutingInputs, type RoutingRowKey,
+} from "./RoutingView";
 import { exportDeepAnalysisToExcel, type ExportScenario } from "./deep-analysis-export";
 import {
   ABBR, TFLOPS, MODEL_CATALOG, DEFAULT_MODEL_ID, getModelArchitecture,
@@ -24,6 +28,7 @@ import {
   type KvCacheConfig, type KvCacheRowKey, type KvCacheBaseline, type KvPoolOccupancy, type ModelArchitecture, type DeltaNetPrefillConfig,
   type PrefillTpResult,
 } from "./deep-analysis-data";
+import { inputStyle, compactInputStyle, CompactPanel, CompactRow } from "./deep-analysis-ui";
 
 // ── shared styling helpers (same conventions as KvOffloadView/ModelBenchmarksView) ─────
 
@@ -32,12 +37,6 @@ function selectStyle(isDark: boolean): React.CSSProperties {
     ? { background: "#0e1d38", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.85)", colorScheme: "dark" }
     : { background: "#e2e8f0", border: "1px solid rgba(15,23,42,0.15)", color: "#1e293b", colorScheme: "light" };
 }
-
-const inputStyle: React.CSSProperties = {
-  background: "var(--dm-input-bg)",
-  border: "1px solid var(--dm-input-border)",
-  color: "var(--dm-input-color)",
-};
 
 function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -54,23 +53,6 @@ function SectionCard({ title, subtitle, children }: { title: string; subtitle?: 
   );
 }
 
-/** Compact header + striped-row container — the same density as the Architecture panel, reused
- *  by Use Case and Silicon so all three "driver" panels in the rail read as one family. */
-function CompactPanel({ title, subtitle, accent, children }: { title: string; subtitle?: string; accent?: string; children: React.ReactNode }) {
-  return (
-    <div
-      className="rounded-2xl border overflow-hidden"
-      style={{ background: "var(--dm-table-bg)", boxShadow: "0 4px 24px rgba(0,0,0,0.08)", borderColor: accent ? `${accent}59` : "var(--dm-border-a)" }}
-    >
-      <div className="px-4 pt-2.5 pb-2" style={{ borderBottom: "1px solid var(--dm-border-a)" }}>
-        <h2 className="text-sm font-bold" style={{ color: accent ?? "var(--dm-txt-primary)" }}>{title}</h2>
-        {subtitle && <p className="mt-0.5 text-[11px] text-[var(--dm-txt-muted)] leading-snug">{subtitle}</p>}
-      </div>
-      <div className="py-1">{children}</div>
-    </div>
-  );
-}
-
 /** Interconnect concerns render in this green throughout — a distinct color from the cyan
  *  used for compute, so a reader can tell "communication cost" apart from "compute cost" at
  *  a glance across the Interconnect panel and the Prefill-TP breakdown. */
@@ -80,41 +62,6 @@ const INTERCONNECT_GREEN_RGB = "52,211,153";
  *  interconnect green, just a different color family for a different kind of dependency. */
 const MEMORY_ORANGE = "#fb923c";
 const MEMORY_ORANGE_RGB = "251,146,60";
-
-/** One compact label ↔ control/value row — striping and sizing match the Architecture panel's
- *  rows exactly. `hint` becomes a hover tooltip instead of always-rendered helper text. `lit`
- *  applies the same "light up" treatment as a matched Architecture row, for the same reason:
- *  a clicked Prefill row highlighting the Use Case/Silicon inputs its formula actually reads. */
-/** `litRgb` is an "r,g,b" triplet — defaults to the cyan used for compute; pass the green
- *  triplet ("52,211,153") for rows that light up because of an interconnect/network dependency. */
-function CompactRow({ label, hint, index, lit, litRgb = "34,211,238", children }: {
-  label: string; hint?: string; index: number; lit?: boolean; litRgb?: string; children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="flex items-center justify-between gap-2 px-3 py-1 transition-colors duration-200"
-      style={{
-        background: lit ? `rgba(${litRgb},0.16)` : index % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)",
-        boxShadow: lit ? `inset 2px 0 0 rgb(${litRgb})` : "none",
-      }}
-      title={hint}
-    >
-      <span className="text-[11px] truncate" style={{ color: lit ? "var(--dm-txt-primary)" : "var(--dm-txt-faint)" }}>{label}</span>
-      <div
-        className="flex-shrink-0 rounded transition-all duration-200"
-        style={{ boxShadow: lit ? `0 0 0 1px rgb(${litRgb}), 0 0 8px rgba(${litRgb},0.5)` : "none" }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-const compactInputStyle: React.CSSProperties = {
-  ...inputStyle,
-  width: "5.5rem",
-  textAlign: "right",
-};
 
 const compactSelectStyleBase: React.CSSProperties = { width: "9rem" };
 
@@ -2160,8 +2107,7 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: "analysis", label: "Comparisons" },
 ];
 
-const COMING_SOON_BLURB: Record<Exclude<Section, "architecture" | "prefill" | "decode" | "kv-cache" | "analysis">, string> = {
-  "routing": "Reserved for MoE expert-routing overhead once a routed model is added — Qwen3.8-27B is dense, so this section doesn't apply to it yet.",
+const COMING_SOON_BLURB: Record<Exclude<Section, "architecture" | "prefill" | "decode" | "kv-cache" | "routing" | "analysis">, string> = {
   "persistent-memory": "Constant, concurrency-independent memory — model weights, in GiB — plus GPU capacity fit-checks, from the VRAM Calculation sheet.",
 };
 
@@ -2302,6 +2248,7 @@ export function DeepAnalysisView() {
   const [modelId, setModelId] = useState<string>(DEFAULT_MODEL_ID);
   const arch = getModelArchitecture(modelId);
   const [usecase, setUsecase] = useState<UsecaseInputs>(DEFAULT_USECASE_INPUTS);
+  const [routingInputs, setRoutingInputs] = useState<RoutingInputs>(DEFAULT_ROUTING_INPUTS);
   const [siliconId, setSiliconId] = useState<string>("b70");
   const [tpConfig, setTpConfig] = useState<TpConfig>(DEFAULT_TP_CONFIG);
   /** Arc Pro B70's realistic default fabric is PCIe Gen4, not Gen5 — nudge the interconnect
@@ -2328,6 +2275,7 @@ export function DeepAnalysisView() {
   const [highlightedTpRow, setHighlightedTpRow] = useState<TpRowKey | null>(null);
   const [highlightedDecodeRow, setHighlightedDecodeRow] = useState<DecodeRowKey | null>(null);
   const [highlightedKvCacheRow, setHighlightedKvCacheRow] = useState<KvCacheRowKey | null>(null);
+  const [highlightedRoutingRow, setHighlightedRoutingRow] = useState<RoutingRowKey | null>(null);
   const [hoveredAbbrevs, setHoveredAbbrevs] = useState<Set<string> | null>(null);
 
   const chip = COMPARISON_CHIPS.find(c => c.id === siliconId);
@@ -2358,46 +2306,52 @@ export function DeepAnalysisView() {
         .map((c, i) => (c ? { name: `Combo ${i + 1} — ${COMPARISON_CHIPS.find(chip => chip.id === c.siliconId)?.name ?? c.siliconId}`, siliconId: c.siliconId, tpDegree: c.tpDegree, interconnectId: c.interconnectId } : null))
         .filter((s): s is ExportScenario => s != null),
     ];
-    await exportDeepAnalysisToExcel(arch, usecase, deltaNetConfig, kvCacheConfigEffective, tpConfig, scenarios);
-  }, [arch, usecase, deltaNetConfig, kvCacheConfigEffective, siliconId, tpConfig, combos]);
+    await exportDeepAnalysisToExcel(arch, usecase, deltaNetConfig, kvCacheConfigEffective, tpConfig, scenarios, routingInputs, chip);
+  }, [arch, usecase, deltaNetConfig, kvCacheConfigEffective, siliconId, tpConfig, combos, routingInputs, chip]);
   useRegisterExport(exportHandler, "Export Deep Analysis to Excel");
 
   const rowActive = section === "prefill" ? highlightedRow : null;
   const tpRowActive = section === "prefill" ? highlightedTpRow : null;
   const decodeRowActive = section === "decode" ? highlightedDecodeRow : null;
   const kvCacheRowActive = section === "kv-cache" ? highlightedKvCacheRow : null;
+  const routingRowActive = section === "routing" ? highlightedRoutingRow : null;
   const tpHighlights = tpRowActive ? TP_ROW_HIGHLIGHTS[tpRowActive] : null;
   const decodeHighlights = decodeRowActive ? DECODE_ROW_HIGHLIGHTS[decodeRowActive] : null;
   const kvCacheHighlights = kvCacheRowActive ? KV_CACHE_ROW_HIGHLIGHTS[kvCacheRowActive] : null;
+  const routingHighlights = routingRowActive ? ROUTING_ROW_HIGHLIGHTS[routingRowActive] : null;
 
-  const clickHighlightedAbbrevs = rowActive || tpHighlights?.archAbbrevs || decodeHighlights?.archAbbrevs || kvCacheHighlights?.archAbbrevs
+  const clickHighlightedAbbrevs = rowActive || tpHighlights?.archAbbrevs || decodeHighlights?.archAbbrevs || kvCacheHighlights?.archAbbrevs || routingHighlights?.archAbbrevs
     ? new Set([
         ...(rowActive ? getPrefillRowSymbols(arch, rowActive) : []),
         ...(tpHighlights?.archAbbrevs ?? []),
         ...(decodeHighlights?.archAbbrevs ?? []),
         ...(kvCacheHighlights?.archAbbrevs ?? []),
+        ...(routingHighlights?.archAbbrevs ?? []),
       ])
     : null;
   // Hovering the architecture diagram takes priority over a clicked row's highlight — it's a
   // more immediate, transient signal than whatever row happened to be clicked last.
   const highlightedAbbrevs = hoveredAbbrevs ?? clickHighlightedAbbrevs;
-  const highlightedUsecaseFields = rowActive || tpHighlights?.usecaseFields || decodeHighlights?.usecaseFields || kvCacheHighlights?.usecaseFields
+  const highlightedUsecaseFields = rowActive || tpHighlights?.usecaseFields || decodeHighlights?.usecaseFields || kvCacheHighlights?.usecaseFields || routingHighlights?.usecaseFields
     ? new Set([
         ...(rowActive ? PREFILL_ROW_USECASE_FIELDS[rowActive] : []),
         ...(tpHighlights?.usecaseFields ?? []),
         ...(decodeHighlights?.usecaseFields ?? []),
         ...(kvCacheHighlights?.usecaseFields ?? []),
+        ...(routingHighlights?.usecaseFields ?? []),
       ])
     : null;
   const highlightSiliconPeak =
     (rowActive ? PREFILL_ROW_USES_SILICON_PEAK[rowActive] : false) ||
     (tpHighlights?.siliconPeak ?? false) ||
-    (decodeHighlights?.siliconPeak ?? false);
-  const highlightSiliconBandwidth = decodeHighlights?.siliconBandwidth ?? false;
+    (decodeHighlights?.siliconPeak ?? false) ||
+    (routingHighlights?.siliconPeak ?? false);
+  const highlightSiliconBandwidth = (decodeHighlights?.siliconBandwidth ?? false) || (routingHighlights?.siliconBandwidth ?? false);
   const highlightSiliconCapacity = kvCacheHighlights?.siliconCapacity ?? false;
   const highlightedInterconnectFields = tpHighlights?.interconnectFields || decodeHighlights?.interconnectFields
     ? new Set([...(tpHighlights?.interconnectFields ?? []), ...(decodeHighlights?.interconnectFields ?? [])])
     : null;
+  const highlightedRoutingFields = routingHighlights?.routingFields ? new Set(routingHighlights.routingFields) : null;
 
   /** Clicking the next step in order builds on what's already revealed (the "story"); clicking
    *  anything else — a step already reached, or one out of order — breaks the sequence and
@@ -2540,6 +2494,12 @@ export function DeepAnalysisView() {
           <div className="flex-1 min-w-0">
             {section === "architecture" ? (
               <ArchitectureSection />
+            ) : section === "routing" ? (
+              <RoutingSection
+                arch={arch} usecase={usecase} chip={chip}
+                inputs={routingInputs} onChangeInputs={setRoutingInputs}
+                highlightedRow={highlightedRoutingRow} onSelectRow={setHighlightedRoutingRow}
+              />
             ) : section === "decode" ? (
               <DecodeSection
                 arch={arch} usecase={usecase} chip={chip} tp={tpConfig} onChangeTp={setTpConfig}
@@ -2558,7 +2518,7 @@ export function DeepAnalysisView() {
                 onUpdateComboField={updateComboField} onApplyCombo={applyCombo} onClearCombo={clearCombo}
               />
             ) : (
-              <ComingSoonSection title={SECTIONS.find(s => s.key === section)!.label} blurb={COMING_SOON_BLURB[section as Exclude<Section, "architecture" | "prefill" | "decode" | "kv-cache" | "analysis">]} />
+              <ComingSoonSection title={SECTIONS.find(s => s.key === section)!.label} blurb={COMING_SOON_BLURB[section as Exclude<Section, "architecture" | "prefill" | "decode" | "kv-cache" | "routing" | "analysis">]} />
             )}
           </div>
 
@@ -2566,12 +2526,19 @@ export function DeepAnalysisView() {
             <div className="flex flex-col sm:flex-row gap-6">
               <div className="sm:w-[300px] flex-shrink-0">
                 <ArchitecturePanel arch={arch} highlighted={highlightedAbbrevs} />
+                {section === "routing" && <RoutingServingPanel inputs={routingInputs} onChange={setRoutingInputs} highlighted={highlightedRoutingFields} />}
               </div>
               <div className="flex-1 min-w-0 flex flex-col gap-6">
                 <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
                 <SiliconPanel chip={chip} onChange={handleSiliconChange} highlightPeak={highlightSiliconPeak} highlightBandwidth={highlightSiliconBandwidth} highlightCapacity={highlightSiliconCapacity} />
                 <MemoryPanel tp={tpConfig} />
                 <InterconnectPanel tp={tpConfig} onChange={setTpConfig} highlighted={highlightedInterconnectFields} />
+                {section === "routing" && (
+                  <>
+                    <RoutingHostCpuPanel inputs={routingInputs} onChange={setRoutingInputs} highlighted={highlightedRoutingFields} />
+                    <RoutingCpuCoefficientsPanel inputs={routingInputs} onChange={setRoutingInputs} highlighted={highlightedRoutingFields} />
+                  </>
+                )}
               </div>
             </div>
           </div>
