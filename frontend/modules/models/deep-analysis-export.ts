@@ -193,15 +193,15 @@ function buildRoutingSheet(
   ], refs);
   rightRow = writeRoutingInputBlock(ws, rightRow, 4, "CPU Coefficients", [
     { key: "stepMeas", label: "Measured decode step, ms", value: computeInputs.stepMeas },
-    { key: "cFe", label: "Frontend fixed, ms", value: computeInputs.cFe },
-    { key: "cTok", label: "Tokenise, ms/1K tokens", value: computeInputs.cTok },
-    { key: "cBlk", label: "Hash + lookup, µs/block", value: computeInputs.cBlk },
-    { key: "cScore", label: "Score per worker, µs", value: computeInputs.cScore },
-    { key: "cAdmit", label: "Admission, ms/request", value: computeInputs.cAdmit },
-    { key: "cHop", label: "Control hop, ms/request", value: computeInputs.cHop },
-    { key: "cXfer", label: "Transfer setup, ms", value: computeInputs.cXfer },
-    { key: "cDesc", label: "NIXL descriptor, µs/block·layer", value: computeInputs.cDesc },
-    { key: "cDetok", label: "Detokenise + SSE, ms/token", value: computeInputs.cDetok },
+    { key: "cFe", label: "Frontend fixed, ms (c_fe)", value: computeInputs.cFe },
+    { key: "cTok", label: "Tokenise, ms/1K tokens (c_tok)", value: computeInputs.cTok },
+    { key: "cBlk", label: "Hash + lookup, µs/block (c_blk)", value: computeInputs.cBlk },
+    { key: "cScore", label: "Score per worker, µs (c_score)", value: computeInputs.cScore },
+    { key: "cAdmit", label: "Admission, ms/request (c_admit)", value: computeInputs.cAdmit },
+    { key: "cHop", label: "Control hop, ms/request (c_hop)", value: computeInputs.cHop },
+    { key: "cXfer", label: "Transfer setup, ms (c_xfer)", value: computeInputs.cXfer },
+    { key: "cDesc", label: "NIXL descriptor, µs/block·layer (c_desc)", value: computeInputs.cDesc },
+    { key: "cDetok", label: "Detokenise + SSE, ms/token (c_detok)", value: computeInputs.cDetok },
   ], refs);
 
   ws.getColumn(1).width = 26; ws.getColumn(2).width = 14; ws.getColumn(3).width = 3;
