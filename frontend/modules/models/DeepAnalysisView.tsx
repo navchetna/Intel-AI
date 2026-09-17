@@ -2382,13 +2382,18 @@ export function DeepAnalysisView() {
   );
   const [combos, setCombos] = useState<(WhatIfCombo | null)[]>(DEFAULT_WHAT_IF_COMBOS);
   const [section, setSection] = useState<Section>("prefill");
-  // Entering KV Pool defaults the shared Use Case token lengths to a realistic long-context
-  // decode shape (32K in / 1K out) — only on the transition INTO the tab, not on every render
-  // while already there, so it doesn't stomp on a value you then edit by hand.
+  // Each tab defaults the shared Use Case token lengths to the shape that tab is meant to be read
+  // with — KV Pool to a long-context decode shape (32K in / 1K out), Prefill/Decode/Routing/
+  // Comparisons to a shorter shape (8K in / 1K out) — only on the transition INTO the tab, not on
+  // every render while already there, so it doesn't stomp on a value you then edit by hand.
   const prevSectionRef = useRef<Section>("prefill");
   useEffect(() => {
-    if (section === "kv-cache" && prevSectionRef.current !== "kv-cache") {
-      setUsecase(prev => updateUsecaseField(updateUsecaseField(prev, "inputTokens", 32768), "outputTokens", 1024));
+    if (section !== prevSectionRef.current) {
+      if (section === "kv-cache") {
+        setUsecase(prev => updateUsecaseField(updateUsecaseField(prev, "inputTokens", 32768), "outputTokens", 1024));
+      } else if (section === "prefill" || section === "decode" || section === "routing" || section === "analysis") {
+        setUsecase(prev => updateUsecaseField(updateUsecaseField(prev, "inputTokens", 8192), "outputTokens", 1024));
+      }
     }
     prevSectionRef.current = section;
   }, [section]);
@@ -2644,36 +2649,38 @@ export function DeepAnalysisView() {
             )}
           </div>
 
-          <div className="w-full lg:w-[680px] flex-shrink-0 lg:sticky lg:top-6 lg:self-start">
-            <div className="flex flex-col sm:flex-row gap-6">
-              <div className="sm:w-[300px] flex-shrink-0 flex flex-col gap-4">
-                <ArchitecturePanel arch={arch} highlighted={highlightedAbbrevs} onlyAbbrevs={section === "routing" ? ROUTING_ARCH_ABBREVS : undefined} hideSubtitle={section === "routing"} />
-                {section === "routing" && (
-                  <>
-                    <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
-                    <RoutingServingPanel inputs={routingInputs} onChange={setRoutingInputs} highlighted={highlightedRoutingFields} />
-                  </>
-                )}
-              </div>
-              <div className="flex-1 min-w-0 flex flex-col gap-4">
-                {section === "routing" ? (
-                  <>
-                    <RoutingHostCpuPanel inputs={routingInputs} onChange={setRoutingInputs} highlighted={highlightedRoutingFields} />
-                    <RoutingCpuCoefficientsPanel inputs={routingInputs} onChange={setRoutingInputs} highlighted={highlightedRoutingFields} />
-                    <SiliconPanel chip={chip} onChange={handleSiliconChange} highlightPeak={highlightSiliconPeak} highlightBandwidth={highlightSiliconBandwidth} highlightCapacity={highlightSiliconCapacity} />
-                    <InterconnectPanel tp={tpConfig} onChange={setTpConfig} highlighted={highlightedInterconnectFields} />
-                  </>
-                ) : (
-                  <>
-                    <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
-                    <SiliconPanel chip={chip} onChange={handleSiliconChange} highlightPeak={highlightSiliconPeak} highlightBandwidth={highlightSiliconBandwidth} highlightCapacity={highlightSiliconCapacity} />
-                    <MemoryPanel tp={tpConfig} />
-                    <InterconnectPanel tp={tpConfig} onChange={setTpConfig} highlighted={highlightedInterconnectFields} />
-                  </>
-                )}
+          {section !== "architecture" && (
+            <div className="w-full lg:w-[680px] flex-shrink-0 lg:sticky lg:top-6 lg:self-start">
+              <div className="flex flex-col sm:flex-row gap-6">
+                <div className="sm:w-[300px] flex-shrink-0 flex flex-col gap-4">
+                  <ArchitecturePanel arch={arch} highlighted={highlightedAbbrevs} onlyAbbrevs={section === "routing" ? ROUTING_ARCH_ABBREVS : undefined} hideSubtitle={section === "routing"} />
+                  {section === "routing" && (
+                    <>
+                      <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
+                      <RoutingServingPanel inputs={routingInputs} onChange={setRoutingInputs} highlighted={highlightedRoutingFields} />
+                    </>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0 flex flex-col gap-4">
+                  {section === "routing" ? (
+                    <>
+                      <RoutingHostCpuPanel inputs={routingInputs} onChange={setRoutingInputs} highlighted={highlightedRoutingFields} />
+                      <RoutingCpuCoefficientsPanel inputs={routingInputs} onChange={setRoutingInputs} highlighted={highlightedRoutingFields} />
+                      <SiliconPanel chip={chip} onChange={handleSiliconChange} highlightPeak={highlightSiliconPeak} highlightBandwidth={highlightSiliconBandwidth} highlightCapacity={highlightSiliconCapacity} />
+                      <InterconnectPanel tp={tpConfig} onChange={setTpConfig} highlighted={highlightedInterconnectFields} />
+                    </>
+                  ) : (
+                    <>
+                      <UsecasePanel usecase={usecase} onChange={setUsecase} highlightedFields={highlightedUsecaseFields} />
+                      <SiliconPanel chip={chip} onChange={handleSiliconChange} highlightPeak={highlightSiliconPeak} highlightBandwidth={highlightSiliconBandwidth} highlightCapacity={highlightSiliconCapacity} />
+                      <MemoryPanel tp={tpConfig} />
+                      <InterconnectPanel tp={tpConfig} onChange={setTpConfig} highlighted={highlightedInterconnectFields} />
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
