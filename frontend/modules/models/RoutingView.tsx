@@ -311,31 +311,31 @@ export function RoutingCpuCoefficientsPanel({ inputs, onChange, highlighted }: {
       <CompactRow label="Measured decode step, ms" hint="meas" index={0} lit={lit("stepMeas")}>
         <CompactNumField value={inputs.stepMeas} step={0.01} onChange={v => set("stepMeas", v)} />
       </CompactRow>
-      <CompactRow label="Frontend fixed, ms" hint="meas" index={1} lit={lit("cFe")}>
+      <CompactRow label="Frontend fixed, ms (c_fe)" hint="meas" index={1} lit={lit("cFe")}>
         <CompactNumField value={inputs.cFe} step={0.05} onChange={v => set("cFe", v)} />
       </CompactRow>
-      <CompactRow label="Tokenise, ms/1K tokens" hint="meas" index={2} lit={lit("cTok")}>
+      <CompactRow label="Tokenise, ms/1K tokens (c_tok)" hint="meas" index={2} lit={lit("cTok")}>
         <CompactNumField value={inputs.cTok} step={0.05} onChange={v => set("cTok", v)} />
       </CompactRow>
-      <CompactRow label="Hash + lookup, µs/block" hint="est" index={3} lit={lit("cBlk")}>
+      <CompactRow label="Hash + lookup, µs/block (c_blk)" hint="est" index={3} lit={lit("cBlk")}>
         <CompactNumField value={inputs.cBlk} step={0.5} onChange={v => set("cBlk", v)} />
       </CompactRow>
-      <CompactRow label="Score per worker, µs" hint="est" index={4} lit={lit("cScore")}>
+      <CompactRow label="Score per worker, µs (c_score)" hint="est" index={4} lit={lit("cScore")}>
         <CompactNumField value={inputs.cScore} onChange={v => set("cScore", v)} />
       </CompactRow>
-      <CompactRow label="Admission, ms/request" hint="meas" index={5} lit={lit("cAdmit")}>
+      <CompactRow label="Admission, ms/request (c_admit)" hint="meas" index={5} lit={lit("cAdmit")}>
         <CompactNumField value={inputs.cAdmit} step={0.01} onChange={v => set("cAdmit", v)} />
       </CompactRow>
-      <CompactRow label="Control hop, ms/request" hint="meas" index={6} lit={lit("cHop")}>
+      <CompactRow label="Control hop, ms/request (c_hop)" hint="meas" index={6} lit={lit("cHop")}>
         <CompactNumField value={inputs.cHop} step={0.1} onChange={v => set("cHop", v)} />
       </CompactRow>
-      <CompactRow label="Transfer setup, ms" hint="meas" index={7} lit={lit("cXfer")}>
+      <CompactRow label="Transfer setup, ms (c_xfer)" hint="meas" index={7} lit={lit("cXfer")}>
         <CompactNumField value={inputs.cXfer} step={5} onChange={v => set("cXfer", v)} />
       </CompactRow>
-      <CompactRow label="NIXL descriptor, µs/block·layer" hint="est" index={8} lit={lit("cDesc")}>
+      <CompactRow label="NIXL descriptor, µs/block·layer (c_desc)" hint="est" index={8} lit={lit("cDesc")}>
         <CompactNumField value={inputs.cDesc} step={0.1} onChange={v => set("cDesc", v)} />
       </CompactRow>
-      <CompactRow label="Detokenise + SSE, ms/token" hint="est" index={9} lit={lit("cDetok")}>
+      <CompactRow label="Detokenise + SSE, ms/token (c_detok)" hint="est" index={9} lit={lit("cDetok")}>
         <CompactNumField value={inputs.cDetok} step={0.005} onChange={v => set("cDetok", v)} />
       </CompactRow>
     </CompactPanel>
@@ -398,10 +398,6 @@ export function RoutingSection({ arch, usecase, chip, inputs, onChangeInputs, hi
     >
       <div className="px-5 pt-4 pb-3" style={{ borderBottom: "1px solid var(--dm-border-a)" }}>
         <h2 className="text-sm font-bold" style={{ color: "var(--dm-txt-primary)" }}>What the CPU orchestrates, stage by stage</h2>
-        <p className="mt-0.5 text-xs leading-relaxed max-w-3xl" style={{ color: "var(--dm-txt-muted)" }}>
-          Every stage in the disaggregated request path, with its scaling unit and cost derived from the inputs rather than fitted.
-          Stages are tagged by the resource they consume and by whether they sit on the critical path.
-        </p>
       </div>
 
       <div className="p-5">
@@ -421,7 +417,7 @@ export function RoutingSection({ arch, usecase, chip, inputs, onChangeInputs, hi
               rendered from DeepAnalysisView when section === "routing". */}
             <div className="rounded-xl border p-4" style={{ borderColor: "var(--dm-border-a)", background: "var(--dm-surface-a)" }}>
               <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
-                <h3 className="text-xs font-bold" style={{ color: "var(--dm-txt-primary)" }}>Critical path</h3>
+                <h3 className="text-xs font-bold" style={{ color: "var(--dm-txt-primary)" }}>Path</h3>
                 {selectedResource && (
                   <button
                     type="button" onClick={() => setSelectedResource(null)}
@@ -432,10 +428,6 @@ export function RoutingSection({ arch, usecase, chip, inputs, onChangeInputs, hi
                   </button>
                 )}
               </div>
-              <p className="text-[10.5px] mb-2.5" style={{ color: "var(--dm-txt-faintest)" }}>
-                Widths are proportional to wall-clock. Click a segment or a legend entry to filter the stage table below to that resource.
-                Stages costing under a millisecond will not be visible here — read them off the table below.
-              </p>
               <div className="h-7 flex overflow-hidden rounded-md mb-2.5" style={{ background: "var(--dm-surface-b)" }}>
                 {waterfallStages.map((s, i) => (
                   <div
@@ -481,9 +473,6 @@ export function RoutingSection({ arch, usecase, chip, inputs, onChangeInputs, hi
                   </button>
                 )}
               </div>
-              <p className="text-[10.5px] mb-2.5" style={{ color: "var(--dm-txt-faintest)" }}>
-                Each row derives from the inputs. <span style={{ color: "#34d399" }}>meas</span> coefficients come from the instrumented run; <span style={{ color: "var(--dm-txt-faintest)" }}>est</span> ones are placeholders that still need a primitive microbenchmark.
-              </p>
               <table className="w-full text-[11px] border-collapse table-fixed">
                 <colgroup>
                   <col style={{ width: "26%" }} /><col style={{ width: "8%" }} /><col style={{ width: "16%" }} />

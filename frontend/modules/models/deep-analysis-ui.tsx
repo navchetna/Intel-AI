@@ -44,7 +44,7 @@ export function CompactRow({ label, hint, index, lit, litRgb = "34,211,238", chi
 }) {
   return (
     <div
-      className="flex items-center justify-between gap-2 px-3 py-1 transition-colors duration-200"
+      className="flex items-center justify-between gap-2 px-3 py-0.5 transition-colors duration-200"
       style={{
         background: lit ? `rgba(${litRgb},0.16)` : index % 2 === 0 ? "var(--dm-surface-a)" : "var(--dm-surface-b)",
         boxShadow: lit ? `inset 2px 0 0 rgb(${litRgb})` : "none",

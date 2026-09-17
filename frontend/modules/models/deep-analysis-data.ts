@@ -957,7 +957,7 @@ export function calcKvCacheAtContext(
 // A second, complementary question to the capacity/eviction model above: at the CURRENT
 // concurrency, who actually needs to sit in HBM right now? Only the sequences in the active
 // decode batch do — a compute-bound slot count, not a capacity-bound one. Everything else can
-// be "parked" out to DDR → CXL → Flash and "promoted" back when its turn comes, freeing HBM at
+// be "parked" out to CXL → DDR → Flash and "promoted" back when its turn comes, freeing HBM at
 // no latency cost as long as the park/promote round trip is faster than the queue wait a
 // parked sequence would have sat through anyway. Built on top of calcKvCacheBaseline/
 // calcKvCacheAtContext's own numbers (kvBudgetGB, kvPerReqGB) rather than re-deriving them.
@@ -1005,11 +1005,12 @@ export function calcKvPoolOccupancy(
     : Math.min(conc, kv.decodeBatchSlots, fitByCapacity));
   const computeCapped = kv.placementMode === "park" && kv.decodeBatchSlots < fitByCapacity && conc > kv.decodeBatchSlots;
 
+  // Parked sequences fill CXL first, then DDR, then Flash — CXL is the preferred first tier.
   const parked = Math.max(0, conc - resident);
-  const ddrSeq = seqKVGB > 0 ? Math.min(parked, Math.floor(kv.ddrPoolGB / seqKVGB)) : 0;
-  const cxlSeq = seqKVGB > 0 ? Math.min(parked - ddrSeq, Math.floor(kv.cxlPoolGB / seqKVGB)) : 0;
-  const flashSeq = seqKVGB > 0 ? Math.min(parked - ddrSeq - cxlSeq, Math.floor(kv.flashPoolGB / seqKVGB)) : 0;
-  const unservedSeq = parked - ddrSeq - cxlSeq - flashSeq;
+  const cxlSeq = seqKVGB > 0 ? Math.min(parked, Math.floor(kv.cxlPoolGB / seqKVGB)) : 0;
+  const ddrSeq = seqKVGB > 0 ? Math.min(parked - cxlSeq, Math.floor(kv.ddrPoolGB / seqKVGB)) : 0;
+  const flashSeq = seqKVGB > 0 ? Math.min(parked - cxlSeq - ddrSeq, Math.floor(kv.flashPoolGB / seqKVGB)) : 0;
+  const unservedSeq = parked - cxlSeq - ddrSeq - flashSeq;
 
   // Only resident sequences can actually be decoding — capacity is always the outer bound,
   // even in "park" mode where decodeBatchSlots is usually the tighter one.
