@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { withBase } from "@/lib/deployment";
 import { generateAgentSuggestions } from "./agent-suggestions-api";
 import type { AiSuggestedFlow, BusinessProcess } from "@/modules/projects/types";
 import { timeAgo } from "@/modules/projects/format";
@@ -19,16 +18,6 @@ function moveItem<T>(list: T[], index: number, dir: -1 | 1): T[] {
   const next = [...list];
   [next[index], next[target]] = [next[target], next[index]];
   return next;
-}
-
-async function fetchReferenceText(filename: string | undefined): Promise<string> {
-  if (!filename) return "";
-  try {
-    const res = await fetch(withBase(`/${filename}`));
-    return res.ok ? await res.text() : "";
-  } catch {
-    return "";
-  }
 }
 
 function FlowStepCard({ actor, name, description, badge, isLast, canMoveUp, canMoveDown, onMove }: {
@@ -133,14 +122,14 @@ function HistoryPanel({ history, onRestore, onDelete }: {
   );
 }
 
-export function AiSuggestedFlowPanel({ process, referenceFile, onChange }: {
+export function AiSuggestedFlowPanel({ process, onChange }: {
   process: BusinessProcess;
-  referenceFile: string | undefined;
   onChange: (next: BusinessProcess) => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nudge, setNudge] = useState("");
+  const referenceText = process.implementationWorkflow?.content ?? "";
   // `id` was added after this feature shipped, so data generated earlier has none — backfill a
   // stable one here (rather than at rest) so keys below are always unique without a migration.
   const suggestion = useMemo(() => {
@@ -155,7 +144,6 @@ export function AiSuggestedFlowPanel({ process, referenceFile, onChange }: {
   async function handleGenerate() {
     setLoading(true); setError(null);
     try {
-      const referenceText = await fetchReferenceText(referenceFile);
       const trimmedNudge = nudge.trim();
       const result = await generateAgentSuggestions({
         business_process_name: process.name,
@@ -201,9 +189,10 @@ export function AiSuggestedFlowPanel({ process, referenceFile, onChange }: {
     <div>
       <div className="mb-4">
         <p className="text-[12px] max-w-xl leading-relaxed mb-3" style={{ color: "var(--dm-txt-faint)" }}>
-          Reads this process&rsquo;s Reference document and asks an LLM (via GROQ) to propose the agents, task
-          types, and human checkpoints needed — and the order they&rsquo;d run in. Ground truth, not a
-          substitute for the Design tab; nothing here is applied automatically.
+          Reads this process&rsquo;s Implementation Workflow (extracted from this project&rsquo;s Documents, Notes,
+          and Discussion log) and asks an LLM (via GROQ) to propose the agents, task types, and human
+          checkpoints needed — and the order they&rsquo;d run in. Ground truth, not a substitute for the
+          Design tab; nothing here is applied automatically.
         </p>
         <div className="flex items-end gap-2 flex-wrap">
           <div className="flex-1 min-w-[240px]">
@@ -224,6 +213,13 @@ export function AiSuggestedFlowPanel({ process, referenceFile, onChange }: {
             {loading ? "Generating…" : suggestion ? "Regenerate" : "Generate"}
           </button>
         </div>
+        {!referenceText && (
+          <p className="text-[11px] mt-2" style={{ color: "#fbbf24" }}>
+            No Implementation Workflow has been extracted for this process yet — generating now will produce
+            a generic flow from just the name and description. Extract one on the Implementation Workflow tab first
+            for a flow grounded in this project&rsquo;s actual documents, notes, and discussions.
+          </p>
+        )}
       </div>
 
       {error && (
@@ -235,7 +231,7 @@ export function AiSuggestedFlowPanel({ process, referenceFile, onChange }: {
       {!suggestion && !loading && !error && (
         <div className="rounded-2xl border border-dashed border-white/10 py-16 text-center">
           <p className="text-sm" style={{ color: "var(--dm-txt-faint)" }}>No AI-suggested flow generated yet.</p>
-          <p className="text-xs mt-1" style={{ color: "var(--dm-txt-muted)" }}>Click Generate to propose one from this process&rsquo;s reference material.</p>
+          <p className="text-xs mt-1" style={{ color: "var(--dm-txt-muted)" }}>Click Generate to propose one from this process&rsquo;s Implementation Workflow.</p>
         </div>
       )}
 

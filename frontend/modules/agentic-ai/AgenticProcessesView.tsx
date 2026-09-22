@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useProject } from "@/contexts/ProjectContext";
 import type { BusinessProcess, ProcessParticipant } from "@/modules/projects/types";
 import { TextAreaField } from "@/components/ui";
 import { calcRequiredConcurrency, TASK_TYPES } from "@/modules/workflows/task-sizing-calcs";
-import { withBase } from "@/lib/deployment";
 import { extractImplementationWorkflow } from "@/modules/projects/implementation-extract-api";
 import { AiSuggestedFlowPanel } from "./AiSuggestedFlowPanel";
 
@@ -316,24 +315,6 @@ function SaveButton() {
   );
 }
 
-// ── reference documents (source-extract markdown from /public, one per business process) ──
-
-/** The Nth business process (0-indexed) is documented by the "0(N+1)_...md" file in /public —
- *  discovered dynamically (rather than hardcoded) so it stays correct as files are renamed or
- *  more business processes/reference docs are added. */
-function useReferenceFiles(): string[] {
-  const [files, setFiles] = useState<string[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    fetch(withBase("/reference-docs"))
-      .then(res => res.json())
-      .then((data: { files: string[] }) => { if (!cancelled) setFiles(data.files ?? []); })
-      .catch(() => { if (!cancelled) setFiles([]); });
-    return () => { cancelled = true; };
-  }, []);
-  return files;
-}
-
 /** The Implementation Workflow tab — on demand, asks GROQ to write up an implementation
  *  approach for this business process from the project's documents, notes, and discussion
  *  log (see Documents/Notes/Discussions on the project's summary page). Result is persisted
@@ -410,8 +391,8 @@ function ImplementationWorkflowPanel({ process, onChange }: {
 
 type ProcessTab = "design" | "reference" | "ai-suggested-flow";
 
-function BusinessProcessCard({ process, expanded, onToggleExpand, onChange, onDelete, referenceFile }: {
-  process: BusinessProcess; expanded: boolean; onToggleExpand: () => void; referenceFile: string | undefined;
+function BusinessProcessCard({ process, expanded, onToggleExpand, onChange, onDelete }: {
+  process: BusinessProcess; expanded: boolean; onToggleExpand: () => void;
   onChange: (next: BusinessProcess) => void; onDelete: () => void;
 }) {
   const agentCount = process.agents.length;
@@ -564,7 +545,7 @@ function BusinessProcessCard({ process, expanded, onToggleExpand, onChange, onDe
           ) : tab === "reference" ? (
             <ImplementationWorkflowPanel process={process} onChange={onChange} />
           ) : (
-            <AiSuggestedFlowPanel process={process} referenceFile={referenceFile} onChange={onChange} />
+            <AiSuggestedFlowPanel process={process} onChange={onChange} />
           )}
         </div>
       )}
@@ -582,7 +563,6 @@ export function AgenticProcessesView({ businessProcesses, onChange }: {
   // process, including ones just loaded from a different project, is fully expanded by
   // default; collapsing is an explicit per-card opt-out.
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
-  const referenceFiles = useReferenceFiles();
 
   function updateProcess(id: string, next: BusinessProcess) {
     onChange(businessProcesses.map(p => p.id === id ? next : p));
@@ -653,14 +633,13 @@ export function AgenticProcessesView({ businessProcesses, onChange }: {
         </div>
       ) : (
         <div className="space-y-3">
-          {businessProcesses.map((p, i) => (
+          {businessProcesses.map(p => (
             <BusinessProcessCard
               key={p.id} process={p}
               expanded={!collapsedIds.has(p.id)}
               onToggleExpand={() => toggleExpand(p.id)}
               onChange={next => updateProcess(p.id, next)}
               onDelete={() => deleteProcess(p.id)}
-              referenceFile={referenceFiles[i]}
             />
           ))}
         </div>
