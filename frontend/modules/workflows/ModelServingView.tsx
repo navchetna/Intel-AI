@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { models as modelCatalog, type TaskModelDefault } from "@/modules/models/data";
 import {
   buildAgentModelServingRows, cardsForSiliconUnits, socketsForSiliconUnits,
-  isAcceleratorSilicon, systemsCompositionCaption, socketsCaption,
+  isAcceleratorSilicon, systemsCompositionCaption, socketsCaption, taskTypeForRole,
   type AgentModelServingRow,
 } from "./task-sizing-calcs";
 import type { BusinessProcess } from "@/modules/projects/types";
@@ -56,12 +56,25 @@ export function ModelServingView({ businessProcesses, defaultsByTaskType }: {
     [businessProcesses, defaultsByTaskType],
   );
 
+  // Distinct task types (from the fixed TASK_TYPES vocabulary) across every agent in the
+  // project — same metric as the Business Process page's dashboard, for consistency.
+  const taskTypeCount = useMemo(() => {
+    const types = new Set<string>();
+    for (const process of businessProcesses) {
+      for (const agent of process.agents) {
+        const type = taskTypeForRole(agent.role ?? "");
+        if (type) types.add(type);
+      }
+    }
+    return types.size;
+  }, [businessProcesses]);
+
   if (rows.length === 0) {
     return (
       <section className="mx-auto max-w-screen-2xl px-6 py-6">
         <div className="rounded-2xl border border-dashed border-white/10 py-20 text-center">
           <p className="text-white/40 text-sm">No agents with a model assigned yet.</p>
-          <p className="text-white/30 text-xs mt-2">Assign models to agents on the Agent Task Sizing tab, then come back here for the deployment summary.</p>
+          <p className="text-white/30 text-xs mt-2">Assign models to agents on the Tasks tab, then come back here for the deployment summary.</p>
         </div>
       </section>
     );
@@ -69,6 +82,7 @@ export function ModelServingView({ businessProcesses, defaultsByTaskType }: {
 
   const tiles: { label: string; value: string; accent: string }[] = [
     { label: "Agents covered", value: fmtInt(rows.reduce((s, r) => s + r.agentCount, 0)), accent: "56,189,248" },
+    { label: "Tasks to execute", value: fmtInt(taskTypeCount), accent: "34,211,153" },
     { label: "Models to serve", value: fmtInt(rows.length), accent: "129,140,248" },
     { label: "Total systems to deploy", value: fmtInt(grandSystems), accent: "52,211,153" },
     { label: "Sockets", value: fmtInt(cpuCount), accent: "94,234,212" },
@@ -79,7 +93,7 @@ export function ModelServingView({ businessProcesses, defaultsByTaskType }: {
   return (
     <section className="mx-auto max-w-screen-2xl px-6 py-6">
       {/* ── summary ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
         {tiles.map(t => (
           <div key={t.label} className="rounded-xl p-4" style={{ background: `rgba(${t.accent},0.08)`, border: `1px solid rgba(${t.accent},0.2)` }}>
             <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">{t.label}</span>
@@ -91,7 +105,7 @@ export function ModelServingView({ businessProcesses, defaultsByTaskType }: {
       {(gapTotal > 0 || unassignedAgents > 0) && (
         <p className="mb-4 text-[11px] leading-relaxed" style={{ color: "#fbbf24" }}>
           {unassignedAgents > 0 && `${unassignedAgents} agent${unassignedAgents === 1 ? "" : "s"} have no model assigned yet (excluded from the totals below). `}
-          {gapTotal > 0 && `${gapTotal} agent${gapTotal === 1 ? "" : "s"} are missing a unit-concurrency value in Models > Defaults for their task type, so their units aren't counted.`}
+          {gapTotal > 0 && `${gapTotal} agent${gapTotal === 1 ? "" : "s"} are missing a unit-concurrency value in Agents > Task-Type-Model-Mapping for their task type, so their units aren't counted.`}
         </p>
       )}
 

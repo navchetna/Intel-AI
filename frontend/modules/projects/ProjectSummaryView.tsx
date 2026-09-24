@@ -10,15 +10,12 @@ import {
   buildHarnessSizingSummary, siliconWithTdp, systemPowerCaption, SYSTEM_POWER_KW,
 } from "./summary";
 import { fmt, fmtInt, SectionHeader, MetricCard } from "@/components/ui";
-import { ProjectSummaryEditor } from "./ProjectSummaryEditor";
-import { ProjectDocumentsPanel } from "./ProjectDocumentsPanel";
 import { ProjectRackView } from "./ProjectRackView";
 import { fetchModelDefaults } from "@/modules/models/model-defaults-api";
 import { taskDefaultsByType } from "@/modules/workflows/task-sizing-calcs";
 import { models as modelCatalog, type Model, type TaskModelDefault } from "@/modules/models/data";
 import { RequestVolumeSizingView } from "@/modules/models/RequestVolumeSizingView";
 import { ModelServingView } from "@/modules/workflows/ModelServingView";
-import { AgenticProcessesView } from "@/modules/agentic-ai/AgenticProcessesView";
 import { AgenticSizingView } from "@/modules/agentic-ai/AgenticSizingView";
 import { SizingSheet } from "@/modules/agentic-ai/SizingSheet";
 import { SIZING_MAP, defaultInputsFor } from "@/modules/agentic-ai/sizing-wiring";
@@ -84,7 +81,7 @@ function EditableTitle({ name, onRename }: { name: string; onRename: (name: stri
 }
 
 export function ProjectSummaryView() {
-  const { currentProject, data, renameProject, updateAgenticStack, updateAgents } = useProject();
+  const { currentProject, data, renameProject, updateAgenticStack } = useProject();
   const router = useRouter();
   const [taskDefaults, setTaskDefaults] = useState<TaskModelDefault[] | null>(null);
   const [openSizingId, setOpenSizingId] = useState<string | null>(null);
@@ -163,40 +160,30 @@ export function ProjectSummaryView() {
           </p>
         </div>
 
-        <ProjectDocumentsPanel />
-        <ProjectSummaryEditor />
-
-        {/* ═══════════════ BUSINESS PROCESSES ═══════════════ */}
-        <SectionHeader index="1" title="Business Processes" subtitle={`${data.agents.businessProcesses.length} process${data.agents.businessProcesses.length === 1 ? "" : "es"} — from Agents &gt; Agents`} />
-        <AgenticProcessesView
-          businessProcesses={data.agents.businessProcesses}
-          onChange={businessProcesses => updateAgents({ businessProcesses })}
-        />
-
         {/* ═══════════════ MODELS ═══════════════ */}
-        <SectionHeader index="2" title="Model Serving Sizing" subtitle={`${data.models.selectedModels.length} model${data.models.selectedModels.length === 1 ? "" : "s"} selected`} />
+        <SectionHeader index="1" title="Model Serving Sizing" subtitle={`${data.models.selectedModels.length} model${data.models.selectedModels.length === 1 ? "" : "s"} selected`} />
 
-        {/* — Agent Model Serving (from the Agents page's Agent-Model-Serving tab) — */}
+        {/* — Agent Model Serving (from the Agents page's Model-Serving tab) — */}
         <p className="mx-auto max-w-screen-2xl px-6 mb-3 text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-muted)" }}>
           Agent Model Serving
           <span className="ml-2 font-normal normal-case tracking-normal text-[11px]" style={{ color: "var(--dm-txt-faint)" }}>
-            — silicon units driven by each agent&rsquo;s call volume (Agents &gt; Agent-Model-Serving)
+            — silicon units driven by each agent&rsquo;s call volume (Agents &gt; Model-Serving)
           </span>
         </p>
         <ModelServingView businessProcesses={data.agents.businessProcesses} defaultsByTaskType={defaultsByTaskType} />
 
-        {/* — Embedding, Re-Ranking, Security (from the Models page's Sizing tab) — */}
+        {/* — Embedding, Re-Ranking, Security (from the Auxiliary Models page) — */}
         <p className="mx-auto max-w-screen-2xl px-6 mb-3 text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-muted)" }}>
           Embedding, Re-Ranking, Security
         </p>
         <RequestVolumeSizingView
           selectedModels={selectedCatalogModels}
-          onBackToCatalog={() => router.push("/models")}
+          onBackToCatalog={() => router.push("/auxiliary-models")}
           showBlurb={false}
         />
 
         {/* ═══════════════ AGENT HARNESS SIZING ═══════════════ */}
-        <SectionHeader index="3" title="Agent Harness Sizing" subtitle={`${agenticRows.length} workload${agenticRows.length === 1 ? "" : "s"} selected`} />
+        <SectionHeader index="2" title="Agent Harness Sizing" subtitle={`${agenticRows.length} workload${agenticRows.length === 1 ? "" : "s"} selected`} />
         <div className="mx-auto max-w-screen-2xl px-6 mt-8">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
             <MetricCard label="Workloads" value={fmtInt(harnessSizingSummary.workloads)} unit="" accent="129,140,248" />
@@ -217,7 +204,7 @@ export function ProjectSummaryView() {
         />
 
         {/* ═══════════════ GPU / CPU SUMMARY ═══════════════ */}
-        <SectionHeader index="4" title="GPU / CPU Summary" subtitle="Harness Sizing + Agent Model Serving + Embedding/Re-Ranking/Security, combined" />
+        <SectionHeader index="3" title="GPU / CPU Summary" subtitle="Harness Sizing + Agent Model Serving + Embedding/Re-Ranking/Security, combined" />
         <div className="mx-auto max-w-screen-2xl px-6">
           <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 mb-6">
             <MetricCard label="Total TDP" value={fmt(totalTdpKw, 1)} unit="kW" accent="129,140,248" />
@@ -272,7 +259,7 @@ export function ProjectSummaryView() {
         </div>
 
         {/* ═══════════════ RACK VIEW ═══════════════ */}
-        <SectionHeader index="5" title="Rack View" subtitle="CRI, B70, Xeon-AI, and Harness systems, packed into their own racks" />
+        <SectionHeader index="4" title="Rack View" subtitle="CRI, B70, Xeon-AI, and Harness systems, packed into their own racks" />
         <ProjectRackView bySilicon={gpuCpuSummary.bySilicon} harnessSystems={harnessSizingSummary.systems} />
       </div>
 

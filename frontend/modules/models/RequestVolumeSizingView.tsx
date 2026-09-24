@@ -172,7 +172,7 @@ export function RequestVolumeSizingView({ selectedModels, onBackToCatalog, showB
         <div className="rounded-2xl border border-dashed border-white/10 py-20 text-center">
           <p className="text-white/40 text-sm mb-3">No models selected yet.</p>
           <button onClick={onBackToCatalog} className="text-sm font-semibold text-[#22d3ee] hover:underline">
-            Go to Catalog and turn on &ldquo;Select for deployment sizing&rdquo;
+            Go to Auxiliary Models and select some
           </button>
         </div>
       </div>
@@ -193,9 +193,9 @@ export function RequestVolumeSizingView({ selectedModels, onBackToCatalog, showB
         <p className="mb-4 text-sm" style={{ color: "var(--dm-txt-muted)" }}>
           Latency, Requests/day, and Processing-window are editable per task type&rsquo;s default model. Request/sec is
           requests/day compressed into the processing window; Concurrency follows via Little&rsquo;s Law (Latency ×
-          Request/sec); Silicon Units divides Concurrency by the unit-concurrency configured in Models &gt; Defaults,
-          rounded up. Systems, Sockets, B70, and CRI follow the same packaging rules as Agents &gt;
-          Agent-Model-Serving (2 CPU sockets per system).
+          Request/sec); Silicon Units divides Concurrency by the unit-concurrency configured in Agents &gt;
+          Task-Type-Model-Mapping, rounded up. Systems, Sockets, B70, and CRI follow the same packaging rules as
+          Agents &gt; Model-Serving (2 CPU sockets per system).
         </p>
       )}
 
@@ -205,7 +205,7 @@ export function RequestVolumeSizingView({ selectedModels, onBackToCatalog, showB
         <p className="text-sm" style={{ color: "var(--dm-txt-faint)" }}>Loading…</p>
       ) : visibleRows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/10 py-16 text-center">
-          <p className="text-white/40 text-sm">None of the selected models are mapped to a task type in Models &gt; Defaults yet.</p>
+          <p className="text-white/40 text-sm">None of the selected models are mapped to a task type in Agents &gt; Task-Type-Model-Mapping yet.</p>
         </div>
       ) : (
         <>

@@ -2,18 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { navRoutes, CLUSTER_LABELS, CLUSTER_ORDER } from "@/lib/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { navRoutes, CLUSTER_LABELS, CLUSTER_ORDER, INFERENCING_CLUSTER_ORDER } from "@/lib/navigation";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useNavSettings, type HideableCluster } from "@/contexts/NavSettingsContext";
+import { useAppMode, APP_MODE_LABELS, type AppMode } from "@/contexts/AppModeContext";
 import { useDismiss } from "@/hooks/useDismiss";
-import { ProjectSelector } from "./ProjectSelector";
 import { fetchAppSettings, updateAppSettings } from "@/modules/settings/settings-api";
 import { useExportRegistry } from "@/contexts/ExportContext";
 
 const HIDEABLE_CLUSTERS: { key: HideableCluster; label: string }[] = [
   { key: "manufacturing", label: "Manufacturing" },
   { key: "tools",         label: "Tools" },
+  { key: "ai-training",   label: "AI-Training" },
 ];
 
 /** GROQ API key field — used server-side by the Agents tab's AI-Suggested-Flow generator. The
@@ -170,9 +171,55 @@ function ExportButton() {
   );
 }
 
+/** App-mode segmented control — switches the whole Navbar between "planning" (everything
+ *  except Silicon/Model Inferencing Calculator) and "inferencing" (just those two). */
+function AppModeToggle() {
+  const { mode, setMode } = useAppMode();
+  const router = useRouter();
+  const options: AppMode[] = ["planning", "inferencing"];
+
+  // Switching modes changes the whole nav's route set out from under whatever page is
+  // currently open, so send the user back to the home page rather than leaving them on a
+  // page that may no longer exist in the new mode.
+  function handleSelect(m: AppMode) {
+    if (m === mode) return;
+    setMode(m);
+    router.push("/");
+  }
+
+  return (
+    <div className="px-3 pb-2.5">
+      <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "var(--dm-txt-muted)" }}>
+        App mode
+      </p>
+      <div className="flex flex-col gap-1">
+        {options.map(m => {
+          const active = mode === m;
+          return (
+            <button
+              key={m}
+              type="button"
+              onClick={() => handleSelect(m)}
+              className="text-left rounded-md px-2.5 py-2 text-xs font-semibold transition-colors border"
+              style={{
+                background: active ? "rgba(0,104,181,0.12)" : "transparent",
+                borderColor: active ? "#0068B5" : "var(--dm-card-border)",
+                color: active ? "#0068B5" : "var(--dm-txt-secondary)",
+              }}
+            >
+              {APP_MODE_LABELS[m]}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** Gear button + dropdown for navbar preferences and integration settings. */
 function NavSettingsMenu() {
   const { visibility, setVisible } = useNavSettings();
+  const { mode } = useAppMode();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const ref = useDismiss<HTMLDivElement>(open, () => { setOpen(false); triggerRef.current?.focus(); });
@@ -198,30 +245,36 @@ function NavSettingsMenu() {
           className="absolute right-0 top-full mt-2 w-72 rounded-lg border py-2 z-50"
           style={{ background: "var(--dm-card-bg)", borderColor: "var(--dm-card-border)", boxShadow: "var(--dm-card-depth)" }}
         >
-          <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-muted)" }}>
-            Navbar categories
-          </p>
-          {HIDEABLE_CLUSTERS.map(({ key, label }) => (
-            <label
-              key={key}
-              className="nav-menu-item flex items-center justify-between gap-3 px-3 py-2 text-sm cursor-pointer"
-              style={{ color: "var(--dm-txt-secondary)" }}
-            >
-              <span>{label}</span>
-              <span
-                role="switch"
-                aria-checked={visibility[key]}
-                onClick={() => setVisible(key, !visibility[key])}
-                className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0"
-                style={{ background: visibility[key] ? "#0068B5" : "rgba(100,116,139,0.5)" }}
-              >
-                <span
-                  className="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                  style={{ transform: visibility[key] ? "translateX(18px)" : "translateX(3px)" }}
-                />
-              </span>
-            </label>
-          ))}
+          <AppModeToggle />
+
+          {mode === "planning" && (
+            <div className="pt-2 border-t" style={{ borderColor: "var(--dm-card-border)" }}>
+              <p className="px-3 pb-1.5 pt-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-txt-muted)" }}>
+                Navbar categories
+              </p>
+              {HIDEABLE_CLUSTERS.map(({ key, label }) => (
+                <label
+                  key={key}
+                  className="nav-menu-item flex items-center justify-between gap-3 px-3 py-2 text-sm cursor-pointer"
+                  style={{ color: "var(--dm-txt-secondary)" }}
+                >
+                  <span>{label}</span>
+                  <span
+                    role="switch"
+                    aria-checked={visibility[key]}
+                    onClick={() => setVisible(key, !visibility[key])}
+                    className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0"
+                    style={{ background: visibility[key] ? "#0068B5" : "rgba(100,116,139,0.5)" }}
+                  >
+                    <span
+                      className="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                      style={{ transform: visibility[key] ? "translateX(18px)" : "translateX(3px)" }}
+                    />
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
 
           <div className="mt-1.5 pt-2 border-t" style={{ borderColor: "var(--dm-card-border)" }}>
             <GroqApiKeySettings />
@@ -237,6 +290,7 @@ export function Navbar() {
   const pathname = usePathname();
   const { theme, toggle } = useTheme();
   const { visibility } = useNavSettings();
+  const { mode } = useAppMode();
   const isDark = theme === "dark";
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
@@ -245,9 +299,12 @@ export function Navbar() {
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   const isHideable = (key: typeof CLUSTER_ORDER[number]): key is HideableCluster =>
-    key === "manufacturing" || key === "tools";
+    key === "manufacturing" || key === "tools" || key === "ai-training";
 
-  const clusters = CLUSTER_ORDER
+  // "inferencing" mode swaps the whole nav for just Silicon + Model Inferencing Calculator;
+  // every other cluster (and its Manufacturing/Tools/AI-Training hide toggles) only applies
+  // to "planning" mode.
+  const clusters = (mode === "inferencing" ? INFERENCING_CLUSTER_ORDER : CLUSTER_ORDER)
     .filter(key => !isHideable(key) || visibility[key])
     .map(key => ({
       key,
@@ -261,11 +318,16 @@ export function Navbar() {
       className="sticky top-0 z-50 border-b backdrop-blur-md"
       style={{ background: "var(--dm-nav-bg)", borderColor: "var(--dm-nav-border)" }}
     >
-      <nav className="mx-auto flex max-w-screen-2xl items-center justify-between pl-3 pr-6 py-2.5">
+      {/* No mx-auto/max-w here — the title must sit flush at the true left edge (pl-3), lined
+          up with the Projects sidebar's own px-3 header below it, not centered within a
+          max-width like the old branding was. */}
+      <nav className="flex items-center justify-between pl-3 pr-6 py-2.5">
 
-        {/* ── Far left: branding ─────────────────────────────────────────── */}
-        <Link href="/" className="flex items-center flex-shrink-0">
-          <span className="text-base font-bold tracking-tight" style={{ color: "var(--dm-nav-brand-text)" }}>Agents as a Service</span>
+        {/* ── Far left: mode title ──────────────────────────────────────── */}
+        <Link href="/" className="flex items-center flex-shrink-0" title="Home">
+          <span className="text-lg font-black tracking-tight" style={{ color: "var(--dm-nav-brand-text)" }}>
+            {APP_MODE_LABELS[mode]}
+          </span>
         </Link>
 
         {/* ── Centre: clustered nav links (collapses to a menu below lg) ─── */}
@@ -314,7 +376,7 @@ export function Navbar() {
           ))}
         </div>
 
-        {/* ── Far right: settings ───────────────────────────────────────── */}
+        {/* ── Far right: project/export, then settings pinned to the trailing edge ── */}
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
             ref={mobileTriggerRef}
@@ -329,7 +391,11 @@ export function Navbar() {
             </svg>
           </button>
           <ExportButton />
-          <ProjectSelector />
+
+          <div className="mx-2 select-none" aria-hidden>
+            <div className="w-px h-5" style={{ background: "var(--dm-nav-border)" }} />
+          </div>
+
           <NavSettingsMenu />
           <button
             onClick={toggle}

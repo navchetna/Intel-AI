@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useProject } from "@/contexts/ProjectContext";
+import { useAppMode } from "@/contexts/AppModeContext";
 import { useSidebarForceCollapsed } from "@/contexts/SidebarCollapseContext";
 import { buildProjectTree, allFolderPaths, type ProjectTreeNode, type ProjectTreeFolder } from "@/modules/projects/tree";
 import { timeAgo } from "@/modules/projects/format";
@@ -26,10 +27,24 @@ function TrashIcon() {
   );
 }
 
-function TreeNodeRow({ node, depth, expanded, onToggleFolder, currentId, onDelete }: {
+/** "Load without opening" — puts this project's data into context (ProjectSelector badge,
+ *  export, sizing everywhere) without navigating to its page. A crosshair/target reads as
+ *  "make this the active context" distinctly from the row's own name-link, which opens it. */
+function TargetIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="7" />
+      <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+    </svg>
+  );
+}
+
+function TreeNodeRow({ node, depth, expanded, onToggleFolder, currentId, onDelete, onLoadContext }: {
   node: ProjectTreeNode; depth: number;
   expanded: Set<string>; onToggleFolder: (path: string) => void; currentId: number | null;
   onDelete: (id: number, name: string) => void;
+  onLoadContext: (id: number) => void;
 }) {
   const padLeft = 10 + depth * 14;
 
@@ -56,7 +71,7 @@ function TreeNodeRow({ node, depth, expanded, onToggleFolder, currentId, onDelet
           <TreeNodeRow
             key={c.type === "folder" ? c.path : c.project.id}
             node={c} depth={depth + 1} expanded={expanded} onToggleFolder={onToggleFolder} currentId={currentId}
-            onDelete={onDelete}
+            onDelete={onDelete} onLoadContext={onLoadContext}
           />
         ))}
       </div>
@@ -84,6 +99,16 @@ function TreeNodeRow({ node, depth, expanded, onToggleFolder, currentId, onDelet
         <span className="truncate flex-1 min-w-0 font-medium">{node.name}</span>
         <span className="text-[10px] flex-shrink-0" style={{ color: "var(--dm-txt-faint)" }}>{timeAgo(node.project.updated_at)}</span>
       </Link>
+      {!active && (
+        <button
+          type="button"
+          onClick={() => onLoadContext(node.project.id)}
+          aria-label={`Load ${node.name} into context without opening it`} title="Load into context (don't open)"
+          className="nav-icon-btn flex-shrink-0 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+        >
+          <TargetIcon />
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onDelete(node.project.id, node.name)}
@@ -97,7 +122,8 @@ function TreeNodeRow({ node, depth, expanded, onToggleFolder, currentId, onDelet
 }
 
 export function ProjectSidebar() {
-  const { projects, currentProject, projectsLoading, listError, createProject, deleteProject } = useProject();
+  const { projects, currentProject, projectsLoading, listError, createProject, deleteProject, loadProject } = useProject();
+  const { mode } = useAppMode();
   const router = useRouter();
   const forceCollapsed = useSidebarForceCollapsed();
   const [manualCollapsed, setCollapsed] = useState(false);
@@ -141,6 +167,15 @@ export function ProjectSidebar() {
     });
   }
 
+  async function handleLoadContext(id: number) {
+    setErr(null);
+    try {
+      await loadProject(id);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function handleDelete(id: number, name: string) {
     if (!window.confirm(`Delete "${name}"? This can't be undone.`)) return;
     setErr(null);
@@ -166,6 +201,10 @@ export function ProjectSidebar() {
       setBusy(false);
     }
   }
+
+  // The Model Inferencing Calculator mode has no notion of a project (Silicon and the
+  // calculator itself are project-agnostic) — the sidebar has nothing relevant to show there.
+  if (mode === "inferencing") return null;
 
   if (collapsed) {
     return (
@@ -261,7 +300,7 @@ export function ProjectSidebar() {
           <TreeNodeRow
             key={node.type === "folder" ? (node as ProjectTreeFolder).path : node.project.id}
             node={node} depth={0} expanded={expanded} onToggleFolder={toggleFolder}
-            currentId={currentProject?.id ?? null} onDelete={handleDelete}
+            currentId={currentProject?.id ?? null} onDelete={handleDelete} onLoadContext={handleLoadContext}
           />
         ))}
       </div>

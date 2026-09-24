@@ -5,15 +5,16 @@ import type { NavCluster } from "@/lib/navigation";
 
 const STORAGE_KEY = "intel-ai-nav-visibility";
 
-/** Clusters the user can hide from the navbar. Hardware and AI Stack are always shown. */
-export type HideableCluster = Extract<NavCluster, "manufacturing" | "tools">;
+/** Clusters the user can hide from the navbar. Hardware, Enterprise Transformation, and
+ *  Catalog are always shown. */
+export type HideableCluster = Extract<NavCluster, "manufacturing" | "tools" | "ai-training">;
 
 interface NavSettingsCtx {
   visibility: Record<HideableCluster, boolean>;
   setVisible: (cluster: HideableCluster, visible: boolean) => void;
 }
 
-const DEFAULTS: Record<HideableCluster, boolean> = { manufacturing: true, tools: true };
+const DEFAULTS: Record<HideableCluster, boolean> = { manufacturing: true, tools: true, "ai-training": true };
 
 const Ctx = createContext<NavSettingsCtx>({ visibility: DEFAULTS, setVisible: () => {} });
 
