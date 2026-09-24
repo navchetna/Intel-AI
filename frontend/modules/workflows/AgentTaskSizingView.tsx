@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { useState } from "react";
 import { models as modelCatalog, type TaskModelDefault } from "@/modules/models/data";
 import { resolveAgentSizing, SILICON_OPTIONS, CONCURRENCY_BUFFER } from "./task-sizing-calcs";
 import type { BusinessProcess, ProcessParticipant, TaskSizingConfig, SiliconOption } from "@/modules/projects/types";
@@ -16,25 +16,6 @@ const cellInput = "w-full py-1.5 px-2 text-xs rounded-lg focus:outline-none focu
 
 function fmt(n: number, d = 2): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: 0 });
-}
-
-// ── group header row (business process) ──────────────────────────────────────────
-
-function ProcessGroupHeader({ process, colSpan }: { process: BusinessProcess; colSpan: number }) {
-  return (
-    <tr>
-      <td colSpan={colSpan} style={{ background: "rgba(255,255,255,0.03)", borderTop: "2px solid rgba(129,140,248,0.35)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <div className="px-4 py-2 flex items-center gap-2.5">
-          <div className="w-2 h-2 rounded-full" style={{ background: "#818cf8" }} />
-          <span className="font-semibold text-sm text-white/80">{process.name || "Untitled business process"}</span>
-          <span className="text-xs text-white/30 font-medium">
-            {process.casesPerDay > 0 ? `${process.casesPerDay.toLocaleString()} cases/day · ` : ""}
-            {process.agents.length} agent{process.agents.length === 1 ? "" : "s"}
-          </span>
-        </div>
-      </td>
-    </tr>
-  );
 }
 
 // ── one row per agent ─────────────────────────────────────────────────────────────
@@ -125,9 +106,70 @@ function AgentTaskRow({ agent, process, defaultsByTaskType, onChange }: {
   );
 }
 
-// ── page-level view ───────────────────────────────────────────────────────────────
+// ── one accordion card per business process ────────────────────────────────────
 
-const COLS = 6;
+function ProcessTaskSizingCard({ process, expanded, onToggleExpand, defaultsByTaskType, onChange }: {
+  process: BusinessProcess;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  defaultsByTaskType: Record<string, TaskModelDefault>;
+  onChange: (agentId: string, taskSizing: TaskSizingConfig) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/[0.07] overflow-hidden" style={{ background: "var(--dm-card-bg)" }}>
+      <button
+        type="button" onClick={onToggleExpand}
+        aria-expanded={expanded}
+        aria-label={expanded ? "Collapse business process" : "Expand business process"}
+        className="w-full flex items-center gap-3 p-4 text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/40"
+      >
+        <span
+          className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-md text-white/40 hover:text-white/70 transition-colors"
+        >
+          <span className="inline-block transition-transform text-[11px]" style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
+        </span>
+        <span className="flex-1 min-w-0 text-base font-bold text-white truncate">
+          {process.name || "Untitled business process"}
+        </span>
+        <span className="flex-shrink-0 text-[11px] text-white/30 hidden sm:inline">
+          {process.casesPerDay > 0 ? `${process.casesPerDay.toLocaleString()} cases/day · ` : ""}
+          {process.agents.length} agent{process.agents.length === 1 ? "" : "s"}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4">
+          <div className="rounded-xl border border-white/[0.07] overflow-hidden" style={{ background: "var(--dm-table-bg)" }}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
+                    <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Agent</th>
+                    <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Model</th>
+                    <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Required Concurrency</th>
+                    <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Configured Concurrency</th>
+                    <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Silicon</th>
+                    <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Silicon Units</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {process.agents.map(agent => (
+                    <AgentTaskRow
+                      key={agent.id} agent={agent} process={process} defaultsByTaskType={defaultsByTaskType}
+                      onChange={taskSizing => onChange(agent.id, taskSizing)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── page-level view ───────────────────────────────────────────────────────────────
 
 export function AgentTaskSizingView({ businessProcesses, defaultsByTaskType, onChange }: {
   businessProcesses: BusinessProcess[];
@@ -135,6 +177,21 @@ export function AgentTaskSizingView({ businessProcesses, defaultsByTaskType, onC
   onChange: (next: BusinessProcess[]) => void;
 }) {
   const processesWithAgents = businessProcesses.filter(p => p.agents.length > 0);
+
+  // Collapsed by default, to match the Business Process page's accordion — seeded once with
+  // every process id present at mount; a process that gains its first agent afterward opens
+  // expanded, since it was never added to this set.
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(
+    () => new Set(processesWithAgents.map(p => p.id)),
+  );
+
+  function toggleExpand(id: string) {
+    setCollapsedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   function updateAgentSizing(processId: string, agentId: string, taskSizing: TaskSizingConfig) {
     onChange(businessProcesses.map(p => p.id !== processId ? p : {
@@ -148,7 +205,7 @@ export function AgentTaskSizingView({ businessProcesses, defaultsByTaskType, onC
       <section className="mx-auto max-w-screen-2xl px-6 py-6">
         <div className="rounded-2xl border border-dashed border-white/10 py-20 text-center">
           <p className="text-white/40 text-sm">No business processes defined yet for this project.</p>
-          <p className="text-white/30 text-xs mt-2">Add business processes and their agents on the Agents tab of the Agentic Stack page first.</p>
+          <p className="text-white/30 text-xs mt-2">Add business processes and their agents on the Business Process page first.</p>
         </div>
       </section>
     );
@@ -159,7 +216,7 @@ export function AgentTaskSizingView({ businessProcesses, defaultsByTaskType, onC
       <section className="mx-auto max-w-screen-2xl px-6 py-6">
         <div className="rounded-2xl border border-dashed border-white/10 py-20 text-center">
           <p className="text-white/40 text-sm">No agents added to any business process yet.</p>
-          <p className="text-white/30 text-xs mt-2">Add agents on the Agents tab of the Agentic Stack page, then come back here to map them to models.</p>
+          <p className="text-white/30 text-xs mt-2">Add agents on the Business Process page, then come back here to map them to models.</p>
         </div>
       </section>
     );
@@ -171,42 +228,27 @@ export function AgentTaskSizingView({ businessProcesses, defaultsByTaskType, onC
         Required concurrency is derived from each business process&rsquo;s cases/day and each agent&rsquo;s calls/case
         (giving calls/sec) applied to that task type&rsquo;s latency via Little&rsquo;s Law (concurrency = calls/sec ×
         latency). Configured concurrency defaults to required concurrency plus a {Math.round(CONCURRENCY_BUFFER * 100)}%
-        buffer, and — divided by how much concurrency one unit of the assigned silicon serves (Models &gt; Defaults) —
-        gives the silicon units needed. Every value here can be overridden per agent.
+        buffer, and — divided by how much concurrency one unit of the assigned silicon serves (Agents &gt;
+        Task-Type-Model-Mapping) — gives the silicon units needed. Every value here can be overridden per agent.
       </p>
-      <div className="rounded-2xl border border-white/[0.07] overflow-hidden" style={{ background: "var(--dm-table-bg)", boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
-                <th className="px-4 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Agent</th>
-                <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Model</th>
-                <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Required Concurrency</th>
-                <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Configured Concurrency</th>
-                <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Silicon</th>
-                <th className="px-3 py-3 text-left font-semibold text-white/50 text-xs uppercase tracking-wider">Silicon Units</th>
-              </tr>
-            </thead>
-            <tbody>
-              {processesWithAgents.map(process => (
-                <Fragment key={process.id}>
-                  <ProcessGroupHeader process={process} colSpan={COLS} />
-                  {process.agents.map(agent => (
-                    <AgentTaskRow
-                      key={agent.id} agent={agent} process={process} defaultsByTaskType={defaultsByTaskType}
-                      onChange={taskSizing => updateAgentSizing(process.id, agent.id, taskSizing)}
-                    />
-                  ))}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
+      <div className="space-y-3">
+        {processesWithAgents.map(process => (
+          <ProcessTaskSizingCard
+            key={process.id}
+            process={process}
+            expanded={!collapsedIds.has(process.id)}
+            onToggleExpand={() => toggleExpand(process.id)}
+            defaultsByTaskType={defaultsByTaskType}
+            onChange={(agentId, taskSizing) => updateAgentSizing(process.id, agentId, taskSizing)}
+          />
+        ))}
       </div>
+
       <p className="mt-3 text-[11px] text-white/25 leading-relaxed">
-        Task-type latency, default silicon, and unit concurrency come from the Models &gt; Defaults tab (falling back
-        to built-in values if a task type isn&rsquo;t configured there) — a task type is resolved from each
-        agent&rsquo;s role, set on the Agents tab.
+        Task-type latency, default silicon, and unit concurrency come from the Agents &gt; Task-Type-Model-Mapping tab
+        (falling back to built-in values if a task type isn&rsquo;t configured there) — a task type is resolved from
+        each agent&rsquo;s role, set on the Business Process page.
       </p>
     </section>
   );

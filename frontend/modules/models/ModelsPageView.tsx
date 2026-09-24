@@ -1,74 +1,33 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { ModelsView } from "./ModelsView_reimagined";
-import { RequestVolumeSizingView } from "./RequestVolumeSizingView";
 import { ModelBenchmarksView } from "./ModelBenchmarksView";
-import { ModelDefaultsView } from "./ModelDefaultsView";
-import { DeepAnalysisView } from "./DeepAnalysisView";
-import { models, type Model } from "./data";
+import { models } from "./data";
 import { exportModelCatalogToExcel } from "./export";
-import { useProject } from "@/contexts/ProjectContext";
 import { useRegisterExport } from "@/contexts/ExportContext";
 
-type Tab = "catalog" | "benchmarks" | "defaults" | "sizing" | "deep-analysis";
+type Tab = "catalog" | "benchmarks";
 
 const TAB_TITLES: Record<Tab, string> = {
   catalog: "Model Catalog",
   benchmarks: "Model Benchmarks",
-  defaults: "Task-Model Mapping",
-  sizing: "Model Sizing",
-  "deep-analysis": "Model Deep Analysis",
 };
 
-/** Owns cross-tab UI state (active tab) for the Model Catalog / Sizing pair. Selections live in the current Project. */
+/** Owns cross-tab UI state (active tab) for the Model Catalog. Task-Type-Model-Mapping lives on the
+ *  Agents page (its first tab); model selection and sizing live on the Auxiliary Models page. */
 export function ModelsPageView() {
-  const { data, updateModels } = useProject();
-  const [activeTab, setActiveTab]         = useState<Tab>("catalog");
-  const [selectionMode, setSelectionMode] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>("catalog");
 
   const exportHandler = useCallback(() => exportModelCatalogToExcel(models), []);
   useRegisterExport(exportHandler, "Export Model Catalog");
-
-  const { selectedModels: selectedModelIds } = data.models;
-  const selected = useMemo(() => new Set(selectedModelIds), [selectedModelIds]);
-
-  function toggleSelect(hfId: string) {
-    const next = new Set(selectedModelIds);
-    if (next.has(hfId)) next.delete(hfId); else next.add(hfId);
-    updateModels({ selectedModels: Array.from(next) });
-  }
-
-  const selectedModels: Model[] = models.filter(m => selected.has(m.hfId));
-
-  // selected can carry stale ids from a renamed/removed catalog entry — the Sizing tab
-  // badge must reflect models that actually still exist, not the raw stored id count.
-  const validSelectedCount = selectedModels.length;
 
   return (
     <main className="min-h-screen" style={{ background: "var(--dm-page-bg)" }}>
       <div className="mx-auto max-w-screen-2xl px-6 pt-10">
         {/* ── header ── */}
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-4xl font-black text-white tracking-tight">{TAB_TITLES[activeTab]}</h1>
-          </div>
-
-          <label className="flex items-center gap-2.5 cursor-pointer select-none pb-1">
-            <span className="text-xs font-medium text-white/50">Select for deployment sizing</span>
-            <span
-              role="switch"
-              aria-checked={selectionMode}
-              onClick={() => setSelectionMode(v => !v)}
-              className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
-              style={{ background: selectionMode ? "#22d3ee" : "rgba(255,255,255,0.15)" }}
-            >
-              <span
-                className="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
-                style={{ transform: selectionMode ? "translateX(18px)" : "translateX(3px)" }}
-              />
-            </span>
-          </label>
+        <div className="mb-6">
+          <h1 className="text-4xl font-black text-white tracking-tight">{TAB_TITLES[activeTab]}</h1>
         </div>
 
         {/* ── tab bar ── */}
@@ -76,9 +35,6 @@ export function ModelsPageView() {
           {[
             { key: "catalog" as const, label: "Catalog" },
             { key: "benchmarks" as const, label: "Benchmarks" },
-            { key: "defaults" as const, label: "Task-Model-Mapping" },
-            { key: "sizing" as const, label: `Sizing${validSelectedCount ? ` (${validSelectedCount})` : ""}` },
-            { key: "deep-analysis" as const, label: "Deep Analysis" },
           ].map(t => (
             <button
               key={t.key}
@@ -95,15 +51,8 @@ export function ModelsPageView() {
         </div>
       </div>
 
-      {activeTab === "catalog" && (
-        <ModelsView selectionMode={selectionMode} selected={selected} onToggleSelect={toggleSelect} />
-      )}
-      {activeTab === "sizing" && (
-        <RequestVolumeSizingView selectedModels={selectedModels} onBackToCatalog={() => setActiveTab("catalog")} />
-      )}
+      {activeTab === "catalog" && <ModelsView />}
       {activeTab === "benchmarks" && <ModelBenchmarksView />}
-      {activeTab === "defaults" && <ModelDefaultsView />}
-      {activeTab === "deep-analysis" && <DeepAnalysisView />}
     </main>
   );
 }

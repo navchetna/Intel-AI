@@ -559,10 +559,14 @@ export function AgenticProcessesView({ businessProcesses, onChange }: {
   businessProcesses: BusinessProcess[];
   onChange: (next: BusinessProcess[]) => void;
 }) {
-  // Tracks which processes are *collapsed* (not expanded) — starting empty means every
-  // process, including ones just loaded from a different project, is fully expanded by
-  // default; collapsing is an explicit per-card opt-out.
-  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  // Tracks which processes are *collapsed* (not expanded). Seeded with every process id
+  // present at mount, so a project's processes load collapsed by default; a process created
+  // afterwards in this same session was never added to the set, so it opens expanded for
+  // immediate editing. The parent keys this component by project id, so switching projects
+  // remounts it and re-seeds this as fully collapsed rather than carrying over expand state.
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(
+    () => new Set(businessProcesses.map(p => p.id)),
+  );
 
   function updateProcess(id: string, next: BusinessProcess) {
     onChange(businessProcesses.map(p => p.id === id ? next : p));

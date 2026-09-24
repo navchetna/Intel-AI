@@ -37,7 +37,7 @@ export function ProjectSummaryEditor() {
 
   return (
     <section className="mb-8">
-      <SectionHeader index="0" title="Project Summary" subtitle="Editable — description and key sizing parameters" />
+      <SectionHeader index="2" title="Project Summary" subtitle="Editable — description and key sizing parameters" />
       <div className="rounded-2xl border p-5" style={{ borderColor: "var(--dm-card-border)", background: "var(--dm-card-bg)" }}>
         <textarea
           value={description}

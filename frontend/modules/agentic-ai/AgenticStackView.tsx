@@ -30,6 +30,8 @@ import Image from "next/image";
 import { mainLayers, sidePanels, type ClickableItem, type SubLayer } from "./layers";
 import { SIZING_MAP } from "./sizing-wiring";
 import { OPTIMIZATIONS } from "./optimizations-data";
+import { tagsForWorkload, type OptimizationTag } from "./optimization-tags";
+import { OptimizationsReference } from "./OptimizationsReference";
 import { useTheme } from "@/contexts/ThemeContext";
 
 // One distinct color per top-level layer, in stack order top → bottom.
@@ -57,6 +59,7 @@ function hexToRgb(hex: string) {
 
 function CrossCuttingPanel({
   item, active, onToggle, className = "", onSizingClick = () => {}, selectionMode, selectedWorkloads, onToggleWorkload, isDark,
+  highlightedTag = null, onHoverTags = () => {},
 }: {
   item: ClickableItem;
   active: boolean;
@@ -67,6 +70,8 @@ function CrossCuttingPanel({
   selectedWorkloads?: Set<string>;
   onToggleWorkload?: (workloadId: string) => void;
   isDark: boolean;
+  highlightedTag?: string | null;
+  onHoverTags?: (tags: OptimizationTag[]) => void;
 }) {
   const accentColor = "#818cf8";
   const accentRgb   = "129,140,248";
@@ -106,7 +111,7 @@ function CrossCuttingPanel({
         </span>
       )}
       {item.icons && item.icons.length > 0 && (
-        <div className="relative flex items-center gap-2.5 mt-2">
+        <div className="relative flex items-start gap-2.5 mt-2">
           {item.icons.map(icon => (
             <HeroIcon
               key={icon.alt}
@@ -118,6 +123,8 @@ function CrossCuttingPanel({
               selectedWorkloads={selectedWorkloads}
               onToggleWorkload={onToggleWorkload}
               isDark={isDark}
+              highlightedTag={highlightedTag}
+              onHoverTags={onHoverTags}
             />
           ))}
         </div>
@@ -130,6 +137,7 @@ function CrossCuttingPanel({
 
 function HeroIcon({
   icon, rgb, size = 56, onSizingClick, selectionMode = false, selectedWorkloads = EMPTY_SELECTION, onToggleWorkload = () => {}, isDark,
+  highlightedTag = null, onHoverTags = () => {},
 }: {
   icon: { src: string; alt: string };
   rgb: string;
@@ -139,6 +147,8 @@ function HeroIcon({
   selectedWorkloads?: Set<string>;
   onToggleWorkload?: (workloadId: string) => void;
   isDark: boolean;
+  highlightedTag?: string | null;
+  onHoverTags?: (tags: OptimizationTag[]) => void;
 }) {
   const [hov, setHov] = useState(false);
   const tool = SIZING_MAP[icon.alt];
@@ -146,13 +156,16 @@ function HeroIcon({
   const hasPanel = !!tool || hasOptimization;
   const dim = size >= 60 ? "w-[60px] h-[60px]" : size >= 56 ? "w-14 h-14" : size >= 52 ? "w-[52px] h-[52px]" : "w-12 h-12";
   const isSelected = selectedWorkloads.has(icon.alt);
+  const tags = tagsForWorkload(icon.alt);
+  const isDimmedByTag = !!highlightedTag && !tags.some(t => t.id === highlightedTag);
 
   return (
     <div
       className={`flex flex-col items-center gap-1.5 ${hasPanel ? "cursor-pointer" : ""}`}
       title={tool ? `Open ${icon.alt} sizing tool` : hasOptimization ? `View ${icon.alt} optimization notes` : icon.alt}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
+      style={{ opacity: isDimmedByTag ? 0.25 : 1, filter: isDimmedByTag ? "grayscale(70%)" : undefined, transition: "opacity 0.25s ease, filter 0.25s ease" }}
+      onMouseEnter={() => { setHov(true); onHoverTags(tags); }}
+      onMouseLeave={() => { setHov(false); onHoverTags([]); }}
       onClick={hasPanel ? e => { e.stopPropagation(); onSizingClick(icon.alt); } : undefined}
     >
       <div className={`relative ${dim}`}>
@@ -232,6 +245,21 @@ function HeroIcon({
       >
         {icon.alt}
       </span>
+
+      {/* Accelerator / ISA / Library tags, derived from this workload's optimization notes */}
+      {tags.length > 0 && (
+        <span
+          className="text-[8px] font-mono font-semibold leading-none px-1.5 py-0.5 rounded text-center max-w-[80px] truncate"
+          style={{
+            background: isDark ? "rgba(255,255,255,0.05)" : "rgba(148,163,184,0.15)",
+            color: isDark ? "rgba(255,255,255,0.4)" : "rgba(51,65,85,0.7)",
+            border: isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(148,163,184,0.25)",
+          }}
+          title={tags.map(t => t.label).join(", ")}
+        >
+          {tags.map(t => t.label).join(", ")}
+        </span>
+      )}
     </div>
   );
 }
@@ -273,6 +301,7 @@ function GroupDivider({ rgb }: { rgb: string }) {
 
 function LayerRow({
   layer, active, onToggle, color, onSizingClick, selectionMode, selectedWorkloads, onToggleWorkload, isDark,
+  highlightedTag = null, onHoverTags = () => {},
 }: {
   layer: ClickableItem;
   active: boolean;
@@ -283,6 +312,8 @@ function LayerRow({
   selectedWorkloads?: Set<string>;
   onToggleWorkload?: (workloadId: string) => void;
   isDark: boolean;
+  highlightedTag?: string | null;
+  onHoverTags?: (tags: OptimizationTag[]) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const rgb = hexToRgb(color);
@@ -369,7 +400,7 @@ function LayerRow({
                   )}
                 </span>
                 {sub.icons.length > 0 && (
-                <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3">
                   {sub.icons.map(icon => (
                     <HeroIcon
                       key={icon.alt}
@@ -381,6 +412,8 @@ function LayerRow({
                       selectedWorkloads={selectedWorkloads}
                       onToggleWorkload={onToggleWorkload}
                       isDark={isDark}
+                      highlightedTag={highlightedTag}
+                      onHoverTags={onHoverTags}
                     />
                   ))}
                 </div>
@@ -428,6 +461,8 @@ function LayerRow({
                 selectedWorkloads={selectedWorkloads}
                 onToggleWorkload={onToggleWorkload}
                 isDark={isDark}
+                highlightedTag={highlightedTag}
+                onHoverTags={onHoverTags}
               />
             </Fragment>
           ))}
@@ -456,16 +491,27 @@ export function AgenticStackView({
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [selected, setSelected]       = useState<ClickableItem | null>(null);
+  const [activeTag, setActiveTag]         = useState<string | null>(null);
+  const [hoverTagIds, setHoverTagIds]     = useState<Set<string>>(new Set());
 
   const toggle = (item: ClickableItem) =>
     setSelected(prev => prev?.id === item.id ? null : item);
 
+  function toggleTag(tagId: string) {
+    setActiveTag(prev => (prev === tagId ? null : tagId));
+  }
+
+  function handleHoverTags(tags: OptimizationTag[]) {
+    setHoverTagIds(new Set(tags.map(t => t.id)));
+  }
+
   return (
     <div>
-      <section className="mx-auto max-w-[1400px] px-6 py-4">
+      <section className="mx-auto max-w-[1800px] px-6 py-4">
+        <div className="relative flex gap-6 items-start">
         {/* ── Architecture diagram ── */}
         <div
-          className="relative overflow-hidden rounded-2xl"
+          className="relative flex-1 min-w-0 overflow-hidden rounded-2xl"
           style={{
             background: "var(--dm-page-bg)",
             border: "1px solid rgba(255,255,255,0.08)",
@@ -518,6 +564,8 @@ export function AgenticStackView({
                     selectedWorkloads={selectedWorkloads}
                     onToggleWorkload={onToggleWorkload}
                     isDark={isDark}
+                    highlightedTag={activeTag}
+                    onHoverTags={handleHoverTags}
                   />
                 ))}
               </div>
@@ -538,11 +586,27 @@ export function AgenticStackView({
                     selectedWorkloads={selectedWorkloads}
                     onToggleWorkload={onToggleWorkload}
                     isDark={isDark}
+                    highlightedTag={activeTag}
+                    onHoverTags={handleHoverTags}
                   />
                 </Fragment>
               ))}
             </div>
           </div>
+        </div>
+
+        {/* ── Optimizations reference panel — sized to its own content, no internal scrollbar ── */}
+        <div
+          className="flex-shrink-0 rounded-2xl border overflow-hidden flex flex-col"
+          style={{
+            width: 440,
+            background: "var(--dm-card-bg)",
+            borderColor: "rgba(255,255,255,0.08)",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
+          }}
+        >
+          <OptimizationsReference activeTag={activeTag} onToggleTag={toggleTag} hoverTagIds={hoverTagIds} />
+        </div>
         </div>
       </section>
 

@@ -5,6 +5,7 @@ import { ProjectSidebar } from "@/components/ProjectSidebar";
 import { VisitorCounter } from "@/components/VisitorCounter";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { NavSettingsProvider } from "@/contexts/NavSettingsContext";
+import { AppModeProvider } from "@/contexts/AppModeContext";
 import { ProjectProvider } from "@/contexts/ProjectContext";
 import { ExportProvider } from "@/contexts/ExportContext";
 import { SidebarCollapseProvider } from "@/contexts/SidebarCollapseContext";
@@ -29,21 +30,23 @@ export default function RootLayout({
         />
         <ThemeProvider>
           <NavSettingsProvider>
-            <ProjectProvider>
-              <ExportProvider>
-                <SidebarCollapseProvider>
-                  <Navbar />
-                  <div className="flex items-stretch">
-                    <ProjectSidebar />
-                    <div className="flex-1 min-w-0">{children}</div>
-                  </div>
-                  {/* Visitor counter — fixed bottom-right pill */}
-                  <div className="fixed bottom-5 right-5 z-50">
-                    <VisitorCounter />
-                  </div>
-                </SidebarCollapseProvider>
-              </ExportProvider>
-            </ProjectProvider>
+            <AppModeProvider>
+              <ProjectProvider>
+                <ExportProvider>
+                  <SidebarCollapseProvider>
+                    <Navbar />
+                    <div className="flex items-stretch">
+                      <ProjectSidebar />
+                      <div className="flex-1 min-w-0">{children}</div>
+                    </div>
+                    {/* Visitor counter — fixed bottom-right pill */}
+                    <div className="fixed bottom-5 right-5 z-50">
+                      <VisitorCounter />
+                    </div>
+                  </SidebarCollapseProvider>
+                </ExportProvider>
+              </ProjectProvider>
+            </AppModeProvider>
           </NavSettingsProvider>
         </ThemeProvider>
       </body>
