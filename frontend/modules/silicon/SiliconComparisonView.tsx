@@ -150,6 +150,127 @@ function PcieTable({ chips }: { chips: ComparisonChip[] }) {
   );
 }
 
+function InterconnectTable({ chips }: { chips: ComparisonChip[] }) {
+  const gpuChips = chips.filter(c => c.category !== "CPU");
+  return (
+    <div className="rounded-2xl overflow-hidden border" style={{ borderColor: "var(--dm-card-border)", background: "var(--dm-card-bg)" }}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
+              <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-txt-muted)", minWidth: 160 }}>
+                GPU-to-GPU fabric
+              </th>
+              {gpuChips.map(c => <ChipHeaderCell key={c.id} chip={c} />)}
+            </tr>
+          </thead>
+          <tbody>
+            <tr style={{ background: "var(--dm-surface-a)" }}>
+              <td className="px-3 py-2.5 text-xs font-bold" style={{ color: "var(--dm-txt-secondary)" }}>Fabric &amp; bandwidth</td>
+              {gpuChips.map(c => (
+                <td key={c.id} className="px-3 py-2.5 align-top">
+                  {c.interconnect ? (
+                    <>
+                      <div className="font-mono text-xs font-semibold" style={{ color: "var(--dm-txt-primary)" }}>
+                        {c.interconnect.type}{c.interconnect.bandwidth ? ` — ${c.interconnect.bandwidth}` : ""}
+                      </div>
+                      {c.interconnect.note && (
+                        <div className="text-[10px] mt-0.5 leading-snug" style={{ color: "var(--dm-txt-faint)" }}>{c.interconnect.note}</div>
+                      )}
+                    </>
+                  ) : (
+                    <span style={{ color: "var(--dm-txt-faintest)" }}>None — PCIe only</span>
+                  )}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function XeonHostTable({ chips }: { chips: ComparisonChip[] }) {
+  const sourcedChips = chips.filter(c => c.hostRecommendation);
+  if (sourcedChips.length === 0) return null;
+  return (
+    <div className="rounded-2xl overflow-hidden border" style={{ borderColor: "var(--dm-card-border)", background: "var(--dm-card-bg)" }}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
+              <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-txt-muted)", minWidth: 160 }}>
+                Best-fit Xeon 6 host
+              </th>
+              {sourcedChips.map(c => <ChipHeaderCell key={c.id} chip={c} />)}
+            </tr>
+          </thead>
+          <tbody>
+            <tr style={{ background: "var(--dm-surface-a)" }}>
+              <td className="px-3 py-2.5 text-xs font-bold" style={{ color: "var(--dm-txt-secondary)" }}>Recommended CPU</td>
+              {sourcedChips.map(c => (
+                <td key={c.id} className="px-3 py-2.5 align-top">
+                  <div className="font-mono text-xs font-semibold" style={{ color: "var(--dm-txt-primary)" }}>{c.hostRecommendation!.cpu}</div>
+                  {c.hostRecommendation!.note && (
+                    <div className="text-[10px] mt-0.5 leading-snug" style={{ color: "var(--dm-txt-faint)" }}>{c.hostRecommendation!.note}</div>
+                  )}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function VirtualizationTable({ chips }: { chips: ComparisonChip[] }) {
+  const sourcedChips = chips.filter(c => c.virtualization);
+  if (sourcedChips.length === 0) return null;
+
+  // Preserve first-seen label order across chips rather than hardcoding it, so a future chip
+  // with an extra row doesn't silently get dropped.
+  const rows: string[] = [];
+  for (const c of sourcedChips) {
+    for (const row of c.virtualization!) {
+      if (!rows.includes(row.label)) rows.push(row.label);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl overflow-hidden border" style={{ borderColor: "var(--dm-card-border)", background: "var(--dm-card-bg)" }}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
+              <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-txt-muted)", minWidth: 200 }}>
+                Virtualization &amp; licensing
+              </th>
+              {sourcedChips.map(c => <ChipHeaderCell key={c.id} chip={c} />)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((label, i) => (
+              <tr key={label} style={{ borderTop: "1px solid var(--dm-border-a)", background: i % 2 === 0 ? "var(--dm-surface-a)" : "transparent" }}>
+                <td className="px-3 py-2.5 text-xs font-bold" style={{ color: "var(--dm-txt-secondary)" }}>{label}</td>
+                {sourcedChips.map(c => {
+                  const cell = c.virtualization!.find(r => r.label === label);
+                  return (
+                    <td key={c.id} className="px-3 py-2.5 text-xs leading-snug" style={{ color: "var(--dm-txt-body)" }}>
+                      {cell ? cell.value : <span style={{ color: "var(--dm-txt-faintest)" }}>—</span>}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export function SiliconComparisonView() {
   const chips = CATEGORY_ORDER.flatMap(cat => COMPARISON_CHIPS.filter(c => c.category === cat));
 
@@ -174,6 +295,24 @@ export function SiliconComparisonView() {
       <div>
         <SectionTitle title="PCIe host interface" subtitle="Lanes and generation needed to run each card at its rated bandwidth — GPUs and accelerators only." />
         <PcieTable chips={chips} />
+      </div>
+
+      <div>
+        <SectionTitle title="Interconnect" subtitle="GPU-to-GPU scale-up fabric — NVLink bandwidth where the card has one, PCIe-only otherwise." />
+        <InterconnectTable chips={chips} />
+      </div>
+
+      <div>
+        <SectionTitle title="Xeon 6 host pairing" subtitle="Best-fit Xeon 6 host CPU for an 8-GPU node — shown only for parts this app has sourced host-pairing data for." />
+        <XeonHostTable chips={chips} />
+      </div>
+
+      <div>
+        <SectionTitle
+          title="Virtualization & licensing"
+          subtitle="What the GPU itself brings to multi-tenancy — MIG/vGPU slicing floors and per-GPU NVIDIA AI Enterprise licensing. NVIDIA GPUs only; how an orchestrator combines multiple GPUs/nodes is a separate concern, not covered here."
+        />
+        <VirtualizationTable chips={chips} />
       </div>
 
       <div className="rounded-xl border p-4" style={{ borderColor: "var(--dm-border-a)", background: "var(--dm-surface-a)" }}>

@@ -6,13 +6,17 @@ import { AcceleratorDetailView } from "./AcceleratorDetailView";
 import { SAMBANOVA_SN40L } from "./sambanova-data";
 import { CRESCENT_ISLAND } from "./crescent-island-data";
 import { ARC_PRO_B60 } from "./arc-b60-data";
-import { NVIDIA_H100, NVIDIA_RTX_PRO_6000, NVIDIA_GB200_NVL72, NVIDIA_GB300_NVL72 } from "./nvidia-gpu-data";
+import {
+  NVIDIA_H100_PCIE, NVIDIA_GB200_NVL72, NVIDIA_GB300_NVL72,
+  NVIDIA_H200_NVL, NVIDIA_L4, NVIDIA_RTX_PRO_4500, NVIDIA_RTX_PRO_6000_SERVER_EDITION,
+} from "./nvidia-gpu-data";
 import { StorageView } from "./StorageView";
 import { SiliconComparisonView } from "./SiliconComparisonView";
 
 const DETAIL_PAGE_IDS = new Set([
   "xeon6-sp", "sambanova", "crescent-island", "arc-b60", "storage",
-  "nvidia-h100", "nvidia-rtx-pro-6000", "nvidia-gb200-nvl72", "nvidia-gb300-nvl72",
+  "nvidia-gb200-nvl72", "nvidia-gb300-nvl72",
+  "nvidia-h100-pcie", "nvidia-h200-nvl", "nvidia-l4", "nvidia-rtx-pro-4500", "nvidia-rtx-pro-6000-server-edition",
 ]);
 
 interface SpecRow { label: string; value: string }
@@ -29,6 +33,9 @@ interface Chip {
   badge: { bg: string; text: string };
   icon: React.ReactNode;
   peakFigure: { value: string; unit: string; label: string };
+  /** GPU cards only — VRAM in GB, shown alongside peakFigure so every GPU card's header reads
+   *  the same two numbers (BF16 TFLOPS, VRAM GB) regardless of which figure NVIDIA/Intel headlines. */
+  vramFigure?: { value: string; unit: string };
   specs: SpecRow[];
   useCases: string[];
   highlights: string[];
@@ -165,47 +172,6 @@ const CHIPS: Chip[] = [
     tier: "High-Performance",
   },
   {
-    id: "b70",
-    name: "Intel® Arc™ Pro B70",
-    codeName: "Xe2 \"Battlemage\" (BMG-G31)",
-    category: "GPU",
-    vendor: "Intel",
-    tagline: "VRAM-dense workstation & batch-inference GPU",
-    description:
-      "Xe2 \"Battlemage\" workstation GPU with 32 GB ECC GDDR6 — the play is VRAM capacity per dollar, not peak compute. Four cards pool 128 GB for roughly $3,800 list, and vLLM (via Intel's LLM-Scaler) serves Llama, Qwen, DeepSeek and Mistral at competitive batch-32 throughput.",
-    accent: "#a78bfa",
-    glow: "rgba(167,139,250,0.14)",
-    badge: { bg: "rgba(167,139,250,0.15)", text: "#c4b5fd" },
-    icon: (
-      <svg viewBox="0 0 44 44" fill="none" className="w-10 h-10">
-        <rect width="44" height="44" rx="10" fill="#a78bfa" fillOpacity="0.12" />
-        <circle cx="22" cy="22" r="12" stroke="#a78bfa" strokeWidth="2" />
-        <circle cx="22" cy="22" r="6" fill="#a78bfa" fillOpacity="0.25" />
-        <path d="M22 10v4M22 30v4M10 22h4M30 22h4" stroke="#a78bfa" strokeWidth="2" strokeLinecap="round" />
-        <path d="M14.1 14.1l2.8 2.8M27.1 27.1l2.8 2.8M14.1 29.9l2.8-2.8M27.1 16.9l2.8-2.8" stroke="#a78bfa" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
-    peakFigure: { value: "367", unit: "TOPS", label: "INT8 peak (XMX, published)" },
-    specs: [
-      { label: "Architecture", value: "Xe2-HPG \"Battlemage\", TSMC N5" },
-      { label: "XMX matrix engines", value: "256 (8 per Xe core)" },
-      { label: "Memory", value: "32 GB GDDR6, ECC, 256-bit" },
-      { label: "Memory bandwidth", value: "608 GB/s" },
-      { label: "INT8 peak (XMX)", value: "367 TOPS" },
-      { label: "BF16 / FP16 peak (XMX)", value: "~183.5 TFLOPS (derived)" },
-      { label: "Host interface", value: "PCIe 5.0 x16" },
-      { label: "Board power", value: "230 W ref. (160–290 W range)" },
-    ],
-    useCases: ["Batch LLM inference (vLLM)", "Multi-user agentic serving", "VRAM-dense capacity scaling", "AI workstation + graphics", "OpenVINO / IPEX inference"],
-    highlights: [
-      "4 cards = 128 GB pooled ECC VRAM for ~$3,800 list — capacity-per-dollar, not raw compute, is the case",
-      "Intel LLM-Scaler (vLLM fork) serves Llama, Qwen, DeepSeek & Mistral; BF16 and FP8/FP4 are not yet servable (FP16/INT8 only today)",
-      "No NVLink-class fabric — every card needs a full PCIe 5.0 x16 link, so lane count is a first-order host-SKU filter",
-      "Competitive at batch 32 (~85% of RTX PRO 6000 on Llama 3.1 8B); unremarkable at batch 1 — built for concurrency, not single-user latency",
-    ],
-    tier: "Production",
-  },
-  {
     id: "arc-b60",
     name: "Intel® Arc™ Pro B60",
     codeName: "Xe2 \"Battlemage\" — BMG-G21",
@@ -226,14 +192,15 @@ const CHIPS: Chip[] = [
         <path d="M14.1 14.1l2.8 2.8M27.1 27.1l2.8 2.8M14.1 29.9l2.8-2.8M27.1 16.9l2.8-2.8" stroke="#a78bfa" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
-    peakFigure: { value: "197", unit: "TOPS", label: "INT8 peak (XMX, dense)" },
+    peakFigure: { value: "98.3", unit: "TFLOPS", label: "BF16 peak (XMX, derived)" },
+    vramFigure: { value: "24", unit: "GB" },
     specs: [
       { label: "Architecture", value: "Xe2-HPG \"Battlemage\", TSMC N5" },
       { label: "XMX matrix engines", value: "160 (8 per Xe core)" },
       { label: "Memory", value: "24 GB GDDR6, 192-bit" },
       { label: "Memory bandwidth", value: "456 GB/s" },
       { label: "INT8 peak (XMX)", value: "197 TOPS" },
-      { label: "FP16 peak (XMX)", value: "98.3 TFLOPS (derived)" },
+      { label: "BF16 / FP16 peak (XMX)", value: "98.3 TFLOPS (derived)" },
       { label: "FP32 peak (XVE)", value: "12.28 TFLOPS" },
       { label: "Host interface", value: "PCIe 5.0 x8 electrical" },
       { label: "Board power", value: "120–200 W" },
@@ -244,6 +211,48 @@ const CHIPS: Chip[] = [
       "Memory-bound decode: 215.6 FLOP/byte FP16 machine balance means batching is not an optimization, it is the design",
       "No scale-up fabric: PCIe 5.0 x8 only (31.5 GB/s per direction) — prefer replication over tensor parallelism",
       "llm-scaler-vllm serving path supports Llama, Qwen, DeepSeek, Mistral with FP16/INT4/FP8 quantization",
+    ],
+    tier: "Production",
+  },
+  {
+    id: "b70",
+    name: "Intel® Arc™ Pro B70",
+    codeName: "Xe2 \"Battlemage\" (BMG-G31)",
+    category: "GPU",
+    vendor: "Intel",
+    tagline: "VRAM-dense workstation & batch-inference GPU",
+    description:
+      "Xe2 \"Battlemage\" workstation GPU with 32 GB ECC GDDR6 — the play is VRAM capacity per dollar, not peak compute. Four cards pool 128 GB for roughly $3,800 list, and vLLM (via Intel's LLM-Scaler) serves Llama, Qwen, DeepSeek and Mistral at competitive batch-32 throughput.",
+    accent: "#a78bfa",
+    glow: "rgba(167,139,250,0.14)",
+    badge: { bg: "rgba(167,139,250,0.15)", text: "#c4b5fd" },
+    icon: (
+      <svg viewBox="0 0 44 44" fill="none" className="w-10 h-10">
+        <rect width="44" height="44" rx="10" fill="#a78bfa" fillOpacity="0.12" />
+        <circle cx="22" cy="22" r="12" stroke="#a78bfa" strokeWidth="2" />
+        <circle cx="22" cy="22" r="6" fill="#a78bfa" fillOpacity="0.25" />
+        <path d="M22 10v4M22 30v4M10 22h4M30 22h4" stroke="#a78bfa" strokeWidth="2" strokeLinecap="round" />
+        <path d="M14.1 14.1l2.8 2.8M27.1 27.1l2.8 2.8M14.1 29.9l2.8-2.8M27.1 16.9l2.8-2.8" stroke="#a78bfa" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    peakFigure: { value: "~183.5", unit: "TFLOPS", label: "BF16 peak (XMX, derived)" },
+    vramFigure: { value: "32", unit: "GB" },
+    specs: [
+      { label: "Architecture", value: "Xe2-HPG \"Battlemage\", TSMC N5" },
+      { label: "XMX matrix engines", value: "256 (8 per Xe core)" },
+      { label: "Memory", value: "32 GB GDDR6, ECC, 256-bit" },
+      { label: "Memory bandwidth", value: "608 GB/s" },
+      { label: "INT8 peak (XMX)", value: "367 TOPS" },
+      { label: "BF16 / FP16 peak (XMX)", value: "~183.5 TFLOPS (derived)" },
+      { label: "Host interface", value: "PCIe 5.0 x16" },
+      { label: "Board power", value: "230 W ref. (160–290 W range)" },
+    ],
+    useCases: ["Batch LLM inference (vLLM)", "Multi-user agentic serving", "VRAM-dense capacity scaling", "AI workstation + graphics", "OpenVINO / IPEX inference"],
+    highlights: [
+      "4 cards = 128 GB pooled ECC VRAM for ~$3,800 list — capacity-per-dollar, not raw compute, is the case",
+      "Intel LLM-Scaler (vLLM fork) serves Llama, Qwen, DeepSeek & Mistral; BF16 and FP8/FP4 are not yet servable (FP16/INT8 only today)",
+      "No NVLink-class fabric — every card needs a full PCIe 5.0 x16 link, so lane count is a first-order host-SKU filter",
+      "Competitive at batch 32 (~85% of RTX PRO 6000 on Llama 3.1 8B); unremarkable at batch 1 — built for concurrency, not single-user latency",
     ],
     tier: "Production",
   },
@@ -266,7 +275,8 @@ const CHIPS: Chip[] = [
         <circle cx="22" cy="22" r="3" fill="#f472b6" />
       </svg>
     ),
-    peakFigure: { value: "480", unit: "GB", label: "LPDDR5X partner ceiling (160 GB ref.)" },
+    peakFigure: { value: "655.5", unit: "TFLOPS", label: "BF16 peak (published)" },
+    vramFigure: { value: "160–480", unit: "GB" },
     specs: [
       { label: "Architecture", value: "Xe3P (\"Celestial\" lineage)" },
       { label: "Memory type", value: "LPDDR5X — no HBM, no GDDR" },
@@ -287,14 +297,138 @@ const CHIPS: Chip[] = [
     tier: "Next-Gen",
   },
   {
-    id: "nvidia-h100",
-    name: "NVIDIA H100 SXM5",
-    codeName: "Hopper (GH100), TSMC 4N",
+    id: "nvidia-l4",
+    name: "NVIDIA L4",
+    codeName: "Ada Lovelace (AD104) — low-profile PCIe",
     category: "GPU",
     vendor: "NVIDIA",
-    tagline: "The incumbent datacenter GPU — largest installed base of any part on this page",
+    tagline: "Slot-powered 72 W single-slot card — video/vision, not LLM serving",
     description:
-      "Still the most widely deployed high-end AI GPU as of 2026. The SXM5 module (HGX/DGX 8-GPU servers) is what this app's own Qwen sizing model defaults to — 989/990 TFLOPS dense BF16 and 3.35 TB/s HBM3 are reproduced exactly from that model.",
+      "The slot-powered 72 W, single-slot low-profile card that drops into any 1U/2U server without an auxiliary power cable. 300 GB/s bandwidth makes it a video/vision and small-model part — for new LLM work the RTX PRO 4500 delivers 2.7× the bandwidth.",
+    accent: "#76b900",
+    glow: "rgba(118,185,0,0.14)",
+    badge: { bg: "rgba(118,185,0,0.15)", text: "#a3e635" },
+    icon: (
+      <svg viewBox="0 0 44 44" fill="none" className="w-10 h-10">
+        <rect width="44" height="44" rx="10" fill="#76b900" fillOpacity="0.12" />
+        <rect x="12" y="16" width="20" height="12" rx="2" stroke="#76b900" strokeWidth="2" />
+        <circle cx="18" cy="22" r="2" fill="#76b900" fillOpacity="0.6" />
+        <circle cx="26" cy="22" r="2" fill="#76b900" fillOpacity="0.6" />
+      </svg>
+    ),
+    peakFigure: { value: "121", unit: "TFLOPS", label: "BF16 Tensor, dense" },
+    vramFigure: { value: "24", unit: "GB" },
+    specs: [
+      { label: "Architecture", value: "Ada Lovelace (AD104)" },
+      { label: "Form factor", value: "1-slot, low-profile (HHHL)" },
+      { label: "Memory", value: "24 GB GDDR6, 192-bit" },
+      { label: "Memory bandwidth", value: "300 GB/s" },
+      { label: "BF16 Tensor (dense/sparse)", value: "121 / 242 TFLOPS" },
+      { label: "FP8 Tensor (dense/sparse)", value: "242.5 / 485 TFLOPS" },
+      { label: "Host interface", value: "PCIe Gen4 x16 (no NVLink)" },
+      { label: "Media engines", value: "2× NVENC, 4× NVDEC, 4× JPEG; AV1" },
+      { label: "Board power", value: "72 W max — slot-powered" },
+    ],
+    useCases: ["Video analytics / transcoding density", "Embeddings / small classifiers", "7-8B LLM at FP8, low concurrency", "Edge / space-constrained servers"],
+    highlights: [
+      "No auxiliary power connector needed — the only card on this page that runs entirely off slot power",
+      "4× NVDEC + AV1 at 72 W — NVIDIA claims up to 120× AI video throughput vs. CPU for video-analytics density",
+      "Weak fit for ≥30B LLMs — 300 GB/s decode ceiling and PCIe Gen4-only multi-card scaling",
+      "Being succeeded by RTX PRO 4500 (>5× L4 small-model inference, per NVIDIA) — check OEM end-of-sale timing before a new bid",
+    ],
+    tier: "Production",
+  },
+  {
+    id: "nvidia-rtx-pro-4500",
+    name: "NVIDIA RTX PRO 4500",
+    codeName: "Blackwell (RTX PRO) — single-slot PCIe",
+    category: "GPU",
+    vendor: "NVIDIA",
+    tagline: "165 W single-slot L4 successor — native FP4, not an LLM-serving workhorse",
+    description:
+      "The single-slot successor to the L4 slot: 32 GB GDDR7 at 800 GB/s with native FP4, fitting mainstream 1U/2U servers without a cooling redesign. A small-model / vision / vector-search part — 32 GB caps it at roughly 30B-class models at FP8.",
+    accent: "#76b900",
+    glow: "rgba(118,185,0,0.14)",
+    badge: { bg: "rgba(118,185,0,0.15)", text: "#a3e635" },
+    icon: (
+      <svg viewBox="0 0 44 44" fill="none" className="w-10 h-10">
+        <rect width="44" height="44" rx="10" fill="#76b900" fillOpacity="0.12" />
+        <circle cx="22" cy="22" r="10" stroke="#76b900" strokeWidth="2" />
+        <path d="M22 14v16M14 22h16" stroke="#76b900" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    ),
+    peakFigure: { value: "203", unit: "TFLOPS", label: "BF16 Tensor, dense" },
+    vramFigure: { value: "32", unit: "GB" },
+    specs: [
+      { label: "Architecture", value: "Blackwell (RTX PRO), TSMC 4N" },
+      { label: "CUDA / Tensor / RT cores", value: "10,496 / 752 (5th gen) / 82" },
+      { label: "Memory", value: "32 GB GDDR7, 256-bit" },
+      { label: "Memory bandwidth", value: "800 GB/s" },
+      { label: "BF16 Tensor (dense/sparse)", value: "203 / 406 TFLOPS" },
+      { label: "FP4 Tensor (dense/sparse)", value: "800 / 1,600 TFLOPS" },
+      { label: "Host interface", value: "PCIe Gen5 x16 (no NVLink)" },
+      { label: "Board power", value: "Up to 165 W (needs 1× 16-pin aux connector)" },
+      { label: "Form factor", value: "Single-slot FHFL — full-length, won't fit L4's low-profile slot" },
+    ],
+    useCases: ["Embeddings / rerankers / guardrail classifiers", "Vector index build & search (cuVS/CAGRA)", "Vision AI / VLM ≤8-12B", "Small-model agent tools ≤14B FP8 / ≤30B FP4"],
+    highlights: [
+      "Native FP4 at the entry tier for the first time — 800 TFLOPS dense, 2.67× the L4's bandwidth at 2.3× the power",
+      "Single-slot, full-length card — physically different from L4's low-profile form factor despite similar power envelope",
+      "NVIDIA claims up to 50× vector search vs. CPU-only (8-GPU server vs. AMD 9654) via cuVS/CAGRA",
+      "Weak fit for dense 70B serving (needs ≥3 cards at FP8 over PCIe) — pick RTX PRO 6000 instead for that workload",
+    ],
+    tier: "Production",
+  },
+  {
+    id: "nvidia-rtx-pro-6000-server-edition",
+    name: "NVIDIA RTX PRO 6000",
+    codeName: "Blackwell (RTX PRO data-centre variant) — dual-slot PCIe",
+    category: "GPU",
+    vendor: "NVIDIA",
+    tagline: "L40S successor, enterprise volume part — every tier-1 OEM ships it in 2/4/8-GPU chassis",
+    description:
+      "NVIDIA's Blackwell-generation enterprise-volume card: 24,064 CUDA cores, 752 Tensor Cores, 96 GB GDDR7 at 1.6 TB/s, 600 W. No NVLink; holds a 70B model at FP8 on one card.",
+    accent: "#76b900",
+    glow: "rgba(118,185,0,0.14)",
+    badge: { bg: "rgba(118,185,0,0.15)", text: "#a3e635" },
+    icon: (
+      <svg viewBox="0 0 44 44" fill="none" className="w-10 h-10">
+        <rect width="44" height="44" rx="10" fill="#76b900" fillOpacity="0.12" />
+        <circle cx="22" cy="22" r="12" stroke="#76b900" strokeWidth="2" />
+        <rect x="17" y="17" width="10" height="10" rx="2" fill="#76b900" fillOpacity="0.3" />
+      </svg>
+    ),
+    peakFigure: { value: "500", unit: "TFLOPS", label: "BF16 Tensor, dense" },
+    vramFigure: { value: "96", unit: "GB" },
+    specs: [
+      { label: "Architecture", value: "Blackwell (RTX PRO), TSMC 4N" },
+      { label: "CUDA / Tensor / RT cores", value: "24,064 / 752 / 188" },
+      { label: "Memory", value: "96 GB GDDR7 ECC, 512-bit" },
+      { label: "Memory bandwidth", value: "1.6 TB/s (1,597 GB/s)" },
+      { label: "BF16 Tensor (dense/sparse)", value: "500 / 1,000 TFLOPS" },
+      { label: "FP8 Tensor (dense/sparse)", value: "1,000 / 2,000 TFLOPS" },
+      { label: "FP4 Tensor (dense/sparse)", value: "2,000 / 4,000 TFLOPS" },
+      { label: "Host interface", value: "PCIe Gen5 x16 (no NVLink)" },
+      { label: "Board power", value: "Up to 600 W (450 W slot-capped SKU also shipped by Lenovo)" },
+    ],
+    useCases: ["70B FP8 / 120B MoE FP4 serving per card", "Multi-model agent swarms (MIG)", "Physical AI / OVX / digital twins", "Fine-tuning ≤70B (LoRA/QLoRA)", "Enterprise 2/4/8-GPU server fleets"],
+    highlights: [
+      "Ships across every tier-1 OEM's mainstream 2U server (Cisco, Dell, HPE, Lenovo, Supermicro) — the volume enterprise Blackwell part",
+      "5th-gen Tensor Cores add native FP4 — the same low-precision format Crescent Island targets, at a much higher absolute TOPS ceiling",
+      "No NVLink — same PCIe-only scaling constraint as Intel's B60/B70",
+      "NVIDIA AI Enterprise is NOT bundled (unlike H200 NVL) — licensed separately, a real TCO line item",
+    ],
+    tier: "Production",
+  },
+  {
+    id: "nvidia-h100-pcie",
+    name: "NVIDIA H100 (PCIe)",
+    codeName: "Hopper (GH100), TSMC 4N — PCIe card",
+    category: "GPU",
+    vendor: "NVIDIA",
+    tagline: "The PCIe-hosted H100 — no NVLink, lower clocks than the SXM5 module",
+    description:
+      "The PCIe form factor of NVIDIA's Hopper-generation flagship — a standard dual-slot add-in card rather than the SXM5 module used in HGX/DGX 8-GPU servers. Lower board power (350 W) and no NVLink give it meaningfully lower throughput than SXM5.",
     accent: "#76b900",
     glow: "rgba(118,185,0,0.14)",
     badge: { bg: "rgba(118,185,0,0.15)", text: "#a3e635" },
@@ -306,35 +440,37 @@ const CHIPS: Chip[] = [
         <path d="M22 10v4M22 30v4M10 22h4M30 22h4" stroke="#76b900" strokeWidth="2" strokeLinecap="round" />
       </svg>
     ),
-    peakFigure: { value: "990", unit: "TFLOPS", label: "BF16 dense (SXM5) — this app's sizing default" },
+    peakFigure: { value: "756", unit: "TFLOPS", label: "BF16 Tensor, dense" },
+    vramFigure: { value: "80", unit: "GB" },
     specs: [
       { label: "Architecture", value: "Hopper (GH100), TSMC 4N" },
-      { label: "Form factor", value: "SXM5 (HGX/DGX 8-GPU)" },
-      { label: "Memory", value: "80 GB HBM3" },
-      { label: "Memory bandwidth", value: "3.35 TB/s" },
-      { label: "BF16 Tensor (dense/sparse)", value: "990 / 1,979 TFLOPS" },
-      { label: "FP8 Tensor (dense/sparse)", value: "1,979 / 3,958 TFLOPS" },
-      { label: "NVLink", value: "900 GB/s (4th gen)" },
-      { label: "Board power", value: "Up to 700 W" },
+      { label: "Form factor", value: "PCIe dual-slot, air-cooled" },
+      { label: "Memory", value: "80 GB HBM2e" },
+      { label: "Memory bandwidth", value: "~2 TB/s (2,039 GB/s)" },
+      { label: "BF16 Tensor (dense/sparse)", value: "756 / 1,513 TFLOPS" },
+      { label: "FP8 Tensor (dense/sparse)", value: "1,513 / 3,026 TFLOPS" },
+      { label: "FP64 Tensor", value: "51 TFLOPS (26 TFLOPS standard CUDA cores)" },
+      { label: "Host interface", value: "PCIe Gen5 x16 (no NVLink)" },
+      { label: "Board power", value: "350 W" },
     ],
-    useCases: ["Large-scale LLM training", "High-throughput inference serving", "Multi-node distributed training", "Mixed training + inference clusters", "Existing HGX/DGX fleets"],
+    useCases: ["Retrofitting PCIe-only chassis without an HGX baseboard", "Mixed AI + FP64 HPC", "Existing H100 PCIe fleet capacity planning", "Batch inference serving"],
     highlights: [
-      "Still the largest installed base of any high-end AI GPU — most customer environments already have H100 capacity to size against",
-      "SXM5's 700 W / 900 GB/s NVLink profile is materially higher-throughput than the PCIe H100 SKU already in this app's Comparisons tab — don't conflate the two",
-      "989/990 TFLOPS dense BF16 and 3.35 TB/s HBM3 are this app's own Qwen sizing-model defaults",
-      "Most mature software ecosystem of any accelerator on this page — CUDA, vLLM, TensorRT-LLM all target it first",
+      "No NVLink — PCIe Gen5 x16 only; the SXM5 module (this app's Qwen sizing-model default) is a materially higher-throughput variant of the same silicon",
+      "80 GB HBM2e at ~2 TB/s — a full generation behind SXM5's HBM3 at 3.35 TB/s",
+      "Same mature CUDA/TensorRT-LLM/vLLM ecosystem as every other Hopper/Blackwell part on this page",
+      "The more common retrofit choice for existing PCIe-only server chassis without an HGX baseboard",
     ],
     tier: "Production",
   },
   {
-    id: "nvidia-rtx-pro-6000",
-    name: "NVIDIA RTX PRO 6000 Blackwell",
-    codeName: "Blackwell (GB202) — Workstation Edition",
+    id: "nvidia-h200-nvl",
+    name: "NVIDIA H200 NVL",
+    codeName: "Hopper (GH100) — PCIe with NVLink bridges",
     category: "GPU",
     vendor: "NVIDIA",
-    tagline: "96 GB GDDR7 workstation/inference card — the direct benchmark for Intel's B60/B70",
+    tagline: "The only mid-tier PCIe card with HBM and an NVLink fabric",
     description:
-      "NVIDIA's Blackwell-generation professional card, and the card this app's own B70 entry already benchmarks itself against (~85% of its batch-32 throughput on Llama 3.1 8B). PCIe only, no NVLink — 96 GB GDDR7, 5th-gen Tensor Cores with native FP4.",
+      "Previous-generation Hopper silicon, but the only mid-tier PCIe part with HBM: 141 GB HBM3e at 4.8 TB/s — 3× the RTX PRO 6000's bandwidth — plus 2-/4-way NVLink bridges at 900 GB/s. Bundled with a 5-year NVIDIA AI Enterprise subscription. No FP4.",
     accent: "#76b900",
     glow: "rgba(118,185,0,0.14)",
     badge: { bg: "rgba(118,185,0,0.15)", text: "#a3e635" },
@@ -342,27 +478,30 @@ const CHIPS: Chip[] = [
       <svg viewBox="0 0 44 44" fill="none" className="w-10 h-10">
         <rect width="44" height="44" rx="10" fill="#76b900" fillOpacity="0.12" />
         <circle cx="22" cy="22" r="12" stroke="#76b900" strokeWidth="2" />
-        <circle cx="22" cy="22" r="6" fill="#76b900" fillOpacity="0.25" />
-        <path d="M14.1 14.1l2.8 2.8M27.1 27.1l2.8 2.8M14.1 29.9l2.8-2.8M27.1 16.9l2.8-2.8" stroke="#76b900" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="15" cy="22" r="3" fill="#76b900" fillOpacity="0.5" />
+        <circle cx="29" cy="22" r="3" fill="#76b900" fillOpacity="0.5" />
+        <path d="M18 22h8" stroke="#76b900" strokeWidth="2" strokeLinecap="round" />
       </svg>
     ),
-    peakFigure: { value: "96", unit: "GB", label: "GDDR7 — largest workstation-card VRAM here" },
+    peakFigure: { value: "835.5", unit: "TFLOPS", label: "BF16 Tensor, dense" },
+    vramFigure: { value: "141", unit: "GB" },
     specs: [
-      { label: "Architecture", value: "Blackwell (GB202), TSMC 4N" },
-      { label: "CUDA / Tensor / RT cores", value: "24,064 / 752 / 188" },
-      { label: "Memory", value: "96 GB GDDR7 ECC, 512-bit" },
-      { label: "Memory bandwidth", value: "1.79 TB/s" },
-      { label: "FP8 Tensor (dense/sparse)", value: "503.8 / 1,007.6 TFLOPS" },
-      { label: "FP4 Tensor (sparse)", value: "~4,000 TOPS" },
-      { label: "Host interface", value: "PCIe Gen5 x16 (no NVLink)" },
-      { label: "Board power", value: "600 W" },
+      { label: "Architecture", value: "Hopper (GH100) — same die as H100" },
+      { label: "Form factor", value: "PCIe dual-slot, air-cooled, up to 600 W" },
+      { label: "Memory", value: "141 GB HBM3e" },
+      { label: "Memory bandwidth", value: "4.8 TB/s" },
+      { label: "BF16 Tensor (dense/sparse)", value: "835.5 / 1,671 TFLOPS" },
+      { label: "FP8 Tensor (dense/sparse)", value: "1,670.5 / 3,341 TFLOPS" },
+      { label: "NVLink bridge", value: "2- or 4-way, 900 GB/s" },
+      { label: "Host interface", value: "PCIe Gen5" },
+      { label: "NVIDIA AI Enterprise", value: "Included — 5-year subscription" },
     ],
-    useCases: ["Single/multi-GPU inference serving", "AI workstation + graphics", "Fine-tuning mid-size models", "Batch inference at high concurrency", "Direct Intel B60/B70 comparison point"],
+    useCases: ["Bandwidth-bound 30-70B dense decode", "TP=4 serving of 120-235B FP8 models", "Mixed AI + FP64 HPC", "Existing Hopper-fleet capacity planning"],
     highlights: [
-      "96 GB GDDR7 is the largest VRAM of any single workstation-class card here — direct capacity comparison to Intel's B60 (24 GB) and B70 (32 GB)",
-      "This app's own B70 card already benchmarks against it: ~85% of this card's batch-32 Llama 3.1 8B throughput",
-      "5th-gen Tensor Cores add native FP4 — the same low-precision format Crescent Island targets, at a much higher absolute TOPS ceiling",
-      "No NVLink — PCIe Gen5 x16 only, the same single-card scaling constraint this app already flags for Intel's Arc Pro line",
+      "Only mid-tier PCIe card with both HBM and an NVLink fabric — 564 GB pooled across a 4-way island at 900 GB/s GPU-GPU",
+      "5-year NVIDIA AI Enterprise bundled — a real TCO difference vs. RTX PRO 6000, which licenses it separately",
+      "Previous-generation Hopper: no FP4, dense FP8 roughly equal to an RTX PRO 6000 despite the bandwidth advantage",
+      "Watch for SXM-vs-NVL figure mixups — several spec aggregators print H200 SXM numbers against this NVL card",
     ],
     tier: "Production",
   },
@@ -386,12 +525,14 @@ const CHIPS: Chip[] = [
         <rect x="10" y="30" width="24" height="5" rx="1.5" fill="#76b900" fillOpacity="0.25" />
       </svg>
     ),
-    peakFigure: { value: "20", unit: "PFLOPS", label: "FP4 per GPU, with sparsity" },
+    peakFigure: { value: "2,500", unit: "TFLOPS", label: "BF16 dense per GPU (5,000 w/ sparsity)" },
+    vramFigure: { value: "186", unit: "GB" },
     specs: [
       { label: "Configuration", value: "36 Grace CPU + 72 B200 GPU / rack" },
       { label: "Grace CPU", value: "72 Arm Neoverse V2 cores each" },
       { label: "GPU memory (per GPU)", value: "186 GB HBM3e @ 8 TB/s" },
       { label: "GPU memory (rack total)", value: "13.4 TB @ 576 TB/s" },
+      { label: "BF16 Tensor (per GPU, dense/sparse)", value: "2,500 / 5,000 TFLOPS" },
       { label: "FP4 Tensor (per GPU, sparse)", value: "20 PFLOPS" },
       { label: "FP4 Tensor (rack, sparse)", value: "1,440 PFLOPS" },
       { label: "NVLink", value: "1.8 TB/s/GPU · 130 TB/s/rack" },
@@ -427,12 +568,14 @@ const CHIPS: Chip[] = [
         <circle cx="34" cy="11.5" r="3" fill="#76b900" />
       </svg>
     ),
-    peakFigure: { value: "288", unit: "GB", label: "HBM3e per GPU (vs. 186 GB on GB200)" },
+    peakFigure: { value: "2,500", unit: "TFLOPS", label: "BF16 dense per GPU (5,000 w/ sparsity)" },
+    vramFigure: { value: "288", unit: "GB" },
     specs: [
       { label: "Configuration", value: "36 Grace CPU + 72 B300 GPU / rack" },
       { label: "Grace CPU", value: "72 Arm Neoverse V2 cores each" },
-      { label: "GPU memory (per GPU)", value: "288 GB HBM3e @ 8 TB/s" },
+      { label: "GPU memory (per GPU)", value: "288 GB HBM3e @ 8 TB/s (vs. 186 GB on GB200)" },
       { label: "GPU memory (rack total)", value: "20.7 TB @ 576 TB/s" },
+      { label: "BF16 Tensor (per GPU, dense/sparse)", value: "2,500 / 5,000 TFLOPS (same as GB200)" },
       { label: "FP4 Tensor (per GPU, sparse/dense)", value: "20 / 15 PFLOPS" },
       { label: "FP4 Tensor (rack, sparse/dense)", value: "1,440 / 1,080 PFLOPS" },
       { label: "Networking", value: "ConnectX-8, ~800 Gb/s/GPU" },
@@ -553,10 +696,22 @@ function ChipCard({ chip, onClick }: { chip: Chip; onClick?: () => void }) {
               </span>
             </div>
           </div>
-          <div className="text-right flex-shrink-0">
-            <div className="text-2xl font-black leading-none" style={{ color: chip.accent }}>{chip.peakFigure.value}</div>
-            <div className="text-[11px] font-bold leading-none mt-0.5" style={{ color: chip.accent }}>{chip.peakFigure.unit}</div>
-            <div className="text-[9px] text-white/30 mt-0.5 max-w-[80px] leading-tight">{chip.peakFigure.label}</div>
+          <div className="flex items-start gap-3 flex-shrink-0">
+            <div className="text-right">
+              <div className="text-2xl font-black leading-none" style={{ color: chip.accent }}>{chip.peakFigure.value}</div>
+              <div className="text-[11px] font-bold leading-none mt-0.5" style={{ color: chip.accent }}>{chip.peakFigure.unit}</div>
+              <div className="text-[9px] text-white/30 mt-0.5 max-w-[80px] leading-tight">{chip.peakFigure.label}</div>
+            </div>
+            {chip.vramFigure && (
+              <>
+                <div className="self-stretch w-px bg-white/10" />
+                <div className="text-right">
+                  <div className="text-2xl font-black leading-none" style={{ color: chip.accent }}>{chip.vramFigure.value}</div>
+                  <div className="text-[11px] font-bold leading-none mt-0.5" style={{ color: chip.accent }}>{chip.vramFigure.unit}</div>
+                  <div className="text-[9px] text-white/30 mt-0.5 max-w-[80px] leading-tight">VRAM</div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -633,7 +788,7 @@ const COMPUTE_GROUPS: ComputeGroup[] = [
   {
     category: "GPU",
     label: "GPU",
-    description: "Discrete GPUs for batch inference, AI workstations and next-gen datacenter serving — Intel's Arc Pro line and pre-production Crescent Island alongside NVIDIA's H100, RTX PRO 6000, and rack-scale GB200/GB300 NVL72, badged by vendor below.",
+    description: "Discrete GPUs for batch inference, AI workstations and next-gen datacenter serving — Intel's Arc Pro line and pre-production Crescent Island alongside NVIDIA's L4, RTX PRO 4500, RTX PRO 6000, H100 (PCIe), H200 NVL, and rack-scale GB200/GB300 NVL72, badged by vendor below.",
     accent: "#a78bfa",
     accentRgb: "167,139,250",
   },
@@ -732,17 +887,26 @@ export function SiliconView() {
   if (drillDown === "arc-b60") {
     return <AcceleratorDetailView detail={ARC_PRO_B60} onBack={() => setDrillDown(null)} />;
   }
-  if (drillDown === "nvidia-h100") {
-    return <AcceleratorDetailView detail={NVIDIA_H100} onBack={() => setDrillDown(null)} />;
-  }
-  if (drillDown === "nvidia-rtx-pro-6000") {
-    return <AcceleratorDetailView detail={NVIDIA_RTX_PRO_6000} onBack={() => setDrillDown(null)} />;
+  if (drillDown === "nvidia-h100-pcie") {
+    return <AcceleratorDetailView detail={NVIDIA_H100_PCIE} onBack={() => setDrillDown(null)} />;
   }
   if (drillDown === "nvidia-gb200-nvl72") {
     return <AcceleratorDetailView detail={NVIDIA_GB200_NVL72} onBack={() => setDrillDown(null)} />;
   }
   if (drillDown === "nvidia-gb300-nvl72") {
     return <AcceleratorDetailView detail={NVIDIA_GB300_NVL72} onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "nvidia-h200-nvl") {
+    return <AcceleratorDetailView detail={NVIDIA_H200_NVL} onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "nvidia-l4") {
+    return <AcceleratorDetailView detail={NVIDIA_L4} onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "nvidia-rtx-pro-4500") {
+    return <AcceleratorDetailView detail={NVIDIA_RTX_PRO_4500} onBack={() => setDrillDown(null)} />;
+  }
+  if (drillDown === "nvidia-rtx-pro-6000-server-edition") {
+    return <AcceleratorDetailView detail={NVIDIA_RTX_PRO_6000_SERVER_EDITION} onBack={() => setDrillDown(null)} />;
   }
   if (drillDown === "storage") {
     return <StorageView onBack={() => setDrillDown(null)} />;

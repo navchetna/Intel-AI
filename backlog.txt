@@ -1,0 +1,38 @@
+In Silicon - GPU
+The unit on the top of the silicon cards should be consistently BF16 TFLOPS and the VRAM in GB
+In the cards - Intel B60, Intel B70, Intel Cresent Island - that order
+
+In systems:
+Allow multiple GPUs to be selected
+Order the GPUs as L4, 4500, 6000, H200, B200, B300...the balloons
+If there are multiple GPUs selected, the OEM comparisons, must be categorized by the GPUs. One table per GPU
+
+In Tasks:
+Tasks table view; add a filter by models; and make it a bit more compact; add the model details to the table view
+
+In Models:
+Add a compact view for models also
+
+In Home Page:
+Rename Intel AI Platform to  Intel Silicon, Systems, Software
+The yellow-silicon must be across all the three boxes. 
+Make the font color white.
+Make the boxes aligned to the Intel brand colors of blue.  
+
+The Storage options on these systems is missing, right?
+We must also checkout the system iso-metric view
+Upload an RFP, and the entire process should flow
+Adjust the sizing of all the projects to realistic levels
+Mapping of Storage
+Mapping for the network ports
+Agent to Tasks Mapping
+Optimization recipes
+Benchmarking recipes
+
+Review the model list with Adi, and align this with Amber
+Skills/Scripts for all the Tasks
+Add Interconnect
+
+Add the details of OSV
+The Storage OEMs, must be pulled up
+The Network OEMs must be pulled up

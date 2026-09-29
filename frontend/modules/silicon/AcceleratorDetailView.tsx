@@ -89,6 +89,21 @@ export function AcceleratorDetailView({ detail, onBack }: { detail: AcceleratorD
           </SectionCard>
         </div>
 
+        {(detail.interconnect || detail.hostRecommendation) && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:gap-6">
+            {detail.interconnect && (
+              <SectionCard title="Interconnect" accent={accent}>
+                <SpecGrid rows={detail.interconnect} />
+              </SectionCard>
+            )}
+            {detail.hostRecommendation && (
+              <SectionCard title="Recommended Xeon 6 Host" accent={accent}>
+                <SpecGrid rows={detail.hostRecommendation} />
+              </SectionCard>
+            )}
+          </div>
+        )}
+
         <SectionCard title="TFLOPS by Data Type" accent={accent}>
           <div className="rounded-xl overflow-hidden border" style={{ borderColor: "var(--dm-border-a)" }}>
             <div className="grid grid-cols-[1fr_auto] gap-4 px-4 py-2 text-[10px] font-bold uppercase tracking-widest"
@@ -133,6 +148,12 @@ export function AcceleratorDetailView({ detail, onBack }: { detail: AcceleratorD
           </div>
         </SectionCard>
 
+        {detail.virtualization && (
+          <SectionCard title="Virtualization & Licensing" accent={accent}>
+            <SpecGrid rows={detail.virtualization} />
+          </SectionCard>
+        )}
+
         {detail.caveats.length > 0 && (
           <SectionCard title="Notes & Open Questions" accent={accent}>
             <ul className="space-y-2.5">
@@ -140,6 +161,23 @@ export function AcceleratorDetailView({ detail, onBack }: { detail: AcceleratorD
                 <li key={i} className="flex items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: "var(--dm-txt-secondary)" }}>
                   <span className="mt-1.5 w-1 h-1 rounded-full flex-shrink-0" style={{ background: detail.accent }} />
                   {c}
+                </li>
+              ))}
+            </ul>
+          </SectionCard>
+        )}
+
+        {detail.sources && detail.sources.length > 0 && (
+          <SectionCard title="Sources" accent={accent}>
+            <ul className="space-y-1.5">
+              {detail.sources.map(s => (
+                <li key={s.id} className="text-[12px] leading-relaxed" style={{ color: "var(--dm-txt-secondary)" }}>
+                  <span className="font-mono text-[10px] font-bold mr-1.5" style={{ color: accent }}>[{s.id}]</span>
+                  {s.url ? (
+                    <a href={s.url} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline" style={{ color: "var(--dm-txt-secondary)" }}>
+                      {s.label}
+                    </a>
+                  ) : s.label}
                 </li>
               ))}
             </ul>
