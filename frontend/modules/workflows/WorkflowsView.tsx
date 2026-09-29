@@ -10,7 +10,7 @@ import { llmProfileFor, type ModelClass } from "./task-llm-profile";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useRegisterExport } from "@/contexts/ExportContext";
 import { exportWorkflowsToExcel } from "./export";
-import { X, ArrowRight, Shrink, Expand } from "lucide-react";
+import { X, ArrowRight, Shrink, Expand, Rows3 } from "lucide-react";
 
 /** Darkens an "r,g,b" triplet toward black — used in light mode where a category's raw bright
  *  accent color would have poor contrast directly on a light card. */
@@ -337,19 +337,22 @@ function CategoryHeader({ name, count }: { name: CategoryName; count: number }) 
 
 // ── Table view ─────────────────────────────────────────────────────────────────
 
-function TaskTable({ tasks, onSelect }: { tasks: WorkflowDef[]; onSelect: (wf: WorkflowDef) => void }) {
+function TaskTable({ tasks, onSelect, compact }: { tasks: WorkflowDef[]; onSelect: (wf: WorkflowDef) => void; compact: boolean }) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
+  const cellPad = compact ? "px-3 py-1" : "px-4 py-3";
+  const headPad = compact ? "px-3 py-1.5" : "px-4 py-3";
   return (
     <div className="rounded-2xl overflow-hidden border border-[var(--dm-border-a)]" style={{ background: "var(--dm-table-bg)" }}>
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse table-fixed">
           <thead>
             <tr style={{ background: "var(--dm-table-head)", borderBottom: "1px solid var(--dm-border-a)" }}>
-              <th className="w-48 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--dm-txt-muted)]">Task</th>
-              <th className="w-52 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--dm-txt-muted)]">Category</th>
-              <th className="w-28 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--dm-txt-muted)]">Impl</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--dm-txt-muted)]">Typical Chain</th>
+              <th className={`w-48 ${headPad} text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--dm-txt-muted)]`}>Task</th>
+              <th className={`w-44 ${headPad} text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--dm-txt-muted)]`}>Category</th>
+              <th className={`w-24 ${headPad} text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--dm-txt-muted)]`}>Impl</th>
+              <th className={`w-40 ${headPad} text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--dm-txt-muted)]`}>Model</th>
+              <th className={`${headPad} text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--dm-txt-muted)]`}>Typical Chain</th>
             </tr>
           </thead>
           <tbody>
@@ -367,10 +370,10 @@ function TaskTable({ tasks, onSelect }: { tasks: WorkflowDef[]; onSelect: (wf: W
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = `rgba(${meta.accentRgb},0.06)`; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = idx % 2 === 0 ? "var(--dm-surface-a)" : "transparent"; }}
                 >
-                  <td className="px-4 py-3 overflow-hidden">
+                  <td className={`${cellPad} overflow-hidden`}>
                     <span className="text-[var(--dm-txt-body)] font-semibold text-xs truncate block">{wf.name}</span>
                   </td>
-                  <td className="px-4 py-3 overflow-hidden">
+                  <td className={`${cellPad} overflow-hidden`}>
                     <span
                       className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold"
                       style={{ background: `rgba(${meta.accentRgb},0.12)`, color: isDark ? meta.accent : darkenRgb(meta.accentRgb) }}
@@ -379,7 +382,7 @@ function TaskTable({ tasks, onSelect }: { tasks: WorkflowDef[]; onSelect: (wf: W
                       <span className="truncate">{wf.category}</span>
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className={cellPad}>
                     <span
                       className="text-[10px] font-bold uppercase tracking-wide"
                       style={{ color: isDark ? IMPL_COLORS[wf.impl] : darkenHex(IMPL_COLORS[wf.impl]) }}
@@ -387,7 +390,10 @@ function TaskTable({ tasks, onSelect }: { tasks: WorkflowDef[]; onSelect: (wf: W
                       {wf.impl}
                     </span>
                   </td>
-                  <td className="px-4 py-3 overflow-hidden">
+                  <td className={`${cellPad} overflow-hidden`}>
+                    <LlmProfileBadges wf={wf} />
+                  </td>
+                  <td className={`${cellPad} overflow-hidden`}>
                     <span className="text-[var(--dm-txt-muted)] text-xs truncate block font-mono">{wf.typicalChain}</span>
                   </td>
                 </tr>
@@ -459,9 +465,11 @@ export function WorkflowsView() {
   const [search, setSearch]                 = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryName | "All">("All");
   const [implFilter, setImplFilter]         = useState<"all" | Impl>("all");
+  const [modelFilter, setModelFilter]       = useState<"all" | ModelClass>("all");
   const [selectedWf, setSelectedWf]         = useState<WorkflowDef | null>(null);
   const [showConventions, setShowConventions] = useState(false);
   const [concise, setConcise] = useState(false);
+  const [tableCompact, setTableCompact] = useState(false);
 
   const exportHandler = useCallback(() => exportWorkflowsToExcel(WORKFLOWS), []);
   useRegisterExport(exportHandler, "Export Tasks Catalog");
@@ -471,12 +479,13 @@ export function WorkflowsView() {
     return WORKFLOWS.filter(wf => {
       if (categoryFilter !== "All" && wf.category !== categoryFilter) return false;
       if (implFilter !== "all" && wf.impl !== implFilter) return false;
+      if (modelFilter !== "all" && llmProfileFor(wf).modelClass !== modelFilter) return false;
       if (q && !wf.name.toLowerCase().includes(q) &&
           !wf.id.toLowerCase().includes(q) &&
           !wf.outputs.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [search, categoryFilter, implFilter]);
+  }, [search, categoryFilter, implFilter, modelFilter]);
 
   // Group filtered by category
   const groups = useMemo(() => {
@@ -522,6 +531,22 @@ export function WorkflowsView() {
                 </button>
               ))}
             </div>
+
+            {/* Compact table rows — only meaningful in table view */}
+            {viewMode === "table" && (
+              <button
+                onClick={() => setTableCompact(v => !v)}
+                title={tableCompact ? "Switch back to the normal row height" : "Compact view — minimize row height in the table"}
+                aria-label={tableCompact ? "Normal row height" : "Compact row height"}
+                aria-pressed={tableCompact}
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg transition-colors"
+                style={tableCompact
+                  ? { background: "rgba(56,189,248,0.15)", border: "1px solid rgba(56,189,248,0.4)", color: "#38bdf8" }
+                  : { background: "var(--dm-surface-b)", border: "1px solid var(--dm-border-b)", color: "var(--dm-txt-muted)" }}
+              >
+                <Rows3 className="w-4 h-4" strokeWidth={1.8} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -562,9 +587,25 @@ export function WorkflowsView() {
               </select>
             </div>
 
+            {/* Model filter */}
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-[var(--dm-txt-faint)] mb-1">Model</label>
+              <select
+                value={modelFilter}
+                onChange={e => setModelFilter(e.target.value as "all" | ModelClass)}
+                className="py-2 px-3 text-sm rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
+                style={{ background: "var(--dm-input-bg)", border: "1px solid var(--dm-input-border)", color: "var(--dm-input-color)" }}
+              >
+                <option value="all">All</option>
+                <option value="SLM">SLM</option>
+                <option value="LLM">LLM</option>
+                <option value="N/A">No model</option>
+              </select>
+            </div>
+
             {/* Reset */}
             <button
-              onClick={() => { setSearch(""); setCategoryFilter("All"); setImplFilter("all"); }}
+              onClick={() => { setSearch(""); setCategoryFilter("All"); setImplFilter("all"); setModelFilter("all"); }}
               className="py-2 px-4 text-sm rounded-lg text-[var(--dm-txt-muted)] hover:text-[var(--dm-txt-secondary)] transition-colors"
               style={{ background: "var(--dm-surface-a)", border: "1px solid var(--dm-border-b)" }}
             >
@@ -634,7 +675,7 @@ export function WorkflowsView() {
             <ConciseTaskList groups={groups} onSelect={setSelectedWf} />
           </div>
         ) : viewMode === "table" ? (
-          <TaskTable tasks={filtered} onSelect={setSelectedWf} />
+          <TaskTable tasks={filtered} onSelect={setSelectedWf} compact={tableCompact} />
         ) : (
           <div className="flex flex-col gap-8">
             {groups.map(({ cat, rows }) => (

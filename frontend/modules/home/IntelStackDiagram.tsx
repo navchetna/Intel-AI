@@ -67,6 +67,9 @@ function BandDivider() {
 
 // ── Silicon group box ──────────────────────────────────────────────────────────
 
+// All three silicon-group boxes share one Intel-blue treatment (background, border) and a
+// yellow top accent bar tying back to the SILICON row label — vendor identity (e.g. SambaNova)
+// is carried by the chip color inside, not by the box itself.
 function SiliconGroup({
   title, subtitle, chips, samba = false,
 }: {
@@ -74,24 +77,26 @@ function SiliconGroup({
   chips: { label: string }[];
   samba?: boolean;
 }) {
-  const borderColor = samba ? "rgba(180,130,210,0.40)" : "rgba(18,98,181,0.28)";
-  const bgStyle = samba
-    ? { background: "linear-gradient(145deg, rgba(180,130,210,0.18) 0%, rgba(100,60,180,0.12) 100%)" }
-    : { background: "var(--diag-group-bg)" };
-
   return (
     <div
-      className="flex-1 rounded-xl p-4 flex flex-col gap-3"
-      style={{ border: `1px solid ${borderColor}`, boxShadow: "0 2px 10px rgba(0,0,0,0.06)", ...bgStyle }}
+      className="flex-1 rounded-xl overflow-hidden flex flex-col"
+      style={{
+        border: "1px solid rgba(18,98,181,0.45)",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+        background: "linear-gradient(160deg, #1568B8 0%, #0A2B54 100%)",
+      }}
     >
-      <div className="text-center">
-        <span className="text-xl font-black" style={{ color: "var(--diag-group-title)" }}>{title}</span>
-        <div className="text-[12px] mt-0.5" style={{ color: "var(--diag-group-sub)" }}>{subtitle}</div>
-      </div>
-      <div className="flex gap-2 justify-center flex-wrap">
-        {chips.map(c => (
-          <Chip key={c.label} label={c.label} variant={samba ? "sambanova" : "primary"} />
-        ))}
+      <div className="h-[3px] w-full flex-shrink-0" style={{ background: "linear-gradient(90deg, #FFE640 0%, #FFD400 100%)" }} />
+      <div className="p-4 flex flex-col gap-3">
+        <div className="text-center">
+          <span className="text-xl font-black text-white">{title}</span>
+          <div className="text-[12px] mt-0.5 text-white/70">{subtitle}</div>
+        </div>
+        <div className="flex gap-2 justify-center flex-wrap">
+          {chips.map(c => (
+            <Chip key={c.label} label={c.label} variant={samba ? "sambanova" : "primary"} />
+          ))}
+        </div>
       </div>
     </div>
   );

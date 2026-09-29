@@ -149,6 +149,80 @@ function buildPcieSheet(ws: ExcelJS.Worksheet, chips: ComparisonChip[]): void {
   ws.views = [{ state: "frozen", xSplit: 1, ySplit: headerRow }];
 }
 
+function buildInterconnectSheet(ws: ExcelJS.Worksheet, chips: ComparisonChip[]): void {
+  const gpuChips = chips.filter(c => c.category !== "CPU");
+  const widths = [22, ...gpuChips.map(() => 34)];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  const headerRow = addTitle(
+    ws, "Silicon Comparison — Interconnect",
+    `GPU-to-GPU scale-up fabric — NVLink bandwidth where present, PCIe-only otherwise. Generated ${new Date().toLocaleString()}.`,
+    widths.length,
+  );
+  styleHeaderRow(ws, headerRow, ["GPU-to-GPU fabric", ...gpuChips.map(c => `${c.name} (${c.category})`)]);
+
+  const values = gpuChips.map(c => {
+    if (!c.interconnect) return "None — PCIe only";
+    const base = c.interconnect.bandwidth ? `${c.interconnect.type} — ${c.interconnect.bandwidth}` : c.interconnect.type;
+    return c.interconnect.note ? `${base} (${c.interconnect.note})` : base;
+  });
+  writeDataRow(ws, headerRow + 1, "Fabric & bandwidth", values, false);
+
+  ws.views = [{ state: "frozen", xSplit: 1, ySplit: headerRow }];
+}
+
+function buildXeonHostSheet(ws: ExcelJS.Worksheet, chips: ComparisonChip[]): void {
+  const sourcedChips = chips.filter(c => c.hostRecommendation);
+  if (sourcedChips.length === 0) return;
+  const widths = [22, ...sourcedChips.map(() => 34)];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  const headerRow = addTitle(
+    ws, "Silicon Comparison — Xeon 6 Host Pairing",
+    `Best-fit Xeon 6 host CPU for an 8-GPU node — only parts with sourced host-pairing data. Generated ${new Date().toLocaleString()}.`,
+    widths.length,
+  );
+  styleHeaderRow(ws, headerRow, ["Best-fit Xeon 6 host", ...sourcedChips.map(c => `${c.name} (${c.category})`)]);
+
+  const values = sourcedChips.map(c => {
+    const r = c.hostRecommendation!;
+    return r.note ? `${r.cpu} — ${r.note}` : r.cpu;
+  });
+  writeDataRow(ws, headerRow + 1, "Recommended CPU", values, false);
+
+  ws.views = [{ state: "frozen", xSplit: 1, ySplit: headerRow }];
+}
+
+function buildVirtualizationSheet(ws: ExcelJS.Worksheet, chips: ComparisonChip[]): void {
+  const sourcedChips = chips.filter(c => c.virtualization);
+  if (sourcedChips.length === 0) return;
+  const widths = [26, ...sourcedChips.map(() => 34)];
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  const headerRow = addTitle(
+    ws, "Silicon Comparison — Virtualization & Licensing",
+    `What the GPU itself brings to multi-tenancy — MIG/vGPU slicing and per-GPU NVIDIA AI Enterprise licensing. NVIDIA GPUs only. Generated ${new Date().toLocaleString()}.`,
+    widths.length,
+  );
+  styleHeaderRow(ws, headerRow, ["Virtualization & licensing", ...sourcedChips.map(c => `${c.name} (${c.category})`)]);
+
+  const rows: string[] = [];
+  for (const c of sourcedChips) {
+    for (const r of c.virtualization!) {
+      if (!rows.includes(r.label)) rows.push(r.label);
+    }
+  }
+
+  let row = headerRow + 1;
+  rows.forEach((label, idx) => {
+    const values = sourcedChips.map(c => c.virtualization!.find(r => r.label === label)?.value ?? "—");
+    writeDataRow(ws, row, label, values, idx % 2 === 1);
+    row += 1;
+  });
+
+  ws.views = [{ state: "frozen", xSplit: 1, ySplit: headerRow }];
+}
+
 function buildSourcesSheet(ws: ExcelJS.Worksheet, chips: ComparisonChip[]): void {
   const widths = [16, 32, 90];
   widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
@@ -183,6 +257,9 @@ export async function exportSiliconComparisonToExcel(): Promise<void> {
   buildFlopsSheet(workbook.addWorksheet("Compute Throughput"), chips);
   buildMemorySheet(workbook.addWorksheet("Memory"), chips);
   buildPcieSheet(workbook.addWorksheet("PCIe"), chips);
+  buildInterconnectSheet(workbook.addWorksheet("Interconnect"), chips);
+  buildXeonHostSheet(workbook.addWorksheet("Xeon 6 Host"), chips);
+  buildVirtualizationSheet(workbook.addWorksheet("Virtualization"), chips);
   buildSourcesSheet(workbook.addWorksheet("Sources"), chips);
 
   await downloadWorkbook(workbook, "intel-ai-silicon-comparison.xlsx");

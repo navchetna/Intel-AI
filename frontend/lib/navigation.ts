@@ -69,7 +69,7 @@ export const INFERENCING_CLUSTER_ORDER: NavCluster[] = ["inferencing"];
 export const navRoutes: NavRoute[] = [
   // ── Cluster 1: Hardware ────────────────────────────────────────────────────
   { slug: "silicon",             label: "Silicon", module: "silicon",             apiPrefix: "/silicon",             cluster: "hardware" },
-  { slug: "silicon-ingredients", label: "System",  module: "silicon-ingredients", apiPrefix: "/silicon-ingredients", cluster: "hardware" },
+  { slug: "systems",             label: "Systems", module: "silicon",             apiPrefix: "/silicon",             cluster: "hardware" },
   { slug: "rack",                label: "Rack",    module: "rack",                apiPrefix: "/rack",                cluster: "hardware" },
 
   // ── Cluster 1b: Model Inferencing (shown only in "inferencing" app mode) ────
